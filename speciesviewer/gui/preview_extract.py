@@ -24,6 +24,7 @@ The same persistent helper that the master EXIF scan already uses
 
 from __future__ import annotations
 
+import os
 import atexit
 import logging
 import re
@@ -378,6 +379,86 @@ def normalise_jpeg_bytes(data: bytes, max_edge: int, quality: int) -> bytes | No
         out = BytesIO()
         im.save(out, "JPEG", quality=quality, optimize=True)
         return out.getvalue()
+
+
+def create_jpg_max_edge() -> int:
+    """Longest edge a Create-JPG bake may have for a SELF-DESCRIBING source
+    (HEIC/HEIF/PNG), from `[createjpg] max_long_edge`; 0 turns the cap off.
+
+    Only those sources are capped, and the reason is the phone: an iPhone 16 Pro
+    HEIC is 5712x4284, and a website picture does not want 24 megapixels. A RAW's
+    Create JPG stays uncapped on purpose — it is baked from the camera's embedded
+    preview (or a full decode) and is the picture's usable image, so it has to
+    match what every other body gives.
+    """
+    try:
+        from utils.config import _config
+        return _config.getint("createjpg", "max_long_edge", fallback=2000)
+    except Exception:
+        return 2000
+
+
+def bake_blog_jpg(src: Path, out: Path, crop: dict | None, *,
+                  quality: int = 92) -> tuple[int, int]:
+    """Write `out` as a website-ready JPG of `src`, cropped if a crop is given.
+
+    THE one bake. Three collections offer Create JPG (culling grid, day viewer,
+    rating editor) and each had its own copy of the crop-and-save block, which is
+    how a HEIC came to fail in all three: the RAW lane asks
+    extract_preview_bytes() for an embedded JPEG and then decode_preview_jpeg()
+    via LibRaw, and a HEIC has neither an embed nor a LibRaw reader — so Create
+    JPG reported "no preview, and the RAW could not be decoded" about a file that
+    Pillow opens without complaint.
+
+    Two lanes, chosen by the source:
+      * self-describing (HEIC/HEIF/PNG) — opened DIRECTLY at full resolution,
+        then capped to create_jpg_max_edge() after cropping, so the cap applies
+        to what is actually written rather than to the frame it came from.
+      * anything else (a RAW) — its embedded preview, else a full LibRaw decode,
+        uncapped (see create_jpg_max_edge).
+
+    Returns the written image's (width, height) — callers log it, and for a
+    capped HEIC it is the only place the final size is known.
+
+    Raises on failure; callers already translate an exception into
+    {'status': 'failed'}.
+    """
+    from io import BytesIO
+    from PIL import Image
+    from utils.raw_extensions import SELF_DESCRIBING
+
+    own = src.suffix.lower() in SELF_DESCRIBING
+    if own:
+        import pillow_heif
+        pillow_heif.register_heif_opener()   # no-op for PNG, required for HEIC
+        im = Image.open(str(src)).convert("RGB")
+    else:
+        data = extract_preview_bytes(src)    # LARGEST embed
+        if not data:
+            data = decode_preview_jpeg(src, 0, 95)
+        if not data:
+            raise ValueError("no preview, and the file could not be decoded")
+        im = Image.open(BytesIO(data)).convert("RGB")
+
+    if crop:
+        w, h = im.size
+        x  = max(0, min(w - 1, round(crop.get("left", 0.0)   * w)))
+        y  = max(0, min(h - 1, round(crop.get("top", 0.0)    * h)))
+        cw = max(1, min(w - x, round(crop.get("width", 1.0)  * w)))
+        ch = max(1, min(h - y, round(crop.get("height", 1.0) * h)))
+        im = im.crop((x, y, x + cw, y + ch))
+
+    if own:
+        cap = create_jpg_max_edge()
+        if cap > 0 and max(im.size) > cap:
+            im.thumbnail((cap, cap), Image.Resampling.LANCZOS)
+
+    # Temp + replace: this file becomes the picture's usable image and something
+    # may already be reading the previous one.
+    tmp = out.with_name(out.name + f".tmp{os.getpid()}")
+    im.save(str(tmp), "JPEG", quality=quality, optimize=True)
+    os.replace(tmp, out)
+    return im.size
 
 
 def decode_preview_jpeg(src: Path, max_edge: int, quality: int) -> bytes | None:

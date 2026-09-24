@@ -32,7 +32,7 @@ from engine.sidecarlib import push_metadata_to_dop
 from utils.sidecar_policy import (
     color_rating_to_xmp_enabled, color_rating_to_dop_enabled,
 )
-from utils.raw_extensions import RAW, DXO_RAW, bare, is_video
+from utils.raw_extensions import RAW, DXO_RAW, bare, is_video, SELF_DESCRIBING
 
 _DXO_RAW_EXTS = bare(DXO_RAW)  # canonical table — see utils/raw_extensions.py
 
@@ -1092,6 +1092,45 @@ class RatingEditorCollection(PictureCollection):
                 return p
         return None
 
+    def self_describing_path(self, upn_key: str) -> Path | None:
+        """Absolute path of the UPN's first HEIC/HEIF/PNG (master-aware).
+
+        These are displayable pictures that are neither a JPG nor a RAW, so
+        without this they fell through jpg_path -> _raw_thumb_path ->
+        _video_thumb_path and the card read "(no image)" — a HEIC or a PNG simply
+        had no display source in this viewer at all, however loadable the file was.
+        Mirrors raw_path's master/trip path handling exactly."""
+        row = self._upn_row(upn_key)
+        files_dict = self._files_dict_for(upn_key)
+        files = row.get("Files", [])
+        if not isinstance(files, list):
+            return None
+        master = upn_key in self._master_keys
+        rel_dir = ((row.get("TargetPath") or row.get("BestJPGPathName") or "").strip()
+                   if master else "")
+        for fname in files:
+            frow = files_dict.get(fname)
+            if not frow:
+                continue
+            if ("." + frow.get("WindowsExtension", "").lower()) not in SELF_DESCRIBING:
+                continue
+            if master and self._master_root is not None and rel_dir:
+                p = self._master_root / rel_dir / fname
+            else:
+                p = Path(frow.get("WindowsFileName", ""))
+            if p.exists():
+                return p
+        return None
+
+    def _self_thumb_path(self, upn_key: str) -> Path | None:
+        """Cached JPEG for the UPN's HEIC/PNG — the same cached_jpg_for() the
+        culling grid and the day viewer use, into the same preview cache, so a
+        picture decoded in one viewer is already decoded for the others."""
+        s = self.self_describing_path(upn_key)
+        if s is None:
+            return None
+        return cached_jpg_for(s, preview_cache_dir_for(s.parent))
+
     def video_path(self, upn_key: str) -> Path | None:
         """Absolute path of the UPN's movie file, if it has one — master-aware
         exactly like raw_path(). A day's videos come in as their own UPNs, so
@@ -1165,7 +1204,12 @@ class RatingEditorCollection(PictureCollection):
         # photograph. Without this a movie card was simply blank — the culling
         # grid grabbed a frame, this viewer did not (backlog: MOV in the
         # Species Viewer, 2026-09-23).
-        return self._raw_thumb_path(upn_key) or self._video_thumb_path(upn_key)
+        # RAW, then a self-describing picture (HEIC/HEIF/PNG), then video last:
+        # a UPN with any still at all shows the still, and a frame grab only
+        # stands in for a picture that is otherwise blank.
+        return (self._raw_thumb_path(upn_key)
+                or self._self_thumb_path(upn_key)
+                or self._video_thumb_path(upn_key))
 
     def display_path(self, upn_key: str) -> Path | None:
         """Synchronous best-display path (JPG or extracted RAW thumb) — used by
@@ -1279,42 +1323,30 @@ class RatingEditorCollection(PictureCollection):
         after re-cropping). Master reference cards are read-only here."""
         if upn_key in self._master_keys:
             return {"status": "skipped"}
-        raw = self.raw_path(upn_key)
+        # A HEIC/PNG is as valid a source as a RAW (see preview_extract.bake_blog_jpg);
+        # without the fallback Create JPG refused every phone picture as "no_raw".
+        raw = self.raw_path(upn_key) or self.self_describing_path(upn_key)
         if raw is None:
             return {"status": "no_raw"}
         if self.jpg_path(upn_key) is not None and upn_key not in self._blog_jpgs:
             return {"status": "skipped", "jpg": str(self.jpg_path(upn_key))}
         out = raw.with_suffix(".jpg")
-        from gui.preview_extract import extract_preview_bytes, decode_preview_jpeg
+        from gui.preview_extract import bake_blog_jpg
         from gui.picture_provider import crop_for
-        data = extract_preview_bytes(raw)   # LARGEST embed (full-size on Nikon, 3200px on OM-1)
-        if not data:
-            data = decode_preview_jpeg(raw, 0, 95)   # no embed (R5 II HDR-PQ) → full RAW decode
-        if not data:
-            return {"status": "failed",
-                    "reason": "no preview, and the RAW could not be decoded"}
         xmp = raw.with_suffix(".xmp")
+        crop = crop_for(raw, xmp if xmp.exists() else None)
         try:
-            from io import BytesIO
-            from PIL import Image
-            im = Image.open(BytesIO(data)).convert("RGB")
-            crop = crop_for(raw, xmp if xmp.exists() else None)
-            if crop:
-                w, h = im.size
-                x  = max(0, min(w - 1, round(crop.get("left", 0.0)   * w)))
-                y  = max(0, min(h - 1, round(crop.get("top", 0.0)    * h)))
-                cw = max(1, min(w - x, round(crop.get("width", 1.0)  * w)))
-                ch = max(1, min(h - y, round(crop.get("height", 1.0) * h)))
-                im = im.crop((x, y, x + cw, y + ch))
-            im.save(str(out), "JPEG", quality=92, optimize=True)
+            baked_size = bake_blog_jpg(raw, out, crop)
         except Exception as e:
             logger.warning(f"Create JPG failed for {raw.name}: {e}")
             return {"status": "failed", "reason": str(e)}
         self._blog_jpgs[upn_key] = out
         self._crop_flag_cache.pop(upn_key, None)   # image is now the baked JPG
         logger.info(f"Blog JPG created → {out.name} "
-                    f"({im.size[0]}×{im.size[1]}, {'cropped' if crop else 'full frame'}).")
-        return {"status": "created", "jpg": str(out), "size": im.size, "cropped": bool(crop)}
+                    f"({baked_size[0]}×{baked_size[1]}, "
+                    f"{'cropped' if crop else 'full frame'}).")
+        return {"status": "created", "jpg": str(out), "size": baked_size,
+                "cropped": bool(crop)}
 
     # ── write-back (rating/colour), with per-day CSV routing ──────────────
     def apply(self, upn_key: str, *, new_stars: int | None = None,

@@ -115,6 +115,7 @@ text. The work-backup written to a camera card therefore copies
 | `[websettings]` | `Sftppwd`, `base_url` | **The credential.** Why this file never leaves the machine |
 | `[fullres]` | `algorithm`, `fbdd`, `bright`, `denoise`, `scale` | RAW decode quality for the 100% view |
 | `[preview]` | `max_long_edge` (3200), `quality` (90) | Size the embedded camera previews are normalised to. `0` = keep whatever the camera embedded |
+| `[createjpg]` | `max_long_edge` (2000) | Longest edge a Create-JPG bake may have **for a HEIC/HEIF/PNG source only** — an iPhone frame is 5712×4284 and a website picture does not want 24 MP. `0` = no cap. A RAW's Create JPG is never capped: it comes from the camera's embedded preview and is the picture's usable image |
 | `[avibase]` | `source_format`, `phone_layout`, `first_column_lang`, `columns` | Excel checklist export, plus the per-list column map in `[avibase_columns]` |
 | `[masterdb]` | `pending_warn_seconds`, `checkpoint_debounce_seconds` | SQLite write-queue behaviour |
 | `[performance]` | `exif_workers` | Parallel exiftool workers. `auto` ≈ physical cores, capped 16. Hardware-dependent, hence machine scope |

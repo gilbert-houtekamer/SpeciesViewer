@@ -16,6 +16,7 @@ next step). The virtual-trip file_list mode (no fpr) is not covered here.
 
 from __future__ import annotations
 
+import os
 import json
 import logging
 import re
@@ -34,7 +35,7 @@ from engine.sidecarlib import push_metadata_to_dop
 from utils.sidecar_policy import (
     color_rating_to_xmp_enabled, color_rating_to_dop_enabled,
 )
-from utils.raw_extensions import RAW, DXO_RAW, VIDEO, bare, HEIC, JPEG, OTHER_IMAGE
+from utils.raw_extensions import RAW, DXO_RAW, VIDEO, bare, HEIC, JPEG, OTHER_IMAGE, SELF_DESCRIBING
 
 logger = logging.getLogger("speciesviewer")
 
@@ -100,7 +101,19 @@ def cached_jpg_for(src: Path | None, cache_dir: Path) -> Path | None:
             im = Image.open(str(src))
             if max_edge > 0:
                 im.thumbnail((max_edge, max_edge), Image.Resampling.LANCZOS)
-            im.convert("RGB").save(str(cache), "JPEG", quality=quality, optimize=True)
+            # Temp file + os.replace, never a write straight onto `cache`.
+            # Decoding a 12 MP HEIC takes ~0.5 s and several cards are decoded at
+            # once, so a reader arriving mid-write got a TRUNCATED jpg, QImage
+            # returned null, and the card showed "(no image)" — with no disk thumb
+            # saved, so it stayed blank for that session while the same picture's
+            # smaller filmstrip thumb, decoded seconds later, came out fine. That
+            # is exactly what happened to one HEIC of a 322-picture day on
+            # 2026-09-24. os.replace is atomic, so a reader sees either no file or
+            # a complete one — the same guarantee the RAW path gets from funnelling
+            # every extraction through one stay_open exiftool.
+            tmp = cache.with_name(cache.name + f".tmp{os.getpid()}")
+            im.convert("RGB").save(str(tmp), "JPEG", quality=quality, optimize=True)
+            os.replace(tmp, cache)
             return cache
         except Exception as e:
             logger.warning(f"HEIC decode failed for {src.name}: {e}")
@@ -585,6 +598,19 @@ class PreviewCollection(PictureCollection):
             if not frow:
                 continue
             if ("." + frow.get("WindowsExtension", "").lower()) in _RAW_EXTS:
+                p = Path(frow.get("WindowsFileName", ""))
+                if p.exists():
+                    return p
+        return None
+
+    def _self_describing_source(self, key: str) -> Path | None:
+        """The UPN's first HEIC/HEIF/PNG — a picture that carries no embedded
+        preview but which Pillow opens directly (see preview_extract.bake_blog_jpg)."""
+        for fname in self._files(key):
+            frow = self.fpr.fi.files_dict.get(fname)
+            if not frow:
+                continue
+            if ("." + frow.get("WindowsExtension", "").lower()) in SELF_DESCRIBING:
                 p = Path(frow.get("WindowsFileName", ""))
                 if p.exists():
                     return p
@@ -1092,7 +1118,7 @@ class PreviewCollection(PictureCollection):
 
     def _source_file(self, upn_key: str) -> Path | None:
         """Best display source: the BestJPG render (the DxO `_DxO.jpg` crop) >
-        any JPG > RAW > HEIC > video. Honours the pipeline's already-computed
+        any JPG > RAW > a self-describing picture (HEIC/HEIF/PNG) > video. Honours the pipeline's already-computed
         BestJPG so the card shows the processed crop, not the untouched original
         that merely happens to come first in the Files list. Video is last: a
         UPN with any still at all shows the still, and a frame grab only stands
@@ -1115,7 +1141,13 @@ class PreviewCollection(PictureCollection):
                     best = p
             elif ("." + ext) in _RAW_EXTS and raw is None:
                 raw = p
-            elif ext == "heic" and heic is None:
+            elif ("." + ext) in SELF_DESCRIBING and heic is None:
+                # Was `ext == "heic"`, a literal that left a .heif or a .png with
+                # no display source at all — _source_file returned None and the
+                # card read "(no image)" however loadable the file was. A PNG is
+                # as displayable as a JPG (Qt decodes it natively); it is only
+                # unsuitable as a WEBSITE picture, which is a different question
+                # decided elsewhere.
                 heic = p
             elif ("." + ext) in _VIDEO_EXTS and video is None:
                 video = p
@@ -1346,36 +1378,20 @@ class PreviewCollection(PictureCollection):
         picture that already has a tracked JPG (a camera JPEG or a DxO render) so
         nothing is clobbered; our own bake is not tracked, so a re-run overwrites
         it (e.g. after re-cropping)."""
-        raw = self.raw_path(upn_key)
+        # A HEIC or PNG is just as valid a source as a RAW — it simply has no
+        # embedded preview, which the shared bake handles by opening it directly.
+        # Without this fallback Create JPG reported "no_raw" for every phone
+        # picture, i.e. refused the one case that most wants a website JPG.
+        raw = self.raw_path(upn_key) or self._self_describing_source(upn_key)
         if raw is None:
             return {"status": "no_raw"}
         if self.jpg_path(upn_key) is not None:
             return {"status": "skipped", "jpg": str(self.jpg_path(upn_key))}
-        out = raw.with_suffix(".jpg")   # <stem>.jpg beside the RAW
-        from gui.preview_extract import extract_preview_bytes, decode_preview_jpeg
-        data = extract_preview_bytes(raw)   # LARGEST embed — full-size on Nikon, 3200px on OM-1
-        if not data:
-            # No embedded JPEG at all (the R5 II's HDR-PQ CR3). Decode the RAW —
-            # at FULL size (max_edge 0), not the 3200px preview size: this JPG
-            # becomes the picture's usable image and can end up on the website, so
-            # it has to match what Create JPG gives every other body.
-            data = decode_preview_jpeg(raw, 0, 95)
-        if not data:
-            return {"status": "failed", "reason": "no preview, and the RAW "
-                                                  "could not be decoded"}
+        out = raw.with_suffix(".jpg")   # <stem>.jpg folds onto the same UPN
+        from gui.preview_extract import bake_blog_jpg
+        crop = crop_for(raw, self._xmp_for(upn_key))   # same reader request_image uses
         try:
-            from io import BytesIO
-            from PIL import Image
-            im = Image.open(BytesIO(data)).convert("RGB")
-            crop = crop_for(raw, self._xmp_for(upn_key))   # same reader request_image uses
-            if crop:
-                w, h = im.size
-                x  = max(0, min(w - 1, round(crop.get("left", 0.0)   * w)))
-                y  = max(0, min(h - 1, round(crop.get("top", 0.0)    * h)))
-                cw = max(1, min(w - x, round(crop.get("width", 1.0)  * w)))
-                ch = max(1, min(h - y, round(crop.get("height", 1.0) * h)))
-                im = im.crop((x, y, x + cw, y + ch))
-            im.save(str(out), "JPEG", quality=92, optimize=True)
+            baked_size = bake_blog_jpg(raw, out, crop)
         except Exception as e:
             logger.warning(f"Create JPG failed for {raw.name}: {e}")
             return {"status": "failed", "reason": str(e)}
@@ -1387,27 +1403,27 @@ class PreviewCollection(PictureCollection):
         self._img_sigs[upn_key] = self._img_sig(upn_key)
         self._drop_thumb_caches(upn_key)   # a crop can land in the .xmp, which the sig doesn't see
         logger.info(f"Blog JPG created → {out.name} "
-                    f"({im.size[0]}×{im.size[1]}, {'cropped' if crop else 'full frame'}).")
-        return {"status": "created", "jpg": str(out), "size": im.size, "cropped": bool(crop)}
+                    f"({baked_size[0]}×{baked_size[1]}, "
+                    f"{'cropped' if crop else 'full frame'}).")
+        return {"status": "created", "jpg": str(out), "size": baked_size,
+                "cropped": bool(crop)}
 
     def _bake_heic_crop(self, upn_key: str, heic: Path, crop: dict):
-        """Crop a HEIC by baking the rectangle into a FULL-RES JPG beside it — a HEIC
-        has no RAW-style develop step, so the crop is applied directly (the user's
-        'crop by writing a JPG, just like RAWs'). The JPG shares the HEIC's stem, so
-        it folds onto the same picture and becomes its usable image; a re-crop
-        re-bakes from the HEIC (never from this JPG — see _crop_source)."""
+        """Crop a HEIC by baking the rectangle into a JPG beside it — a HEIC has no
+        RAW-style develop step, so the crop is applied directly (the user's 'crop by
+        writing a JPG, just like RAWs'). The JPG shares the HEIC's stem, so it folds
+        onto the same picture and becomes its usable image; a re-crop re-bakes from
+        the HEIC (never from this JPG — see _crop_source). Size follows the shared
+        HEIC cap, the same as Create JPG, since both write this one file."""
         out = heic.with_suffix(".jpg")   # <stem>.jpg — same stem folds onto the UPN
+        # Through the SHARED bake, not a second copy of it. Both this and Create
+        # JPG write the very same <stem>.jpg for the very same picture, so if only
+        # one of them honoured the HEIC size cap that file's resolution would
+        # depend on which button had last been pressed. It decodes the HEIC at full
+        # resolution, crops, and caps the RESULT (see create_jpg_max_edge).
+        from gui.preview_extract import bake_blog_jpg
         try:
-            import pillow_heif
-            pillow_heif.register_heif_opener()
-            from PIL import Image
-            im = Image.open(str(heic)).convert("RGB")   # FULL resolution, not the capped preview
-            w, h = im.size
-            x  = max(0, min(w - 1, round(crop.get("left", 0.0)   * w)))
-            y  = max(0, min(h - 1, round(crop.get("top", 0.0)    * h)))
-            cw = max(1, min(w - x, round(crop.get("width", 1.0)  * w)))
-            ch = max(1, min(h - y, round(crop.get("height", 1.0) * h)))
-            im.crop((x, y, x + cw, y + ch)).save(str(out), "JPEG", quality=92, optimize=True)
+            baked_size = bake_blog_jpg(heic, out, crop)
         except Exception as e:
             logger.warning(f"HEIC crop bake failed for {heic.name}: {e}")
             return None
@@ -1418,7 +1434,8 @@ class PreviewCollection(PictureCollection):
             self._pic_folders.add(out.parent)
         self._img_sigs[upn_key] = self._img_sig(upn_key)
         self._drop_thumb_caches(upn_key)   # a crop can land in the .xmp, which the sig doesn't see
-        logger.info(f"HEIC crop baked → {out.name} (full-res JPG).")
+        logger.info(f"HEIC crop baked → {out.name} "
+                    f"({baked_size[0]}×{baked_size[1]}).")
         return {"jpg_created": True, "baked_jpg": True, "jpg": str(out)}
 
     def delete_keys(self, keys, trash_root: Path,

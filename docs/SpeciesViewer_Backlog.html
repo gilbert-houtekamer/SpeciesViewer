@@ -503,14 +503,6 @@ reads <em>No current work planned</em>.</p>
 <h2>7. Rating &amp; Website</h2>
 <h3>To do</h3>
 <ul>
-  <li><span class="tag-bug">BUG</span> <strong>A PNG shows “(no image)” in the pipeline day
-    viewer</strong> — the culling grid renders PNGs now, but
-    <code>rating_provider.jpg_path()</code> hard-codes <code>(".jpg", ".jpeg")</code>, so a
-    PNG-only UPN resolves to no image source at all and the card comes up empty (seen 2026-09-23
-    on <em>2026 Brazilie - IMG_6023.PNG</em>). Not a blind widening: <code>jpg_path()</code> also
-    means “is there a finished render?” — it gates the crop overlay — so it needs the same
-    source/render split already applied in <code>sidecar_provider</code>
-    (<code>_SOURCE_EXTS</code> vs <code>_JPG_EXTS</code>).</li>
   <li><span class="tag-open">OPEN</span> <strong>Canon <code>.HIF</code> is invisible</strong> —
     now that the sidecar question is answered, the remaining work is one entry: <code>.hif</code>
     appears nowhere in the extension table or the code, so such a file is not even offered as a
@@ -519,6 +511,46 @@ reads <em>No current work planned</em>.</p>
 </ul>
 <h3>Done</h3>
 <ul>
+  <li><strong>A PNG is now shown as if it were a JPG, and Create JPG works on a
+    phone picture</strong> <span class="tag-shipped">SHIPPED</span> (2026-09-24) — his ask:
+    “PNG should be shown as if it was a JPG. That does not make it suitable for websites, but
+    bring them on par with HEICs.” Three things were in the way:
+    <ul>
+      <li><code>preview_provider._source_file</code> tested <code>ext == "heic"</code>, a literal
+        that left a PNG (and a <code>.heif</code>) with NO display source at all — the card read
+        “(no image)” however loadable the file was. <code>rating_provider</code> had no HEIC or
+        PNG source either, so the Rating Editor showed neither. Both now resolve a
+        self-describing picture and route it through the same
+        <code>cached_jpg_for()</code> as every other viewer.</li>
+      <li>A PNG had been put in the group's “finished render” slot, because it needs no develop
+        step to be DISPLAYED. That made it count as a web-ready JPG: the JPG-only overlay listed
+        it, the “a JPG is the finished asset” delete protection covered it, and Create JPG
+        refused it as already having one. It now sits in the SOURCE slot beside RAW and HEIC —
+        displayable is not the same as web-ready.</li>
+      <li>Create JPG could not bake a HEIC or PNG at all. It asks
+        <code>extract_preview_bytes()</code> for an embedded JPEG and then
+        <code>decode_preview_jpeg()</code> via LibRaw, and a HEIC has neither an embed nor a
+        LibRaw reader — so it reported “no preview, and the RAW could not be decoded” about a
+        file Pillow opens without complaint. Worse, that block existed in THREE copies (culling
+        grid, day viewer, rating editor), which is how one gap became three. There is now one
+        bake, <code>preview_extract.bake_blog_jpg</code>, and all three call it — as does the
+        crop tool's <code>_bake_heic_crop</code>, since both write the very same
+        <code>&lt;stem&gt;.jpg</code> for the same picture and their sizes must not depend on
+        which button was pressed last.</li>
+    </ul>
+    A HEIC/PNG bake is capped to <code>[createjpg] max_long_edge</code> (default 2000) AFTER
+    cropping, so the cap applies to what is written; a RAW stays uncapped. Measured: an iPhone
+    HEIC 4284×5712 → 1500×2000 (567 KB), a PNG 1206×2622 → 920×2000, an ORF unchanged at
+    3200×2400. Annotations still round-trip for all four source types.</li>
+  <li><strong>One HEIC of a 322-picture day came up “(no image)”</strong>
+    <span class="tag-bug">BUG</span> fixed (2026-09-24) — the HEIC preview cache was written
+    with <code>im.save(cache)</code> straight onto the destination. Decoding a 12 MP HEIC takes
+    ~0.5 s and several cards decode at once, so a reader arriving mid-write got a TRUNCATED jpg,
+    QImage returned null, and the card stayed blank for the session — while the same picture's
+    smaller filmstrip thumb, decoded seconds later, came out fine (which is exactly the evidence
+    that identified it: a valid 3.3 MB preview, a 144 px thumb, and no 236 px grid thumb). Now a
+    temp file + <code>os.replace</code>, so a reader sees either no file or a complete one — the
+    same guarantee the RAW path gets from its single stay_open exiftool.</li>
   <li><strong>HEIC metadata: one truth, in the picture</strong>
     <span class="tag-shipped">SHIPPED</span> (2026-09-24) — a HEIC is a JPG, not a RAW. Every
     field SpeciesViewer stores is a standard XMP field that Lightroom and PhotoLab can read AND
@@ -637,6 +669,15 @@ reads <em>No current work planned</em>.</p>
 <h2>9. Usability &amp; Polish</h2>
 <h3>To do</h3>
 <ul>
+  <li><span class="tag-open">WISHLIST</span> <strong>Filter a viewer by camera</strong> — asked
+    for on 2026-09-24 and then self-solved the same day: typing <code>img</code> in the
+    <em>Find file…</em> box separates the phone pictures from the camera's, because an iPhone
+    names every file <code>IMG_*</code> and the OM-1 does not. “Works well, so this can go to the
+    wishlist.” A real camera filter would be a picker on <code>CameraModel</code>, which is
+    already a column in <code>data_files.csv</code> (and already normalised — sv2 turns
+    <code>OM-1MarkII</code> into <code>OM-1 Mark II</code>), and the grid's filters already
+    intersect cleanly in <code>_visible_keys</code>, so it is a filter dimension rather than new
+    plumbing. Open question if it is ever picked up: a picker per model, or just phone-vs-camera.</li>
   <li><strong>AVI list processing — the last rough edges</strong> <span class="tag-open">OPEN</span> —
     both list formats now read correctly and the step defends itself (see Done
     below); what remains is around the edges rather than in the reading.

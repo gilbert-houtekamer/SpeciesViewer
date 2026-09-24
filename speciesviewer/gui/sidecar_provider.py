@@ -52,7 +52,15 @@ _RAW_EXTS = RAW  # canonical table — see utils/raw_extensions.py
 # Deliberately NOT the same set as _RAW_EXTS: crop-to-.dop (request_image) stays
 # RAW-only, because a HEIC has no develop step for a .dop to describe and SV must
 # never invent one.
-_SOURCE_EXTS = RAW_OR_HEIC  # canonical table — see utils/raw_extensions.py
+# The ORIGINAL a picture is made from — what goes in the group's "raw" slot.
+# RAW_OR_HEIC plus PNG, which is self-describing and, like a HEIC, a SOURCE you
+# bake a website JPG from rather than a finished render. Putting PNG in the "jpg"
+# slot instead (it needs no develop step to be DISPLAYED, so that looked right)
+# made it count as a finished JPG: the JPG-only overlay listed it, the "a JPG is
+# the finished asset" delete protection covered it, and Create JPG refused it as
+# already having a JPG. Displayable is not the same as web-ready — his words:
+# shown as if it were a JPG, which does not make it suitable for websites.
+_SOURCE_EXTS = RAW_OR_HEIC | SELF_DESCRIBING  # canonical table — see utils/raw_extensions.py
 # Where a picture's annotations live when they are NOT in a sidecar — the whole
 # rationale is on the set itself in the canonical table.
 _SELF_DESCRIBING = SELF_DESCRIBING  # canonical table — see utils/raw_extensions.py
@@ -62,7 +70,10 @@ _SELF_DESCRIBING = SELF_DESCRIBING  # canonical table — see utils/raw_extensio
 # NOT belong here, however finished it is: Qt cannot decode HEIC at all
 # (QImageReader.supportedImageFormats() has no entry for it), so a HEIC card
 # would be a permanently grey tile. See CARD_EXTENSIONS on SidecarCollection.
-_JPG_EXTS = JPEG | OTHER_IMAGE  # canonical table — see utils/raw_extensions.py
+# A FINISHED render, web-ready as it stands: a JPEG, or a TIFF (which
+# OTHER_IMAGE calls a rendered format that is never a camera original). PNG is
+# deliberately not here — see _SOURCE_EXTS.
+_JPG_EXTS = JPEG | (OTHER_IMAGE - SELF_DESCRIBING)  # canonical table — see utils/raw_extensions.py
 
 # Render-suffix markers (lowercased) that deriveUniquePictureName strips. Used to
 # rebuild the SOURCE stem so a render's sidecar — named after the source, not the
@@ -1209,30 +1220,15 @@ class SidecarCollection(MasterCardOpsMixin, PictureCollection):
         existing = self.jpg_path(key)
         if existing is not None and key not in self._created_blog_jpgs:
             return {"status": "skipped", "jpg": str(existing)}
-        from gui.preview_extract import extract_preview_bytes, decode_preview_jpeg
-        data = extract_preview_bytes(raw)   # LARGEST embed — full-size on Nikon, 3200px on OM-1
-        if not data:
-            # No embedded JPEG at all (the R5 II's HDR-PQ CR3). Decode the RAW —
-            # at FULL size (max_edge 0), not the 3200px preview size: this JPG
-            # becomes the picture's usable image and can end up on the website, so
-            # it has to match what Create JPG gives every other body.
-            data = decode_preview_jpeg(raw, 0, 95)
-        if not data:
-            return {"status": "failed", "reason": "no preview, and the RAW "
-                                                  "could not be decoded"}
+        # ONE bake for all three collections (gui.preview_extract.bake_blog_jpg):
+        # a RAW goes through its embedded preview / LibRaw decode, a HEIC or PNG is
+        # opened directly by Pillow and capped after cropping. Each collection used
+        # to carry its own copy of this, which is how a HEIC failed in all three
+        # with "the RAW could not be decoded" about a file Pillow reads fine.
+        from gui.preview_extract import bake_blog_jpg
+        crop = self._crop_for(key)
         try:
-            from io import BytesIO
-            from PIL import Image
-            im = Image.open(BytesIO(data)).convert("RGB")
-            crop = self._crop_for(key)
-            if crop:
-                w, h = im.size
-                x  = max(0, min(w - 1, round(crop.get("left", 0.0)   * w)))
-                y  = max(0, min(h - 1, round(crop.get("top", 0.0)    * h)))
-                cw = max(1, min(w - x, round(crop.get("width", 1.0)  * w)))
-                ch = max(1, min(h - y, round(crop.get("height", 1.0) * h)))
-                im = im.crop((x, y, x + cw, y + ch))
-            im.save(str(out), "JPEG", quality=92, optimize=True)
+            baked_size = bake_blog_jpg(raw, out, crop)
         except Exception as e:
             logger.warning(f"Create JPG failed for {raw.name}: {e}")
             return {"status": "failed", "reason": str(e)}
@@ -1245,8 +1241,10 @@ class SidecarCollection(MasterCardOpsMixin, PictureCollection):
         self._image_sigs[key] = self._image_sig(key)   # display source is now the JPG
         self._drop_thumb_caches(key)
         logger.info(f"Blog JPG created → {out.name} "
-                    f"({im.size[0]}×{im.size[1]}, {'cropped' if crop else 'full frame'}).")
-        return {"status": "created", "jpg": str(out), "size": im.size, "cropped": bool(crop)}
+                    f"({baked_size[0]}×{baked_size[1]}, "
+                    f"{'cropped' if crop else 'full frame'}).")
+        return {"status": "created", "jpg": str(out), "size": baked_size,
+                "cropped": bool(crop)}
 
     def set_name_hints(self, hints: dict, profile: str) -> None:
         self._name_hints = hints or {}
