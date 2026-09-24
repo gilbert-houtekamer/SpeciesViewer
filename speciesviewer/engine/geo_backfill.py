@@ -20,7 +20,8 @@ Two things make this practical rather than a 40-minute grind:
   run over the whole master.
 
 The write is in two halves, and BOTH are needed:
-  1. the XMP sidecar (the truth), via geolocate.write_location_batch;
+  1. the picture's OWN truth (its .xmp sidecar, or the file itself when it is
+     self-describing — see _write_targets), via geolocate.write_location_batch;
   2. the master index (DB + data_pictures.csv), via MasterDB.apply_location_fields
      — because the website, the maps and the viewers read the index, not the
      sidecars. Skip it and nothing visibly changes until a full master re-read.
@@ -116,23 +117,40 @@ def plan(db, gaps: dict, *, lang: str = "en", zoom: int = 14,
 
 
 def _write_targets(db, upns: list[str]) -> list[str]:
-    """The files to stamp for these UPNs: the XMP sidecar when there is one, else
-    the image itself (a JPG-only picture has nowhere else to put it). Mirrors the
-    viewer's location_targets rule — never write into a RAW."""
+    """The files to stamp for these UPNs. Mirrors the viewer's location_targets
+    rule (SidecarCollection.location_targets = the group's "meta" file plus its
+    JPG) — never write into a RAW.
+
+    A SELF-DESCRIBING picture (HEIC/HEIF/PNG) holds its own annotations, so the
+    FILE is the target and wins over any .xmp beside it. That sidecar is not the
+    truth for such a file: PhotoLab and Lightroom read and write the place inside
+    the picture, so a stray .xmp (ingest briefly wrote one for every HEIC on
+    2026-09-23) would silently swallow the write.
+
+    But "this UPN contains a .png" is NOT the same question. A master UPN gathers
+    the WHOLE derivative chain, so a DxO edit can put a .png or .tif next to an
+    ORF and its .xmp — there the PNG is a RENDER and the RAW's .xmp is still the
+    truth. The picture is self-describing only when NOTHING in the UPN delegates,
+    i.e. there is no RAW (the same test as preview_provider._heic_only_upn).
+    Everything else delegates to its .xmp, and a JPG-only picture has nowhere to
+    put it but itself.
+    """
+    from utils.raw_extensions import RAW, SELF_DESCRIBING
+
     con = db._connect()
     targets: list[str] = []
     for upn in upns:
         rows = [dict(r) for r in con.execute(
             'SELECT "WindowsFileName","WindowsExtension" FROM files '
             ' WHERE "UniquePictureName"=?', (upn,))]
-        xmp = [r["WindowsFileName"] for r in rows
-               if (r["WindowsExtension"] or "").lower() == "xmp"]
-        if xmp:
-            targets.extend(xmp)
+        by_ext = lambda exts: [r["WindowsFileName"] for r in rows
+                               if "." + (r["WindowsExtension"] or "").lower() in exts]
+        own = by_ext(SELF_DESCRIBING)
+        jpg = by_ext({".jpg", ".jpeg"})
+        if own and not by_ext(RAW):
+            targets.extend(own + jpg)
             continue
-        img = [r["WindowsFileName"] for r in rows
-               if (r["WindowsExtension"] or "").lower() in ("jpg", "jpeg", "heic", "png")]
-        targets.extend(img)
+        targets.extend(by_ext({".xmp"}) or jpg + own)
     return [t for t in targets if t and Path(t).is_file()]
 
 
@@ -151,8 +169,9 @@ def backup_pictures_csv(master_root) -> str:
 
 
 def apply(db, master_root, rows: list[dict], *, progress_cb=None) -> dict:
-    """Write the confirmed rows: XMP sidecars first (the truth), then the master
-    index (so the website and maps see it without a re-read). Returns a summary."""
+    """Write the confirmed rows: each picture's own truth first (see
+    _write_targets), then the master index (so the website and maps see it
+    without a re-read). Returns a summary."""
     from gui.geolocate import write_location_batch
 
     rows = [r for r in rows if r.get("fields") and not r.get("error")]
