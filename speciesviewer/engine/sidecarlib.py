@@ -4,6 +4,7 @@ import os
 import re
 import xml.etree.ElementTree as ET
 import logging
+from datetime import datetime, timezone
 
 logger = logging.getLogger("speciesviewer")
 
@@ -15,6 +16,44 @@ NS = {
 }
 for prefix, uri in NS.items():
     ET.register_namespace(prefix, uri)
+
+
+def _dop_now():
+    """PhotoLab's timestamp format: ISO 8601 in UTC with 7 fractional digits and a
+    trailing Z (.NET 100-ns ticks), e.g. "2026-09-24T18:50:08.7117131Z". UTC, not
+    local — the Z means it, and a local stamp would read two hours in the future."""
+    dt = datetime.now(timezone.utc)
+    return f"{dt:%Y-%m-%dT%H:%M:%S}.{dt.microsecond:06d}0Z"
+
+
+def _touch_dop_stamps(text):
+    """Declare, inside the .dop, that we just changed it — WITHOUT this, PhotoLab
+    ignores what we wrote.
+
+    PhotoLab is database-first: the .dop is an interchange file, its catalogue is
+    the live store. Before adopting item-level metadata from a sidecar (ColorLabel,
+    Rating — the fields beside `Name`) it asks whether the sidecar's record is newer
+    than its own, and it asks the FILE, not the filesystem. We were changing the
+    value and leaving `ModificationDate` at whatever PhotoLab last wrote, so PL
+    compared it against its database, found them equal, concluded there was nothing
+    to import, and dropped the item — the crop travelling with it.
+
+    Confirmed live (2026-09-24): adding an hour to the stamp by hand made PhotoLab
+    pick up a colour it had ignored, and an explicit "Load corrections from DOP",
+    which bypasses the check, showed the colour was written correctly all along.
+
+    Two stamps, both true when we write: `Date` at Sidecar level (when this file was
+    written) and the item's `ModificationDate` (when this record changed). Only the
+    FIRST of each is touched, matching every other writer here — a .dop holds one
+    item in practice (0 of 7068 real files carry a second ColorLabel or Rating), and
+    if one ever held two, advancing the stamp of an item we did not edit would be a
+    lie. `CreationDate` is the picture's and is never touched."""
+    now = _dop_now()
+    text, _ = re.subn(r'^(\s*Date\s*=\s*)"[^"]*"', rf'\g<1>"{now}"', text,
+                      count=1, flags=re.M)
+    text, _ = re.subn(r'(\bModificationDate\s*=\s*)"[^"]*"', rf'\g<1>"{now}"', text,
+                      count=1)
+    return text
 
 
 def read_dop_overrides(dop_path):
@@ -280,6 +319,7 @@ def write_dop_edits(dop_path, exposure=None, crop=None, angle=None, denoise=None
     sep = '\n' if inner else ''
     new_inner = inner + sep + '\n' + '\n'.join(new_entries) + '\n'
     text = text[:open_idx] + '{' + new_inner + '}' + text[close_idx + 1:]
+    text = _touch_dop_stamps(text)
 
     with open(dop_path, "w", encoding="utf-8", newline="") as f:
         f.write(text)
@@ -333,6 +373,7 @@ def write_dop_metadata(dop_path, color=None, rating=None):
                 changed = True
 
     if changed:
+        text = _touch_dop_stamps(text)
         with open(dop_path, "w", encoding="utf-8", newline="") as f:
             f.write(text)
     return changed
