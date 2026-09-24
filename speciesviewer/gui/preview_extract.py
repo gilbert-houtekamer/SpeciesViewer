@@ -382,14 +382,17 @@ def normalise_jpeg_bytes(data: bytes, max_edge: int, quality: int) -> bytes | No
 
 
 def create_jpg_max_edge() -> int:
-    """Longest edge a Create-JPG bake may have for a SELF-DESCRIBING source
-    (HEIC/HEIF/PNG), from `[createjpg] max_long_edge`; 0 turns the cap off.
+    """Longest edge a Create-JPG bake may have for a HEIC/HEIF source, from
+    `[createjpg] max_long_edge`; 0 turns the cap off.
 
-    Only those sources are capped, and the reason is the phone: an iPhone 16 Pro
-    HEIC is 5712x4284, and a website picture does not want 24 megapixels. A RAW's
-    Create JPG stays uncapped on purpose — it is baked from the camera's embedded
-    preview (or a full decode) and is the picture's usable image, so it has to
-    match what every other body gives.
+    HEIC ONLY, and the reason is the phone: an iPhone 16 Pro frame is 5712x4284,
+    and a website picture does not want 24 megapixels.
+
+    Not a PNG — a screenshot is already small (his PNGs are ~1200px), so a cap
+    could only ever shrink the odd tall one for no benefit; he asked for it not to
+    be capped and he is right. Not a RAW either: that bake comes from the camera's
+    embedded preview (or a full decode) and is the picture's usable image, so it
+    has to match what every other body gives.
     """
     try:
         from utils.config import _config
@@ -411,11 +414,12 @@ def bake_blog_jpg(src: Path, out: Path, crop: dict | None, *,
     Pillow opens without complaint.
 
     Two lanes, chosen by the source:
-      * self-describing (HEIC/HEIF/PNG) — opened DIRECTLY at full resolution,
-        then capped to create_jpg_max_edge() after cropping, so the cap applies
-        to what is actually written rather than to the frame it came from.
+      * self-describing (HEIC/HEIF/PNG) — opened DIRECTLY at full resolution.
+        A HEIC is then capped to create_jpg_max_edge() AFTER cropping, so the cap
+        applies to what is actually written rather than to the frame it came from.
+        A PNG is not capped (see create_jpg_max_edge).
       * anything else (a RAW) — its embedded preview, else a full LibRaw decode,
-        uncapped (see create_jpg_max_edge).
+        uncapped.
 
     Returns the written image's (width, height) — callers log it, and for a
     capped HEIC it is the only place the final size is known.
@@ -425,9 +429,11 @@ def bake_blog_jpg(src: Path, out: Path, crop: dict | None, *,
     """
     from io import BytesIO
     from PIL import Image
-    from utils.raw_extensions import SELF_DESCRIBING
+    from utils.raw_extensions import SELF_DESCRIBING, HEIC
 
-    own = src.suffix.lower() in SELF_DESCRIBING
+    ext = src.suffix.lower()
+    own = ext in SELF_DESCRIBING          # opened directly by Pillow
+    capped = ext in HEIC                  # ...but only a HEIC is resized
     if own:
         import pillow_heif
         pillow_heif.register_heif_opener()   # no-op for PNG, required for HEIC
@@ -448,7 +454,7 @@ def bake_blog_jpg(src: Path, out: Path, crop: dict | None, *,
         ch = max(1, min(h - y, round(crop.get("height", 1.0) * h)))
         im = im.crop((x, y, x + cw, y + ch))
 
-    if own:
+    if capped:
         cap = create_jpg_max_edge()
         if cap > 0 and max(im.size) > cap:
             im.thumbnail((cap, cap), Image.Resampling.LANCZOS)

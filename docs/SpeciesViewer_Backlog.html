@@ -538,10 +538,21 @@ reads <em>No current work planned</em>.</p>
         <code>&lt;stem&gt;.jpg</code> for the same picture and their sizes must not depend on
         which button was pressed last.</li>
     </ul>
-    A HEIC/PNG bake is capped to <code>[createjpg] max_long_edge</code> (default 2000) AFTER
-    cropping, so the cap applies to what is written; a RAW stays uncapped. Measured: an iPhone
-    HEIC 4284×5712 → 1500×2000 (567 KB), a PNG 1206×2622 → 920×2000, an ORF unchanged at
+    A HEIC bake is capped to <code>[createjpg] max_long_edge</code> (default 2000) AFTER
+    cropping, so the cap applies to what is written. Settable in <strong>Look &amp; Feel ▸ Make
+    JPG — phone pictures</strong>, where 0 reads “Don't resize”. A PNG is deliberately NOT capped
+    (a screenshot is already small) and a RAW keeps its embedded-preview size. Measured: an
+    iPhone HEIC 4284×5712 → 1500×2000 (567 KB), a PNG 1206×2622 unchanged, an ORF unchanged at
     3200×2400. Annotations still round-trip for all four source types.</li>
+  <li><span class="tag-open">NEEDS DECISION</span> <strong>A RAW's Create JPG is 3200–8640 px
+    depending on the body</strong> — raised by him on 2026-09-24 (“do you also resize RAWs that
+    are larger than say 2200 pixels?”). Today: no. The code's stated reason was that a RAW bake
+    “has to match what every other body gives”, and measuring the actual embedded previews shows
+    that is simply not true — Sony A1 8640×5760, Canon R5 8192×5464, Panasonic G9 II 5776×4336,
+    Nikon D500 3712×5568, OM-1 II 3200×2400. Every one is over 2200, and they differ by a factor
+    of nearly three. So a cap would CREATE the consistency the comment claims to protect, and
+    would stop a 47-megapixel JPG reaching the website. It changes the output of every future RAW
+    bake, so it is his call, not a tidy-up.</li>
   <li><strong>One HEIC of a 322-picture day came up “(no image)”</strong>
     <span class="tag-bug">BUG</span> fixed (2026-09-24) — the HEIC preview cache was written
     with <code>im.save(cache)</code> straight onto the destination. Decoding a 12 MP HEIC takes

@@ -102,6 +102,7 @@ class LookFeelDialog(QDialog):
 
         self._build_corner_section(lay)
         self._build_culling_section(lay)
+        self._build_createjpg_section(lay)
 
         note = QLabel("↻  Colour scheme + theme apply after restarting SpeciesViewer; "
                       "card corners + culling-grid settings apply the next time you "
@@ -206,6 +207,42 @@ class LookFeelDialog(QDialog):
 
         gwrap = QWidget(); gwrap.setLayout(g); lay.addWidget(gwrap)
 
+    def _build_createjpg_section(self, lay):
+        """The one size decision Create JPG makes, where it can be seen.
+
+        It was a config key only. That is fine for a machine setting nobody
+        changes, but this one governs how big a phone picture arrives on the
+        website, so it belongs in front of him rather than in an .ini."""
+        sep = QFrame(); sep.setFrameShape(QFrame.Shape.HLine)
+        sep.setStyleSheet(f"color:{theme.LINE}; margin:6px 0;")
+        lay.addWidget(sep)
+        lay.addWidget(_section("MAKE JPG — PHONE PICTURES"))
+
+        g = QGridLayout()
+        g.setContentsMargins(0, 4, 0, 0)
+        g.setHorizontalSpacing(14); g.setVerticalSpacing(6)
+        g.addWidget(QLabel("Resize a HEIC down to:"), 0, 0)
+        self._cj_max = QSpinBox()
+        self._cj_max.setRange(0, 12000)
+        self._cj_max.setSingleStep(100)
+        self._cj_max.setSuffix(" px")
+        self._cj_max.setSpecialValueText("Don't resize")   # 0
+        self._cj_max.setValue(max(0, min(12000,
+                              get_int_setting("createjpg", "max_long_edge", 2000))))
+        g.addWidget(self._cj_max, 0, 1)
+        gwrap = QWidget(); gwrap.setLayout(g); lay.addWidget(gwrap)
+
+        note = QLabel("An iPhone frame is 5712 × 4284 — far more than a web page "
+                      "needs. Applies to the longest edge of a HEIC only, after "
+                      "any crop. A RAW keeps its full size, and a PNG is left "
+                      "alone.")
+        note.setWordWrap(True)
+        note.setStyleSheet(f"color:{theme.INK_SOFT}; font-size:11px; padding:2px 0 0 0;")
+        lay.addWidget(note)
+
+    def _save_createjpg(self):
+        set_setting("createjpg", "max_long_edge", self._cj_max.value())
+
     def _save_culling(self):
         set_setting("culling", "grid_columns", self._cg_cols.value())
         set_setting("culling", "grid_fill_pct", self._cg_fill.value())
@@ -244,6 +281,7 @@ class LookFeelDialog(QDialog):
         for vk, cfg in self._cc_state.items():
             set_corner_config(vk, cfg)
         self._save_culling()
+        self._save_createjpg()
         persist_config()
         logger.info("Look & feel: scheme='%s', theme='%s', corners saved.", name, theme_val)
         self.accept()
