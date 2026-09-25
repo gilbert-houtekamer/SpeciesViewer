@@ -782,14 +782,25 @@ class Project:
             upn["subject"] =       self.findXMPItem(files, "IPTC:Keywords")
         upn["Rating"] =            self.findXMPItem(files, "XMP:Rating")
         upn["Label"] =             self.findXMPItem(files, "XMP:Label")
-        # "0" is unrated, exactly as "" is — computeRating already treats the two
-        # as one ('XMP:Rating' in ['0', ''], below), and this guard did not, so a
-        # picture whose sidecar spelled its non-rating as 0 silently missed the
-        # Green default that an empty one got. 47 pictures in the master are in
-        # that position today. It had to be reconciled here anyway: a HEIC states
-        # its non-rating as "0", so once the rollup can see a HEIC (findXMPItem)
-        # those pictures would have joined them.
-        if upn["Rating"] in ("", "0") and upn["Label"] == "":  # for waarneming.nl
+        # ⚠ REVERTED 2026-09-25. This guard briefly read `in ("", "0")`, on the
+        # reasoning that "0" is unrated exactly as "" is (computeRating treats the
+        # two as one) and that it would fix 47 master pictures whose sidecars spell
+        # a non-rating as 0. That reasoning was right about the 47 and blind to the
+        # scale: an ORF sidecar NORMALLY carries XMP:Rating = 0, so widening it
+        # silently defaulted an entire trip's unlabelled pictures to Green
+        # overnight — 2026-09-06 came back all-green and a whole evening's culling
+        # looked undone.
+        #
+        # Keep it at "" only. A default that repaints thousands of pictures is not
+        # a default, it is a mass edit, and this is the wrong place to make one.
+        # The 47 master pictures remain unfixed on purpose; that is the smaller
+        # problem by a wide margin. If they are worth fixing, fix them where they
+        # live, not by broadening a rule that runs over everything.
+        #
+        # ⚠ The deeper issue is that "no colour" DISPLAYS as green at all — see
+        # the decision to show absent colour as GREY, which makes this whole class
+        # of confusion impossible rather than merely explainable.
+        if upn["Rating"] == "" and upn["Label"] == "":  # for waarneming.nl
             upn["Label"] = "Green"
         if upn["ImageSize"] == "": upn["ImageSize"] = self.findCameraOrXMPItem(files, "ImageSize")
         # Phone/compact JPGs have no RAW/HEIC/XMP source, so ImageSize stayed
