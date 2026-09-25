@@ -137,6 +137,32 @@ def cached_jpg_for(src: Path | None, cache_dir: Path) -> Path | None:
     return None
 
 
+
+# ── colour-loss diagnostics (2026-09-25) ──────────────────────────────────────
+# A colour is applied, shows on the card, and is gone moments later — on disk as
+# well as on screen. Nothing in the write path reported a failure, so the loss is
+# happening somewhere between the write and the next read. These log every hop
+# with the value as the FILE has it, read back fresh, never from any cache.
+_LBL_RE = __import__("re").compile(r'<xmp:Label>([^<]*)</xmp:Label>|xmp:Label="([^"]*)"')
+
+
+def _label_on_disk(path):
+    """The xmp:Label as the file has it this instant: '' when absent, None when
+    unreadable. Deliberately a raw read — no exiftool, no cache, no provider."""
+    try:
+        with open(path, encoding="utf-8", errors="replace") as fh:
+            m = _LBL_RE.search(fh.read())
+    except OSError:
+        return None
+    if not m:
+        return ""
+    return (m.group(1) or m.group(2) or "").strip()
+
+
+def _dbg(where, key, path, extra=""):
+    logger.info(f"[colour] {where:22} {key:34} disk={_label_on_disk(path)!r:10} {extra}")
+
+
 class PreviewItem(PictureItem):
     can_edit_species = False      # species edits go through SpeciesInfoDialog
 
@@ -1045,6 +1071,9 @@ class PreviewCollection(PictureCollection):
             except Exception as e:
                 logger.warning(f"External-edit refresh: exiftool failed: {e}")
                 to_read = []
+        if to_read:
+            logger.info(f"[colour] refresh re-reading {len(to_read)} sidecar(s) "
+                        f"whose mtime changed")
         for key, xmp, mt in to_read:
             self._xmp_mtimes[str(xmp)] = mt
             r = by_src.get(os.path.normcase(os.path.normpath(str(xmp))))
@@ -1053,7 +1082,21 @@ class PreviewCollection(PictureCollection):
                 continue
             diff = False
             new_label = str(r.get("Label", "") or "")
-            if new_label != str(upn_row.get("Label", "") or ""):
+            was_label = str(upn_row.get("Label", "") or "")
+            if new_label != was_label:
+                # THE suspect: this takes disk as truth and cannot tell OUR OWN
+                # write from PhotoLab's, because our write changes the mtime too.
+                # Clearing is the dangerous direction — an absent tag is being
+                # read as "the user removed the colour".
+                if was_label and not new_label:
+                    logger.warning(
+                        f"[colour] refresh CLEARS        {key:34} "
+                        f"memory={was_label!r} -> disk='' (sidecar has no label) "
+                        f"raw_disk={_label_on_disk(xmp)!r}")
+                else:
+                    logger.info(
+                        f"[colour] refresh updates      {key:34} "
+                        f"memory={was_label!r} -> disk={new_label!r}")
                 upn_row["Label"] = new_label
                 diff = True
             new_rating = r.get("Rating", None)
@@ -1580,6 +1623,9 @@ class PreviewCollection(PictureCollection):
         if self.read_only:
             logger.warning(f"apply refused for {upn_key}: collection is read-only.")
             return None
+        if new_color is not None:
+            logger.info(f"[colour] apply CALLED         {upn_key:34} "
+                        f"new_color={new_color!r} new_stars={new_stars!r}")
         upn_row = self.fpr.upn.UniquePictureName_dict.get(upn_key)
         if not upn_row:
             return None
@@ -1623,11 +1669,19 @@ class PreviewCollection(PictureCollection):
                 # since PhotoLab mistreats it; internal state below still updates.
                 suppress = ext == "xmp" and not color_rating_to_xmp_enabled()
                 if args and fpath.exists() and not suppress:
+                    if ext == "xmp":
+                        _dbg("apply BEFORE write", upn_key, fpath, f"args={args}")
                     try:
                         exiftool_write(fpath, args)
                         wrote_file = True
                     except Exception as e:
                         logger.error(f"exiftool write failed for {fpath.name}: {e}")
+                    if ext == "xmp":
+                        _dbg("apply AFTER write", upn_key, fpath,
+                             f"wanted={new_color!r}")
+                elif args and ext == "xmp":
+                    logger.info(f"[colour] apply SKIPPED write   {upn_key:34} "
+                                f"exists={fpath.exists()} suppress={suppress} args={args}")
                 if new_stars is not None:
                     frow["XMP:Rating"] = str(new_stars)
                 if new_color is not None:
@@ -1635,6 +1689,17 @@ class PreviewCollection(PictureCollection):
             # Colour/rating into the DxO .dop (PhotoLab reads it on 'import sidecars').
             if raw_path and color_rating_to_dop_enabled():
                 push_metadata_to_dop(raw_path, color=new_color, rating=new_stars)
+                if new_color is not None:
+                    import re as _re
+                    try:
+                        _t = open(str(raw_path) + ".dop", encoding="utf-8",
+                                  errors="replace").read()
+                        _m = _re.search(r'ColorLabel\s*=\s*"([^"]*)"', _t)
+                        _v = _m.group(1) if _m else "(absent)"
+                    except OSError:
+                        _v = "(no .dop)"
+                    logger.info(f"[colour] apply .dop AFTER      {upn_key:34} "
+                                f"dop_ColorLabel={_v!r} wanted={new_color!r}")
 
         new_rate = _compute_rate(upn_row, self.fpr.fi.files_dict)
         upn_row["Rate"] = str(new_rate)
@@ -1716,6 +1781,9 @@ class PreviewCollection(PictureCollection):
 
         wrote = False
         landed = False
+        if new_color is not None:
+            logger.info(f"[colour] apply_many CALLED     {len(list(upn_keys)):<34} "
+                        f"new_color={new_color!r} files={len(batch_paths)}")
         if args and batch_paths:
             from engine.exif_writer import run_exiftool_files, _reports_success
             try:
