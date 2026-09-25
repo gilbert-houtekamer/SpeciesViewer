@@ -1874,6 +1874,22 @@ class LargeImageView(QDialog):
         except Exception:
             return None
 
+    def _apply_pending_crop(self) -> bool:
+        """Apply a crop that is still being drawn, for an action that CONSUMES the
+        crop. Enter is what normally commits it, but handing the picture to
+        PhotoLab or baking a JPG says the same thing — so those apply it for you
+        and Enter becomes optional. Without this the action quietly used the
+        PREVIOUS framing: PhotoLab reads the crop from the .dop and Make JPG from
+        the sidecar, neither of which exists until the commit.
+
+        `_on_crop_committed` runs synchronously off this signal, so the .dop and
+        .xmp are written before we return and whatever we launch next sees the new
+        frame. Crop mode with nothing drawn yet has nothing to apply and is left
+        exactly as it is."""
+        if not self._crop_mode or self._crop_overlay is None:
+            return False
+        return self._crop_overlay.commit()
+
     def _on_crop_committed(self, crop: dict):
         if self._item is None:
             return
@@ -1901,7 +1917,11 @@ class LargeImageView(QDialog):
         picture — mirrors the culling grid's right-click action."""
         if self._item is None or not hasattr(self._collection, "create_blog_jpg"):
             return
+        # Same reason as the PhotoLab hand-over: the bake reads the crop from the
+        # sidecar, so an unapplied one would bake yesterday's framing into the JPG.
+        # Key first — applying the crop refreshes the view and rebinds self._item.
         key = self._item.key
+        self._apply_pending_crop()
         from PyQt6.QtWidgets import QApplication
         QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
         try:
@@ -2135,7 +2155,19 @@ class LargeImageView(QDialog):
             self._next()
             event.accept()
             return
-        from gui.viewer_keys import handle_cull_key, handle_video_key
+        from gui.viewer_keys import handle_cull_key, handle_video_key, text_input_focused
+        # "Enter to apply" is what the crop overlay promises on screen, so honour it
+        # whenever a crop is being drawn — not only while the overlay itself holds
+        # keyboard focus. Anything that moves focus away (clicking a toolbar button,
+        # the filmstrip, the panel) used to leave the hint quietly untrue, with no
+        # way to tell from looking. Routing it here makes the promise
+        # focus-independent; the overlay's own handler still serves the normal case.
+        if (event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter)
+                and getattr(self, "_crop_mode", False)
+                and not text_input_focused()):
+            self._apply_pending_crop()
+            event.accept()
+            return
         if self._keys and handle_cull_key(
                 event, order=list(self._keys),
                 current_key=self._keys[self._index],
@@ -3450,7 +3482,12 @@ class LargeImageView(QDialog):
         """
         if self._item is None:
             return
-        raw = self._collection.raw_path(self._item.key)
+        # A crop still being drawn is meant for THIS handover — PhotoLab reads the
+        # frame from the .dop, which only exists once the crop is applied. Take the
+        # key FIRST: applying the crop refreshes the view, which rebinds self._item.
+        key = self._item.key
+        self._apply_pending_crop()
+        raw = self._collection.raw_path(key)
         if not raw:
             return
         # Tell the host we're about to render here — its focus-in scan will check

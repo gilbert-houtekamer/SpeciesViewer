@@ -308,10 +308,20 @@ class CropOverlay(QWidget):
         else:
             super().keyPressEvent(e)
 
-    def _emit_commit(self):
+    def commit(self) -> bool:
+        """Apply the drawn crop, exactly as Enter does. Public so a host action
+        that CONSUMES the crop — hand the picture to PhotoLab, bake a JPG — can
+        apply it first instead of silently using the previous framing. Returns
+        True when a crop was emitted; a rectangle that collapsed to nothing is
+        not a crop."""
         crop = self.normalized()
         if crop and crop["width"] > 0 and crop["height"] > 0:
             self.committed.emit(crop)
+            return True
+        return False
+
+    def _emit_commit(self):
+        self.commit()
 
     # ── paint ─────────────────────────────────────────────────────────────────
     def paintEvent(self, _e):
