@@ -47,6 +47,7 @@ walkthroughs are a separate document, still to be written.
 | [C — Dataflow and architecture](appendix-c-data-architecture.md) | Where pictures physically live and how they move between the four repositories. Tells the same story as [Concepts](00-concepts.md) at a lower level. |
 | [D — Camera support](appendix-d-camera_support.md) | Which camera bodies have been **measured**, and what works on each. Generated — regenerate with `tools/svr_camera_checklist.py`. |
 | [E — Developer reference: Data structures](appendix-e-data_structures.md) | **Developer-facing.** The four CSVs that hold the project's biological knowledge and picture metadata, and the in-memory dictionaries they map to. |
+| [F — Page freshness](appendix-f-page-freshness.md) | Why a blog can be right while the trip's species summary is short, what each page is actually built from, and when Read & Summarize is not optional. |
 
 > **On the appendices.** These were written separately, before the manual, and
 > gathered here because they are the material that already existed. They are not
