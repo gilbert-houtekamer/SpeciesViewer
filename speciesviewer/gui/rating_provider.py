@@ -1371,6 +1371,8 @@ class RatingEditorCollection(PictureCollection):
             files = []
 
         wrote_file = False
+        any_landed = False      # did the value reach at least one file?
+        had_target = False      # was there any file we could have written to?
         raw_path = None
         for fname in files:
             frow = self.fpr.fi.files_dict.get(fname)
@@ -1384,6 +1386,7 @@ class RatingEditorCollection(PictureCollection):
             fpath = Path(frow.get("WindowsFileName", ""))
             if not fpath.exists():
                 continue
+            had_target = True
             args = []
             if new_stars is not None:
                 args.append(f"-XMP:Rating={new_stars}")
@@ -1392,19 +1395,43 @@ class RatingEditorCollection(PictureCollection):
             # Colour/rating in the .xmp can be suppressed (Sidecar Behaviour) since
             # PhotoLab mistreats it; internal state below still updates.
             suppress = ext == "xmp" and not color_rating_to_xmp_enabled()
+            landed = True
             if args and not suppress:
                 try:
                     exiftool_write(fpath, args)
                     wrote_file = True
                 except Exception as e:
                     logger.error(f"exiftool write failed for {fpath.name}: {e}")
+                    landed = False
+            # Only record what actually reached the file. Updating the row anyway
+            # is what let the CSVs claim a colour the sidecar never got: the row
+            # is flushed wholesale by write_project_files, so one later success
+            # persisted every earlier failure too, and the grid then showed a
+            # colour that PhotoLab, Lightroom and the next Read & Summarize could
+            # not see. A suppressed write (Sidecar Behaviour) is not a failure —
+            # the value is deliberately kept in the index only.
+            if not landed:
+                continue
             if new_stars is not None:
                 frow["XMP:Rating"] = str(new_stars)
             if new_color is not None:
                 frow["XMP:Label"] = new_color
+            any_landed = True
         # Colour/rating into the DxO .dop (PhotoLab reads it on 'import sidecars').
         if raw_path and color_rating_to_dop_enabled():
             push_metadata_to_dop(raw_path, color=new_color, rating=new_stars)
+
+        # Same rule for the picture row. `had_target and not any_landed` is the
+        # one case we refuse: there WAS a file to write and the write failed, so
+        # recording the value here would put it in data_pictures.csv — and the
+        # Trip scope reads that table, which is how "it shows in Day and is gone
+        # in Trip" looked like a viewer bug rather than a lost write.
+        if had_target and not any_landed:
+            logger.error(
+                f"{upn_key}: colour/rating not written to any file — leaving the "
+                f"index unchanged rather than recording a value the sidecars "
+                f"do not have.")
+            return _compute_rate(upn_row, self.fpr.fi.files_dict)
 
         if new_stars is not None:
             upn_row["Rating"] = str(new_stars)

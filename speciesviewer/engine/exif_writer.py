@@ -1,5 +1,6 @@
 import logging
 import os
+import re
 import subprocess
 import tempfile
 import threading
@@ -7,6 +8,28 @@ from pathlib import Path
 from typing import Iterable, Union
 
 logger = logging.getLogger("speciesviewer")
+
+# exiftool's own summary line, e.g. "1 image files updated" / "0 image files
+# updated". The COUNT is what matters: the first check here asked only whether
+# the word "updated" appeared, which "0 image files updated" satisfies — so a
+# refused write read as a successful one, the caller recorded a colour that was
+# never on disk, and the CSV quietly disagreed with the sidecar from then on.
+# That is how 184 pictures on one trip came to claim a colour their .xmp did not
+# have. Count, never substring.
+_COUNT_RE = re.compile(r"(\d+)\s+image files\s+(?:updated|created)")
+
+
+def _reports_success(out: str) -> bool:
+    """True only when exiftool says it actually wrote something and reports no
+    failure. "created" counts: writing the first tag to a picture with no sidecar
+    makes one, and exiftool then says "1 image files created"."""
+    if not out:
+        return False
+    written = sum(int(n) for n in _COUNT_RE.findall(out))
+    refused = ("weren't updated" in out
+               or "due to errors" in out
+               or out.strip().startswith("Error"))
+    return written > 0 and not refused
 
 # On Windows the Perl wrapper transcodes argv through the active ANSI code page
 # before exiftool's own -charset directive can interpret it, so non-ASCII values
@@ -75,16 +98,8 @@ def _write_via_persistent(filepath, args) -> bool:
             return False
         # check_execute=False, so a failure is reported in the text rather than
         # raised. "0 image files updated" is a failure with a zero exit code —
-        # exactly the kind that would otherwise pass unnoticed.
-        #
-        # "created" counts as success: writing the FIRST tag to a picture that
-        # has no sidecar yet makes one, and exiftool then says "1 image files
-        # created" with no "updated" anywhere in it. Treating that as a failure
-        # logged a write that had in fact landed as if it were lost, and sent the
-        # caller off to redo it in a fresh subprocess — on every first edit of
-        # every JPG/PNG card. Rare while only RAWs (which arrive with a sidecar)
-        # reached the grid; routine now that they are not the only cards.
-        if ("updated" not in out and "created" not in out) or out.strip().startswith("Error"):
+        # exactly the kind that would otherwise pass unnoticed. See _reports_success.
+        if not _reports_success(out):
             logger.warning(f"persistent exiftool write did not update "
                            f"{Path(filepath).name}: {out.strip()[:200]}")
             return False
@@ -117,7 +132,7 @@ def exiftool_write(
             "-@", tmp_path,
             str(filepath),
         ]
-        subprocess.run(
+        res = subprocess.run(
             cmd,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
@@ -125,6 +140,15 @@ def exiftool_write(
             text=True,
             encoding="utf-8",
         )
+        # check=True only catches a non-zero exit. A refused write exits ZERO and
+        # says so in its output ("0 image files updated"), so the same count check
+        # the persistent path uses has to run here too — otherwise the fallback,
+        # which exists to rescue a failed write, becomes a second way to lose one
+        # silently.
+        if not _reports_success(res.stdout):
+            raise RuntimeError(
+                f"exiftool did not write {Path(filepath).name}: "
+                f"{(res.stdout or res.stderr or '').strip()[:200]}")
     finally:
         try:
             os.remove(tmp_path)

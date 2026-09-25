@@ -179,37 +179,56 @@ def xmp_crop_to_dop(crop):
 
 
 def write_xmp_edits(xmp_path, exposure=None, crop=None, angle=None):
-    """Surgically update exposure, crop, and/or angle in an XMP file."""
-    tree = ET.parse(xmp_path)
-    desc = tree.find('.//rdf:Description', NS)
-    if desc is None:
-        logger.warning(f"No rdf:Description found in {xmp_path}")
-        return False
+    """Surgically update exposure, crop and/or angle in an XMP sidecar, THROUGH
+    exiftool.
 
-    crs = f'{{{NS["crs"]}}}'
-    changed = False
+    This used to parse the file with ElementTree and write the tree back, which
+    quietly destroyed the sidecar. ElementTree knows nothing about XMP's
+    `<?xpacket?>` wrapper, so the rewrite dropped it — and took the `xmp:Label`
+    already in the file with it. A wrapper-less sidecar is one exiftool can then
+    REFUSE to write ("0 image files updated ... 1 files weren't updated due to
+    errors"), so every later colour or rating on that picture went nowhere while
+    the CSV recorded it happily. Measured on one trip: 39 sidecars left in that
+    state and 184 pictures claiming a colour their .xmp did not have.
 
+    exiftool is the tool that understands this format. It keeps the wrapper, keeps
+    every tag it was not asked to change, and reports honestly when it cannot
+    write — which the caller now believes (see engine.exif_writer._reports_success).
+    One writer per file, as everywhere else in the app.
+    """
+    args = []
     if exposure is not None:
-        desc.set(f'{crs}Exposure2012', f'{exposure:.2f}')
-        changed = True
+        args.append(f"-XMP-crs:Exposure2012={exposure:.2f}")
 
     if crop is not None:
         xc = dop_crop_to_xmp(crop)
-        desc.set(f'{crs}CropTop', str(xc["top"]))
-        desc.set(f'{crs}CropLeft', str(xc["left"]))
-        desc.set(f'{crs}CropBottom', str(xc["bottom"]))
-        desc.set(f'{crs}CropRight', str(xc["right"]))
-        # DxO angle is positive clockwise, LR angle is negative clockwise
-        desc.set(f'{crs}CropAngle', str(-angle if angle else 0))
-        desc.set(f'{crs}CropConstrainToWarp', '0')
-        desc.set(f'{crs}CropConstrainToUnitSquare', '1')
-        desc.set(f'{crs}HasCrop', 'True')
-        changed = True
+        args += [
+            f"-XMP-crs:CropTop={xc['top']}",
+            f"-XMP-crs:CropLeft={xc['left']}",
+            f"-XMP-crs:CropBottom={xc['bottom']}",
+            f"-XMP-crs:CropRight={xc['right']}",
+            # DxO angle is positive clockwise, LR angle is negative clockwise
+            f"-XMP-crs:CropAngle={-angle if angle else 0}",
+            "-XMP-crs:CropConstrainToWarp=0",
+            "-XMP-crs:CropConstrainToUnitSquare=1",
+            "-XMP-crs:HasCrop=True",
+        ]
 
-    if changed:
-        tree.write(xmp_path, xml_declaration=False, encoding="unicode")
+    if not args:
+        return False
+    # Never invent a sidecar here: exiftool would happily create one, but which
+    # pictures get a sidecar is decided by ensure_xmp/ensure_xmps, not by a crop.
+    if not os.path.exists(xmp_path):
+        logger.warning(f"No sidecar to patch at {xmp_path}")
+        return False
 
-    return changed
+    from engine.exif_writer import exiftool_write
+    try:
+        exiftool_write(xmp_path, args)
+    except Exception as e:
+        logger.warning(f"Could not write crop/exposure to {xmp_path}: {e}")
+        return False
+    return True
 
 
 def _dop_block_span(text, start):

@@ -1713,26 +1713,38 @@ class PreviewCollection(PictureCollection):
             args.append(f"-XMP:Label={new_color}")
 
         wrote = False
+        landed = False
         if args and batch_paths:
-            from engine.exif_writer import run_exiftool_files
+            from engine.exif_writer import run_exiftool_files, _reports_success
             try:
                 res = run_exiftool_files(args + ["-overwrite_original"], batch_paths)
                 wrote = True
-                if getattr(res, "returncode", 0):
-                    logger.warning(
-                        f"apply_many: exiftool reported a problem over "
-                        f"{len(batch_paths)} file(s): "
-                        f"{(res.stderr or '').strip()[:300]}")
+                # "Attempted" is not "written". exiftool exits ZERO on a refused
+                # write and says so in its output ("0 image files updated ... 1
+                # files weren't updated due to errors"), so the return code alone
+                # misses exactly the failure that matters — a sidecar it cannot
+                # write. Recording the rows anyway is what let the CSVs claim a
+                # colour the files never got.
+                landed = (getattr(res, "returncode", 0) == 0
+                          and _reports_success(res.stdout or ""))
+                if not landed:
+                    logger.error(
+                        f"apply_many: exiftool did NOT write {len(batch_paths)} "
+                        f"file(s) — leaving the index unchanged: "
+                        f"{((res.stdout or '') + (res.stderr or '')).strip()[:300]}")
             except Exception as e:
                 logger.error(f"apply_many: exiftool write failed: {e}")
+        elif not args:
+            landed = True          # nothing asked for; nothing to disbelieve
 
-        # Internal rows only after the write was attempted, so the cached state
+        # Internal rows only once the write actually LANDED, so the cached state
         # and the files agree.
-        for frow in touched_rows:
-            if new_stars is not None:
-                frow["XMP:Rating"] = str(new_stars)
-            if new_color is not None:
-                frow["XMP:Label"] = new_color
+        if landed:
+            for frow in touched_rows:
+                if new_stars is not None:
+                    frow["XMP:Rating"] = str(new_stars)
+                if new_color is not None:
+                    frow["XMP:Label"] = new_color
 
         if color_rating_to_dop_enabled():
             for rp in raw_paths:
