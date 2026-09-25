@@ -1260,6 +1260,8 @@ class RatingEditorCollection(PictureCollection):
         from engine.sidecarlib import suggest_crop
         res = suggest_crop(str(raw), crop)
         self._crop_flag_cache.pop(upn_key, None)   # crop marker must re-evaluate
+        from gui.picture_provider import verify_crop_written
+        verify_crop_written(raw, crop, res, who="RatingEditorCollection")
         return res
 
     def set_exposure(self, upn_key: str, exposure: float):

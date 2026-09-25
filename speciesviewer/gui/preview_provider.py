@@ -1338,6 +1338,8 @@ class PreviewCollection(PictureCollection):
         res = suggest_crop(str(raw), crop)
         self._img_sigs[upn_key] = self._img_sig(upn_key)
         self._drop_thumb_caches(upn_key)   # a crop can land in the .xmp, which the sig doesn't see
+        from gui.picture_provider import verify_crop_written
+        verify_crop_written(raw, crop, res, who="PreviewCollection")
         return res
 
     def _exposure_for(self, upn_key: str):

@@ -121,6 +121,46 @@ def crop_for(raw_path, xmp_path=None):
     return crop
 
 
+def verify_crop_written(raw_path, crop, res=None, who="") -> bool:
+    """Read the crop straight back out of the files and log what happened.
+
+    A crop is written to two channels (.dop when PhotoLab authored one, .xmp
+    always) and read back from whichever answers first — the .dop, else the .xmp.
+    Those are enough moving parts that "I wrote it" and "the app sees it" can
+    disagree, which is exactly what was reported on 2026-09-25: a crop confirmed
+    present in the .xmp, with the viewer still showing the frame uncropped, on a
+    picture PhotoLab had never opened (so no .dop existed). It stopped
+    reproducing the moment a .dop appeared, which is the worst kind of bug to
+    chase from memory.
+
+    So state it in the log at the moment of the write, while both the intent and
+    the file are in hand: which channels took it, and what a fresh read returns.
+    Cheap — it runs once per crop, not per repaint — and it turns "somehow it
+    didn't apply" into a line naming the picture and the channel that lied.
+
+    Returns True when the read-back matches what we asked for.
+    """
+    from pathlib import Path
+    got = crop_for(str(raw_path), str(Path(str(raw_path)).with_suffix(".xmp")))
+    channels = ""
+    if isinstance(res, dict):
+        channels = " ".join(k for k in ("dop", "xmp") if res.get(k)) or "NONE"
+        created = " ".join(k for k in ("dop_created", "xmp_created") if res.get(k))
+        if created:
+            channels += f" (created {created})"
+    ok = bool(got) and all(
+        abs(float(got.get(k, -9)) - float(crop.get(k, -9))) < 1e-6 for k in
+        ("left", "top", "width", "height"))
+    name = Path(str(raw_path)).name
+    if ok:
+        logger.info(f"crop written [{who}] {name}: channels={channels}, reads back OK")
+    else:
+        logger.error(
+            f"crop NOT readable after writing [{who}] {name}: channels={channels}, "
+            f"wanted={crop}, read back={got}. The viewer will show the OLD frame.")
+    return ok
+
+
 def sweep_dop(raw_src, dest_dir) -> None:
     """Move a RAW's DxO recipe (``<rawname>.dop``) into dest_dir when the picture
     is deleted, so no orphan recipe is left behind — Read & Summarize would

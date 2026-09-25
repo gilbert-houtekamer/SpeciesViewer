@@ -27,7 +27,8 @@ from PyQt6.QtGui import QImage
 
 from gui.picture_provider import (PictureItem, PictureCollection, ExifSummary,
                                   PixmapCallback, sweep_dop, apply_crop, crop_for,
-                                  exposure_for, jpg_is_crop_by_size)
+                                  exposure_for, jpg_is_crop_by_size,
+                                  verify_crop_written)
 from gui.image_loader import AsyncImageLoader
 from gui.master_ops import MasterCardOpsMixin
 from gui.preview_provider import cached_jpg_for, preview_cache_dir_for
@@ -1425,6 +1426,7 @@ class SidecarCollection(MasterCardOpsMixin, PictureCollection):
         self._crop_cache.pop(stem, None)
         self._image_sigs[stem] = self._image_sig(stem)
         self._drop_thumb_caches(stem)   # a crop can land in the .xmp, which the sig doesn't see
+        verify_crop_written(raw, crop, res, who="SidecarCollection")
         return res
 
     def _exposure_for(self, stem: str):
