@@ -2215,65 +2215,22 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
             progress.setValue(len(key_list) + 1)
 
     def _open_batch_exposure_dialog(self, keys: set):
-        """Suggest ONE exposure value for a whole selection — the grid's mirror
-        of the large viewer's per-picture slider. No apply_many-style single
-        exiftool call here: each picture's suggestion is a surgical edit to its
-        own .dop/.xmp (see engine/sidecarlib.suggest_exposure), so this writes
-        one picture at a time behind the same progress dialog _open_batch_rate_
-        dialog uses for exactly that reason."""
+        """Suggest ONE exposure value for a whole selection.
+
+        The dialog itself now lives in gui/exposure_batch, so the Edit Window and
+        the Trip Species Viewer offer the same one instead of each growing its
+        own — this grid used to be the only place it existed, which is why it
+        could be remembered and not found.
+        """
         if not keys or self._collection is None:
             return
-        from PyQt6.QtWidgets import QDialog, QVBoxLayout, QDialogButtonBox
-        from gui.exposure_widget import ExposureWidget
-        n = len(keys)
-        dlg = QDialog(self)
-        dlg.setWindowTitle(f"Set exposure — {n} picture{'s' if n != 1 else ''}")
-        layout = QVBoxLayout(dlg)
-        layout.addWidget(QLabel(f"Suggest this exposure for {n} picture{'s' if n != 1 else ''}:"))
-
-        exp_row = QHBoxLayout()
-        exp_row.addWidget(QLabel("Exposure:"))
-        exp_w = ExposureWidget(0.0)
-        exp_row.addWidget(exp_w)
-        exp_row.addStretch()
-        layout.addLayout(exp_row)
-
-        btns = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok |
-                                QDialogButtonBox.StandardButton.Cancel)
-        btns.accepted.connect(dlg.accept)
-        btns.rejected.connect(dlg.reject)
-        layout.addWidget(btns)
-        if dlg.exec() == QDialog.DialogCode.Accepted:
-            value = exp_w.value_ev
-            key_list = list(keys)
-            progress = QProgressDialog("Updating…", None, 0, len(key_list) + 1, self)
-            progress.setWindowTitle("Updating pictures")
-            progress.setMinimumDuration(0)
-            progress.show()
-
-            skipped = 0
-            for i, k in enumerate(key_list):
-                progress.setValue(i)
-                progress.setLabelText(f"Writing exposure suggestion {i + 1} of {len(key_list)}…")
-                QApplication.processEvents()
-                try:
-                    item = self._collection.item(self._collection.index_of(k))
-                    if getattr(item, "can_set_exposure", False):
-                        item.set_exposure(value)
-                    else:
-                        skipped += 1
-                except (ValueError, IndexError):
-                    skipped += 1
-
-            for k in key_list:
-                # reload_image=True: an open large viewer must re-render (and
-                # re-sync its exposure slider) with the new value, not just
-                # refresh metadata widgets — the image itself changed.
-                self._notify_large_view(k, reload_image=True)
-            progress.setValue(len(key_list) + 1)
-            if skipped:
-                logger.info(f"Set exposure: {skipped} of {len(key_list)} picture(s) "
-                            "skipped (no RAW / read-only).")
+        from gui.exposure_batch import open_batch_exposure_dialog
+        open_batch_exposure_dialog(
+            self, self._collection, keys,
+            # reload_image=True: an open Edit Window must re-render (and re-sync
+            # its exposure slider) with the new value, not just refresh metadata
+            # widgets — the image itself changed.
+            on_written=lambda k: self._notify_large_view(k, reload_image=True))
 
     def _cull_set_cursor(self, key):
         prev = self._bound.get(self._last_clicked_key) if self._last_clicked_key else None

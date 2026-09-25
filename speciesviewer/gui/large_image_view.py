@@ -952,6 +952,17 @@ class LargeImageView(QDialog):
         self._exposure_widget.live.connect(self._on_exposure_live)
         self._exposure_widget.committed.connect(self._on_exposure_committed)
         top_bar_row.addWidget(self._exposure_widget)
+        # The slider is the ONE-picture half of exposure. This is the other half:
+        # push the value you just dialled to the whole selection, mirroring the
+        # rating row's "Apply to selected". Without it the slider could only ever
+        # reach the focused picture, and the batch dialog lived in one grid only.
+        self._exposure_apply_btn = QToolButton()
+        self._exposure_apply_btn.setAutoRaise(True)
+        self._exposure_apply_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._exposure_apply_btn.setStyleSheet("font-size: 10px; padding: 1px 5px;")
+        self._exposure_apply_btn.clicked.connect(self._apply_exposure_to_selection)
+        self._exposure_apply_btn.setVisible(False)
+        top_bar_row.addWidget(self._exposure_apply_btn)
         # Crop tool — draw a suggested crop on the full frame for PhotoLab/LR.
         self._crop_btn = QToolButton()
         self._crop_btn.setAutoRaise(True)
@@ -1733,6 +1744,35 @@ class LargeImageView(QDialog):
             self._render_embedded(ev)
         elif idx == self._TAB_FULLRES:
             self._render_fullres(ev)
+
+    def _update_exposure_apply_btn(self):
+        """Show 'Apply EV to N' only when a selection is present and this picture
+        can take an exposure at all — the same gate the slider itself uses."""
+        btn = getattr(self, "_exposure_apply_btn", None)
+        if btn is None:
+            return
+        n = len(self._selected_keys)
+        can = bool(self._item is not None
+                   and getattr(self._item, "can_set_exposure", False))
+        btn.setVisible(n > 1 and can)
+        btn.setText(f"Apply EV to {n}")
+        btn.setToolTip(
+            f"Write the exposure now on the slider to all {n} selected pictures.")
+
+    def _apply_exposure_to_selection(self):
+        """Push the slider's current value to the whole selection."""
+        keys = set(self._selected_keys)
+        if not keys:
+            return
+        from gui.exposure_batch import write_exposure
+        value = self._exposure_widget.value_ev
+        n = write_exposure(self, self._collection, keys, value,
+                           on_written=lambda k: self.refresh_external(
+                               k, reload_image=True))
+        for key in keys:
+            self.picture_changed.emit(key)
+            self.picture_image_changed.emit(key)   # the grid card must re-decode
+        logger.info(f"Exposure {value:+.2f} EV applied to {n} picture(s).")
 
     def _on_exposure_committed(self, ev: float):
         """Persist the exposure suggestion to this picture's sidecars. Also
@@ -2862,11 +2902,14 @@ class LargeImageView(QDialog):
         n = len(keys)
         rep = self._collection.item_for_key(key)
         menu = QMenu(self)
-        act_species = act_rating = act_del = None
+        act_species = act_rating = act_del = act_exposure = None
         if getattr(rep, "can_edit_species", False):
             act_species = menu.addAction(f"Set species…  ({n} picture{'s' if n != 1 else ''})")
         if getattr(rep, "can_edit_rating", False) or getattr(rep, "can_edit_color", False):
             act_rating = menu.addAction(f"Set rating…  ({n} picture{'s' if n != 1 else ''})")
+        if getattr(rep, "can_set_exposure", False):
+            act_exposure = menu.addAction(
+                f"Set exposure…  ({n} picture{'s' if n != 1 else ''})")
         if self._allow_delete:
             if act_species or act_rating:
                 menu.addSeparator()
@@ -2878,6 +2921,15 @@ class LargeImageView(QDialog):
             return
         if chosen is act_del:
             self.delete_requested.emit(keys)
+        elif chosen is act_exposure:
+            from gui.exposure_batch import open_batch_exposure_dialog
+            open_batch_exposure_dialog(
+                self, self._collection, keys,
+                initial=self._exposure_widget.value_ev,
+                on_written=lambda k: self.refresh_external(k, reload_image=True))
+            for k in keys:
+                self.picture_changed.emit(k)
+                self.picture_image_changed.emit(k)
         elif chosen is act_species:
             self._batch_species(keys)
         elif chosen is act_rating:
@@ -2934,6 +2986,7 @@ class LargeImageView(QDialog):
             _fs.set_selected(self._selected_keys)
         n = len(self._selected_keys)
         self._sel_bar.setVisible(n > 0)
+        self._update_exposure_apply_btn()
         if n > 0:
             self._sel_label.setText(
                 f"{n} picture{'s' if n != 1 else ''} selected")

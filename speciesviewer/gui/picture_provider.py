@@ -78,7 +78,15 @@ def apply_crop(img, crop):
 def exposure_for(raw_path, xmp_path=None):
     """Current suggested exposure (EV, Lightroom's Exposure2012 scale) from a
     RAW's DxO .dop (preferred) else its Lightroom .xmp, or None. Mirrors
-    crop_for exactly — same reader (engine/sidecarlib), same precedence."""
+    crop_for exactly — same reader (engine/sidecarlib), same precedence, and the
+    same default: `xmp_path` falls back to the RAW's own `<stem>.xmp`.
+
+    That default is not cosmetic. It used to be None, so a caller that omitted the
+    sidecar got a .dop-ONLY read while believing it had asked for both — exactly
+    the defect fixed in crop_for, and present here too (the trip viewer's
+    exposure_recorded). On a picture PhotoLab has never opened there is no .dop,
+    the slider's value goes to the .xmp correctly, and nothing could read it back.
+    """
     from pathlib import Path
     exposure = None
     if raw_path:
@@ -89,6 +97,12 @@ def exposure_for(raw_path, xmp_path=None):
                 exposure = read_dop_overrides(str(dop)).get("exposure")
             except Exception:
                 exposure = None
+    if exposure is None and xmp_path is None and raw_path:
+        for cand in (Path(str(raw_path)).with_suffix(".xmp"),
+                     Path(str(raw_path)).with_suffix(".XMP")):
+            if cand.exists():
+                xmp_path = cand
+                break
     if exposure is None and xmp_path and Path(xmp_path).exists():
         try:
             from engine.sidecarlib import read_xmp_edits

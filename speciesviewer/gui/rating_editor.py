@@ -3605,6 +3605,7 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
                     self._build_master_menu(menu, upn_key, ops=set(ops)))
 
         act_species = act_move = act_rate = act_addfiles = act_create_jpg = None
+        act_exposure = None
         # 1 — naming. In a trip these are the viewer's own; in an album naming
         # is the master's job (Move to existing species, gated on the JPG rule),
         # and "Set species" has no album equivalent: it would persist through
@@ -3617,6 +3618,10 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
         # 2 — this picture
         if not self._view_read_only:
             act_rate = menu.addAction(f"Set rating…  ({lbl})")
+            # Exposure was reachable only from the culling grid, so this viewer
+            # could neither set it for one picture nor for a group. Same dialog,
+            # from gui/exposure_batch — see docs/plans/edit_window_parity.md.
+            act_exposure = menu.addAction(f"Set exposure…  ({lbl})")
         act_fullres = menu.addAction(f"Full resolution  ({lbl})")
         if hasattr(self._collection, "create_blog_jpg") and not self._album_mode:
             act_create_jpg = menu.addAction(f"Create JPG (embedded + crop)  ({lbl})")
@@ -3657,6 +3662,11 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
             self._move_keys_to_species(keys_for_action)
         elif chosen == act_rate:
             self._open_batch_rate_dialog(keys_for_action)
+        elif act_exposure is not None and chosen == act_exposure:
+            from gui.exposure_batch import open_batch_exposure_dialog
+            open_batch_exposure_dialog(
+                self, self._collection, keys_for_action,
+                on_written=self._reload_card_image)
         elif chosen == act_fullres:
             self._cull_full_res(keys_for_action)
         elif act_create_jpg is not None and chosen == act_create_jpg:
@@ -3958,6 +3968,19 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
                     pass
             progress.setValue(len(key_list))
             self._resort_if_needed()
+
+    def _reload_card_image(self, upn_key: str) -> None:
+        """Repaint a card AND re-decode its thumbnail — for an edit that changed
+        the picture itself (exposure, crop), not just its metadata. Same pair
+        Create JPG uses; a plain refresh() would leave the old pixels on screen."""
+        card = self._bound.get(upn_key)
+        if not card:
+            return
+        card.refresh()
+        try:
+            card.reload_thumbnail()
+        except (AttributeError, RuntimeError):
+            pass
 
     def _rep_file_path(self, upn_key: str) -> Path | None:
         """Representative RAW/XMP file path for a UPN — needed by SpeciesInfoPanel."""
