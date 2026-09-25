@@ -101,7 +101,17 @@ def exposure_for(raw_path, xmp_path=None):
 def crop_for(raw_path, xmp_path=None):
     """Normalised crop {left,top,width,height} (0–1) from a RAW's DxO .dop
     (preferred — the cropping tool) else the Lightroom .xmp, or None. Uses
-    engine/sidecarlib (the same reader the DOP↔XMP transfer uses)."""
+    engine/sidecarlib (the same reader the DOP↔XMP transfer uses).
+
+    `xmp_path` defaults to the RAW's own `<stem>.xmp`, which is where the .xmp
+    always is. It used to default to None, and a caller that omitted it silently
+    got a .dop-ONLY read while believing it had asked for both — the whole
+    RatingEditorCollection did exactly that in three places. The effect: crop a
+    picture PhotoLab had never opened, so it has no .dop, and the crop landed in
+    the .xmp correctly but nothing displayed it. It came right the moment
+    PhotoLab authored a .dop, which made it look like a PhotoLab problem and
+    took most of a day to corner.
+    """
     from pathlib import Path
     crop = None
     if raw_path:
@@ -112,6 +122,13 @@ def crop_for(raw_path, xmp_path=None):
                 crop = read_dop_overrides(str(dop)).get("crop")
             except Exception:
                 crop = None
+    if crop is None and xmp_path is None and raw_path:
+        # Both spellings: ingest writes .xmp, some tools write .XMP.
+        for cand in (Path(str(raw_path)).with_suffix(".xmp"),
+                     Path(str(raw_path)).with_suffix(".XMP")):
+            if cand.exists():
+                xmp_path = cand
+                break
     if crop is None and xmp_path and Path(xmp_path).exists():
         try:
             from engine.sidecarlib import read_xmp_edits
