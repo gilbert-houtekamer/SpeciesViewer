@@ -178,7 +178,7 @@ class ManageCachesDialog(QDialog):
             dict(
                 kind="preview", pie_index=1,
                 title="Preview thumbnails",
-                subtitle="Extracted previews for image grids and the large viewer",
+                subtitle="Extracted previews for image grids and the Editor",
                 stat_fn=self._preview_stats,
                 clear_fn=self._clear_preview,
                 warning=None,

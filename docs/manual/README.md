@@ -36,7 +36,7 @@ walkthroughs are a separate document, still to be written.
 
 | Chapter | Covers |
 |---|---|
-| [10. The viewers](10-viewers.md) | The four picture surfaces — Biota Browser, Species Viewers, culling grid, Large Image View — and what every filter means. |
+| [10. The viewers](10-viewers.md) | The four picture surfaces — Biota Browser, Species Viewers, culling grid, Editor — and what every filter means. |
 
 ## Appendices
 

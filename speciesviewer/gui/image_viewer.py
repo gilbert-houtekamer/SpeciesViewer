@@ -2217,7 +2217,7 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
     def _open_batch_exposure_dialog(self, keys: set):
         """Suggest ONE exposure value for a whole selection.
 
-        The dialog itself now lives in gui/exposure_batch, so the Edit Window and
+        The dialog itself now lives in gui/exposure_batch, so the Editor and
         the Trip Species Viewer offer the same one instead of each growing its
         own — this grid used to be the only place it existed, which is why it
         could be remembered and not found.
@@ -2227,7 +2227,7 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
         from gui.exposure_batch import open_batch_exposure_dialog
         open_batch_exposure_dialog(
             self, self._collection, keys,
-            # reload_image=True: an open Edit Window must re-render (and re-sync
+            # reload_image=True: an open Editor must re-render (and re-sync
             # its exposure slider) with the new value, not just refresh metadata
             # widgets — the image itself changed.
             on_written=lambda k: self._notify_large_view(k, reload_image=True))

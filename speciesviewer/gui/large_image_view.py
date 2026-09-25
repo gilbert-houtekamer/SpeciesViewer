@@ -2300,7 +2300,15 @@ class LargeImageView(QDialog):
         suffix rides the primary line."""
         pos = f"  ({self._index + 1} of {len(self._keys)})"
         name = item.display_name or key
-        self.setWindowTitle(name + pos)
+        # "Editor", not "Large Image View": the old name described the widget,
+        # the new one the job, and it matches the app's existing vocabulary —
+        # Viewer, Editor, never "... Window".
+        # this one describes the job — species, rating, colour, crop, exposure,
+        # headline, description, Make JPG, hand-off to PhotoLab. UI only; the class
+        # stays LargeImageView (see docs/plans/edit_window_parity.md, D4). The
+        # picture keeps the front of the title, where it identifies the window in
+        # the taskbar better than any generic name would.
+        self.setWindowTitle(f"{name}{pos} — Editor")
         # Title bar (mockup): "name · file", so the picture on screen is named
         # right above it as well as in the OS titlebar.
         self._titlebar_lbl.setText(f"{name}  ·  {key}")

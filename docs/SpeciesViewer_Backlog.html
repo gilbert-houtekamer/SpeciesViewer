@@ -231,10 +231,10 @@ reads <em>No current work planned</em>.</p>
   <li><strong>Auto-notice new renders while a day viewer is open</strong> <span class="tag-shipped">SHIPPED</span> —
     return to the Album/virtual-trip day viewer after a DxO/Lightroom session and a fresh JPG render the
     master doesn't track yet auto-surfaces: a green <em>+ JPG</em> link on the card (and an amber
-    <code>JPG</code> in the large viewer's FILE row) that registers it in one click — no more remembering
+    <code>JPG</code> in the Editor's FILE row) that registers it in one click — no more remembering
     to run the manual <em>➕ Add new renders</em> scan. Instead of watching the whole master tree
     (impractical — OS handle limits + Dropbox sync churn), it does a cheap <em>scan on return to the app</em>,
-    scoped to just the folders you handed to PhotoLab this session (via the large viewer's <em>open in DxO</em>
+    scoped to just the folders you handed to PhotoLab this session (via the Editor's <em>open in DxO</em>
     button). <strong>Scope:</strong> master-bound viewers only (Album/virttrip) — a real Trip day viewer stays
     silent by design, where a render instead flows through Read &amp; Summarize. See
     <a href="create_render_procedure.md">Create a render that the master picks up</a> for the order of
@@ -727,7 +727,7 @@ reads <em>No current work planned</em>.</p>
     folding Master mode into the rating editor's existing one. Each remaining site still repeats the
     same ~8-line single-instance lifecycle: close any open view, snapshot the grid's keys, construct,
     store the ref, connect <code>finished</code>, show. Consolidating would give one place to fix that
-    lifecycle and a home for the deferred no-GPS-tray <em>“Open in large viewer”</em>. <strong>Deferred
+    lifecycle and a home for the deferred no-GPS-tray <em>“Open in Editor”</em>. <strong>Deferred
     because the divergence around that core is real</strong> — per-host <code>settings_key</code>
     (the merged rating editor still keys Trip/Album/Master separately for window geometry), which
     signals each host connects, post-close behaviour (repaint-all vs re-sort), grid-vs-map key source
@@ -1238,9 +1238,9 @@ to re-look-up.</p>
   this is display only. See Capabilities ch. 16.</p>
 <ul>
   <li><strong>One profile, every surface</strong> <span class="tag-shipped">SHIPPED</span> — the trip/
-    master/album Species Viewers, the culling grid, the large image viewer and the Biota Browser all
+    master/album Species Viewers, the culling grid, the Editorer and the Biota Browser all
     render the same profile. Two deliberate rules: <em>grid cards</em> show the profile's languages only
-    (NL/EN → two lines, no Latin); the <em>detail surfaces</em> (large image viewer + Biota species page)
+    (NL/EN → two lines, no Latin); the <em>detail surfaces</em> (Editorer + Biota species page)
     show all three names at once, the profile only choosing which name leads.</li>
   <li><strong>Culling resolves the full name triple locally</strong> <span class="tag-shipped">SHIPPED</span> —
     a freshly-culled picture carries only the camera-stage name, but the same species collection that
@@ -1760,7 +1760,7 @@ re-proposing it.</p>
     the shared table; Trip and Album still carry their own. The shared one is the newer and better
     of the two, so this is finishing a move rather than starting one — and until it is finished
     every column added has to be added twice. Today's back-up column is a case in point.</li>
-  <li><strong>The large viewer and the picture card.</strong> Parked deliberately, with a good rule
+  <li><strong>The Editor and the picture card.</strong> Parked deliberately, with a good rule
     attached: consolidate when a sixth caller forces it, not before. Worth re-counting the callers
     after the trip to see whether that moment has arrived.</li>
   <li><strong>The per-site stylesheet, copied 29 times.</strong> Each published album carries its
@@ -2197,7 +2197,7 @@ byte-identical to before. Existing poisoned cache entries are 29 KB, so the
 <em>Remove low-res</em> button in Manage Caches already clears them — no cache versioning was
 needed.</p>
 
-<p class="note"><strong>Two judgement calls worth recording.</strong> The large viewer's
+<p class="note"><strong>Two judgement calls worth recording.</strong> The Editor's
 <em>Camera JPEG</em> tab deliberately keeps the strict function and keeps saying
 &ldquo;This RAW carries no embedded JPEG&rdquo;: quietly substituting our own render under a
 label that claims the camera's would be the exact lie that tab exists to prevent. And
@@ -2730,7 +2730,7 @@ recorded so the trigger and the reasoning survive.</p>
 
   <li><strong>Camera-JPEG zoom held across auto-advance</strong>
       <span class="tag-shipped">SHIPPED</span> &mdash; judging a burst for sharpness at 1:1 in
-      the large viewer's <em>Camera JPEG</em> tab: applying a colour label auto-advances, and
+      the Editor's <em>Camera JPEG</em> tab: applying a colour label auto-advances, and
       the view used to snap back to fit. It now keeps the zoom the user set and lands on the
       same spot, so ten near-identical frames can be checked without re-zooming each one.
       Double-click, or scroll fully out, returns to fit and releases the hold.</li>
@@ -2748,7 +2748,7 @@ recorded so the trigger and the reasoning survive.</p>
       <span class="note">The single-log callers (the day-overview satellite glyph, the
       card-clock UTC-offset probe) still take the first match; only the geotag passes merge.</span></li>
 
-  <li><strong>&ldquo;NEW SPECIES&rdquo; tag in the large viewer</strong>
+  <li><strong>&ldquo;NEW SPECIES&rdquo; tag in the Editor</strong>
       <span class="tag-shipped">SHIPPED</span> &mdash; a small amber tag on the SPECIES section
       header when the current picture's species resolves to a scientific name the master has
       <em>no picture of</em> &mdash; a first for the collection, spotted while culling. The
@@ -2799,7 +2799,7 @@ recorded so the trigger and the reasoning survive.</p>
 
   <li><strong>Culling colour / rating write failures are now loud</strong>
       <span class="tag-shipped">SHIPPED</span> &mdash; raised after losing a few colour labels on
-      app close. A swatch click in the culling grid / large viewer writes the <code>.xmp</code>
+      app close. A swatch click in the culling grid / Editor writes the <code>.xmp</code>
       synchronously, but every failure path in <code>SidecarCollection.write_tag</code> /
       <code>write_tag_many</code> was silent: the card repainted optimistically, nothing reached
       disk, one log line. Now the exiftool write <strong>retries 3&times;</strong>

@@ -1,7 +1,7 @@
 # Viewer key bindings
 
 These keys work the same in all three picture viewers — the **Species Image
-Preview** grid, the **Rating Editor** grid, and the **Large Image View** — so
+Preview** grid, the **Rating Editor** grid, and the **Editor** — so
 culling feels identical whichever one you're in.
 
 `Ctrl+Home` / `Ctrl+End` additionally work in the **Biota Browser**'s card
@@ -20,12 +20,12 @@ when bindings change.
 | `[` | Set the start of a selection range at the focused picture |
 | `]` | Set the end of a selection range at the focused picture |
 | `Ctrl+A` | Select all pictures (grids) |
-| `Ctrl+D` | Deselect all (grids; also Large Image View, same as `Esc`) |
+| `Ctrl+D` | Deselect all (grids; also Editor, same as `Esc`) |
 | `Esc` | Clear the selection |
 
 (`[` … `]` select an inclusive range in display order.)
 
-In the **Large Image View**, right-clicking a filmstrip thumbnail is a second
+In the **Editor**, right-clicking a filmstrip thumbnail is a second
 way in: it opens **Set species…** / **Set rating…** for the current
 selection (or just that one picture, if nothing's selected) — no need to
 remember `[` / `]` first.
@@ -53,13 +53,13 @@ species…" for bulk edits over a multi-selection.
 | `1` … `5` | Set colour label: **1 Red · 2 Yellow · 3 Green · 4 Blue · 5 Purple** |
 | `0` | Clear colour label |
 | `Space` | Move to the next picture (no change) |
-| `←` / `→` | Previous / next picture (Large Image View) |
-| Mouse wheel | Over the image in the Large Image View: up → next, down → previous |
-| `f` | Large Image View: toggle **Fit ⇄ Camera JPEG** (the quick zoom double-click uses). The **100%** tab is a third tab, reached by clicking it |
-| Double-click image | Large Image View: open the 100% tab centred on the clicked spot |
-| `v` | **Play the movie** — in the grids and the Large Image View alike. On a movie, clicking the picture plays it too |
+| `←` / `→` | Previous / next picture (Editor) |
+| Mouse wheel | Over the image in the Editor: up → next, down → previous |
+| `f` | Editor: toggle **Fit ⇄ Camera JPEG** (the quick zoom double-click uses). The **100%** tab is a third tab, reached by clicking it |
+| Double-click image | Editor: open the 100% tab centred on the clicked spot |
+| `v` | **Play the movie** — in the grids and the Editor alike. On a movie, clicking the picture plays it too |
 
-## 100% (full-resolution) view — Large Image View
+## 100% (full-resolution) view — Editor
 
 A **100%** tab shows the picture decoded from the RAW at full sensor resolution
 (the embedded preview is only ~3200×2400). It's decoded lazily on first view and
@@ -72,7 +72,7 @@ While the 100% tab is active, **navigation steps over Blue/Purple** pictures
 (→ / ← / Space / wheel) — you flip only through the live candidates. The Fit tab
 and the grids keep normal navigation, so a reject is still reachable to re-judge.
 
-## Crop suggestion — Large Image View
+## Crop suggestion — Editor
 
 The **✂ Crop** button (top-right) rough-cuts a crop to hand to DxO PhotoLab /
 Lightroom as a starting point — SpeciesViewer isn't a precise editor, it just
@@ -217,7 +217,7 @@ separate grid rebuilds; `g` is one.
 
 `z` opens a stripped-down viewer — just the camera's embedded JPEG, no RAW
 decode and no metadata panel, so it appears instantly. It exists for a fast
-"zoom in to check the species" without the Large Image View's startup cost.
+"zoom in to check the species" without the Editor's startup cost.
 Scroll to zoom, double-click for 1:1, drag to pan. The **same culling keys as
 the grid** work here — `1`–`5` colour, `q w e r t` / `Ctrl+1`–`5` stars, `0`
 clear, `x` quick-Blue — each writes and steps to the next picture, so you can

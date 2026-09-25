@@ -7,7 +7,7 @@ you forget the register step and the render never counts. This is the sequence
 that works — and, done in this order, the app now **auto-notices** the render
 and offers a one-click register when you return to it (see the bottom).
 
-Everything on the SpeciesViewer side happens in the **large image view** (open a
+Everything on the SpeciesViewer side happens in the **Editor** (open a
 picture from the day grid). The two buttons that matter are **✂ Crop** and the
 **PL** badge (open in DxO) on the FILE row.
 
@@ -17,12 +17,12 @@ picture from the day grid). The two buttons that matter are **✂ Crop** and the
    PhotoLab does **not** reliably auto-read a *from-scratch* `.dop` — one the app
    wrote for a RAW that PhotoLab has never seen. So the `.dop` must be in place
    *before* you open the file in PhotoLab. If you're going to crop, do it now:
-   **✂ Crop** in the large viewer writes the crop into both the `.dop` (for
+   **✂ Crop** in the Editor writes the crop into both the `.dop` (for
    PhotoLab) and the `.xmp` (for Lightroom). If you're not cropping but the RAW
    has no `.dop` yet, make sure one is authored before step 2.
 
 2. **Open in PhotoLab with the PL button** — optionally *after* cropping.
-   Use the **PL** badge on the large viewer's FILE row (not a manual
+   Use the **PL** badge on the Editor's FILE row (not a manual
    File ▸ Open in DxO). It hands PhotoLab the RAW with the right shell context,
    so DxO lands in the correct species folder with the filmstrip of siblings.
 
@@ -46,7 +46,7 @@ viewer** scans the folders you handed to PhotoLab this session and notices the
 fresh JPG the master doesn't track yet:
 
 - the picture's card shows a green **+ JPG** link, and
-- in the large viewer, the **JPG** token on the FILE row turns amber.
+- in the Editor, the **JPG** token on the FILE row turns amber.
 
 Click **+ JPG** to register the render into the master (it becomes the picture's
 best JPG and the Rate rises). Then re-write the day's blog / rebuild the website

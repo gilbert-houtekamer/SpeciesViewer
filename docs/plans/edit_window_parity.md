@@ -1,4 +1,4 @@
-# Scope — Edit Window parity (and what to call it)
+# Scope — Editor parity (and what to call it)
 
 *What each picture surface offers today, where they disagree, and what to decide
 before any of it is built. Written 2026-09-25 from the code; nothing built yet.*
@@ -82,12 +82,12 @@ useful"*. So there is one canonical list of things you can do to a picture, and 
 surface hides an entry only when it genuinely cannot honour it (read-only master
 card, frozen day, no RAW), never because nobody got round to adding it.
 
-**D5 — The Edit Window inherits from the grid it was opened from.** It is not a
+**D5 — The Editor inherits from the grid it was opened from.** It is not a
 fixed menu: opened from the culling grid it offers the culling grid's set, opened
 from the Trip Species Viewer it offers that one. The two grids are NOT being
 reconciled with each other in this work — A vs B stays as it is.
 
-**D2 — Exposure: both halves, everywhere.** The Edit Window keeps its live slider
+**D2 — Exposure: both halves, everywhere.** The Editor keeps its live slider
 for the focused picture and gains an *Apply to N* beside it, mirroring the rating
 row's existing *Apply to selected*. The batch dialog
 (`_open_batch_exposure_dialog`) is added wherever the action set includes
@@ -99,7 +99,7 @@ may stay as a plain label. This removes two of the three duplicate paths in
 finding (4) as a side effect.
 
 **D4 — Rename in the UI only.** Window title, menu entries and the manual say
-**Edit Window**; the class stays `LargeImageView`. Same split Album/virttrip
+**Editor**; the class stays `LargeImageView`. Same split Album/virttrip
 already uses between display name and code name.
 
 ## Order of work
@@ -109,7 +109,7 @@ already uses between display name and code name.
    to anyone who opens the window afterwards.
 3. **Retire the bottom bar** (D3) — removes two duplicate paths with it.
 4. **The rest of the parity table** (D1 + D5) — mechanical once the action set is
-   named and the Edit Window inherits it from its host.
+   named and the Editor inherits it from its host.
 
 Each step is independently testable and independently useful, so they can land as
 separate commits and be abandoned at any point without leaving a half-state.

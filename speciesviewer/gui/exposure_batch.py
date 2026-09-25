@@ -1,10 +1,10 @@
 """Suggest ONE exposure value for a whole selection.
 
-The batch half of exposure editing. The Edit Window's slider is the other half —
+The batch half of exposure editing. The Editor's slider is the other half —
 it shows a live re-render for the focused picture — and each surface used to have
-only one of the two: the culling grid had this dialog and no slider, the Edit
-Window had a slider and no way to reach a selection, and the Trip Species Viewer
-had neither. This module is the dialog, extracted from the culling grid so every
+only one of the two: the culling grid had this dialog and no slider, the Editor
+had a slider and no way to reach a selection, and the Trip Species Viewer had
+neither. This module is the dialog, extracted from the culling grid so every
 surface can offer the same thing rather than each growing its own.
 
 Collection-agnostic on purpose: it needs only `item_for_key`, plus the item's
@@ -55,7 +55,7 @@ def write_exposure(parent, collection, keys, value: float, *, on_written=None) -
     """Write `value` to every key that can take it, behind a progress dialog.
 
     `on_written(key)` is called for each key afterwards so the caller can refresh
-    whatever it owns — the grid card, an open Edit Window. Returns how many were
+    whatever it owns — the grid card, an open Editor. Returns how many were
     written; anything that cannot take an exposure (no RAW, read-only, master
     reference card) is skipped and counted in the log, never written blindly.
     """

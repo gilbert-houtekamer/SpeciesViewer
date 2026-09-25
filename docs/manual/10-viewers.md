@@ -15,7 +15,7 @@ The keys are documented separately and are not repeated here:
 | **Biota Browser** | [Browser](02-browser.md) menu | A taxonomy tree, or one species' page | **No** — read-only |
 | **Species Viewer** | Trips / Master / Albums | One species at a time, across a scope | Yes |
 | **Culling grid** | Day review, yellow panel | One day's pictures, all species | Yes |
-| **Large Image View** | Double-click any card | One picture, big | Yes |
+| **Editor** | Double-click any card | One picture, big | Yes |
 
 They share a card, a selection model and a key set, so what you learn in one
 transfers. The differences are in the filters, and those follow from the job:
@@ -263,7 +263,7 @@ Not prescriptive, but this is the order the filters are built for:
 
 ---
 
-## The Large Image View
+## The Editor
 
 Double-click any card. One picture, as big as the window, with a filmstrip.
 
