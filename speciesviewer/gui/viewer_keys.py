@@ -135,7 +135,14 @@ def handle_cull_key(event, *, order, current_key, item_for_key, set_cursor, refr
     cur = current_key if current_key in order else order[0]
 
     def advance():
-        set_cursor(order[min(order.index(cur) + 1, len(order) - 1)])
+        i = order.index(cur)
+        if i >= len(order) - 1:
+            # Already the last picture: stay, and say so — the colour just set is
+            # the only thing that changes on screen, so it looked like a normal
+            # step and he kept culling past the end (gui/end_cue.py).
+            from gui.end_cue import bump
+            bump()
+        set_cursor(order[min(i + 1, len(order) - 1)])
 
     if action == "next":
         advance()

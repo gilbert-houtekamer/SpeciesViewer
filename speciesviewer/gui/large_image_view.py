@@ -2951,7 +2951,11 @@ class LargeImageView(QDialog):
             while 0 <= new < n and self._is_reject(self._keys[new]):
                 new += step
         if not (0 <= new < n) or new == self._index:
-            return  # hit an end (or only rejects ahead) — stay put
+            # Hit an end (or only rejects ahead) — stay put, and say so: nothing
+            # on screen changes, so without the cue it looked like a missed key.
+            from gui.end_cue import bump
+            bump()
+            return
         self._index = new
         self._load_current()
         self.picture_navigated.emit(self._keys[self._index])
