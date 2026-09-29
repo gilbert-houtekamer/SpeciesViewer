@@ -797,9 +797,13 @@ class Project:
         # problem by a wide margin. If they are worth fixing, fix them where they
         # live, not by broadening a rule that runs over everything.
         #
-        # ⚠ The deeper issue is that "no colour" DISPLAYS as green at all — see
-        # the decision to show absent colour as GREY, which makes this whole class
-        # of confusion impossible rather than merely explainable.
+        # CLOSED 2026-09-29 (user): keep it at "" and do not add a grey display.
+        # Measured: on a current trip day it touches only phone pictures (7 of 935
+        # on 2026-09-06, HEIC/PNG), and only their shown colour — computeRating
+        # scores from the file's own label, not this one. The old Nikon-era
+        # pictures it once covered earned their place in the master: Green is right
+        # for them. The confusion of 2026-09-25 needed PhotoLab wiping colours too,
+        # and that is fixed (docs/plans/photolab_sidecar_fight.md).
         if upn["Rating"] == "" and upn["Label"] == "":  # for waarneming.nl
             upn["Label"] = "Green"
         if upn["ImageSize"] == "": upn["ImageSize"] = self.findCameraOrXMPItem(files, "ImageSize")

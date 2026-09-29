@@ -118,10 +118,13 @@ last looked at the folder. T6 measures whether that still goes wrong.
 
 - SV's card did not redraw after the T5 crop, although the crop is on disk and
   `crop_for()` reads it correctly. A display issue, not part of the fight.
-- `refresh()` believes the disk, so a wipe spreads to the screen and the CSVs. An
-  absent tag should arguably never clear a value SV holds. A guardrail.
-- Grey for "no colour", and whether to restore the reverted Green default
-  (`7d46d76`). Only after step 1.
+- ~~`refresh()` believes the disk~~ — DONE `2f9603f`: a trip keeps the colour it
+  holds when the sidecar's is gone; a Day logs the loss.
+- ~~Grey for "no colour", and restoring the reverted Green default~~ — CLOSED
+  2026-09-29. The Green default (no rating and no colour → Green) touches only
+  phone pictures on a current trip (7 of 935 on 9/6), and only their display;
+  widening it would paint 791 ORFs green. Nikon-era pictures it covered earned
+  their Green. Nothing to build.
 - Recover 2026-09-06's lost colours and ratings from the `.trash` sidecars
   (`tools/svr_label_audit.py`, `svr_label_repair.py`), as a dry run first.
 - `engine/topics_scan.py` still reads colour/rating from the `.dop`. Now that
