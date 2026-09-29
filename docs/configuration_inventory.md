@@ -107,7 +107,7 @@ text. The work-backup written to a camera card therefore copies
 
 | Section | Key examples | Purpose |
 |---------|-------------|---------|
-| `[Global]` | `config_version`, `dxo_path`, `debug_tools` | App-wide defaults |
+| `[Global]` | `config_version`, `dxo_path`, `debug_tools`, `photolab_handover_delay_s` | App-wide defaults. `photolab_handover_delay_s` (default 5, hand-edit only): seconds a running PhotoLab gets to re-read the folder before *Open in PhotoLab* writes the held crop/exposure edits to the `.dop` |
 | `[Master]` | `masterbiotadatabase`, `masterbiotawebroot`, `readonly` | Path to the master collection |
 | `[Trip]` | `tripbiotadatabase`, `tripbiotawebroot` | Active trip: database path and **web slug** |
 | `[VirtTrip]` | `virttripbiotadatabase`, `virttripbiotawebroot` | Active album |

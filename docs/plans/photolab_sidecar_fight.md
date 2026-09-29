@@ -1,8 +1,8 @@
 # SpeciesViewer vs PhotoLab: who writes which sidecar
 
 *Test record and fix plan. Tests run live on 2026-09-29 on a throw-away Day,
-after colours and ratings vanished on 2026-09-25. Step 1 built 2026-09-29, awaiting
-your live check.*
+after colours and ratings vanished on 2026-09-25. Step 1 shipped (`ca93186`); step 2 built and
+passed T7, awaiting commit.*
 
 ---
 
@@ -47,6 +47,9 @@ will be ignored; metadata from .xmp sidecars will be used instead."*
 | **T3** | closed → started | `.xmp` only, incl. a **changed** value (Blue → Green) and 3★ | ✅ PL reads all three at startup and writes its own `.dop`. |
 | **T4** | open | `.xmp` only, then click another folder and back in PL | ✅ PL picks up the change on the click back and keeps it. **No restart needed.** |
 | **T5** | closed → started | crop + colour, `.dop` with new stamps | ✅ PL shows the crop and the colour. It rewrites the `.xmp` itself, keeping the crop and the rating. |
+| **T6** | open, not yet caught up | after step 1: Purple then crop on 546, Green on 544, exposure on 547 | ❌ on 546: the crop's `.dop` write woke PL, and 3 s later it wrote its **old** colour (Yellow) over our Purple. ✅ Green on 544 (colour only) survives. ✅ Exposure on 547 also wakes PL, but nothing is lost, since PL's database already agreed on that picture's colour and rating. |
+| **T7a** | open on another folder | step 2: colour + crop + exposure held in the `.xmp`; *Open in PhotoLab* in the Editor | ✅ No `.dop` write while editing. The button points PL at the folder; PL reads our colours within ~1 s; 8 s later SV writes the held `.dop` edits; PL wakes, rewrites the `.xmp` 3 s later **keeping our colour**, and shows crop and exposure. |
+| **T7b** | open on this folder | same, from a picture in the folder PL already shows | ✅ Pointing PL at a folder it already shows also makes it re-read (0.6 s). Red + crop arrive intact. A later handover finds nothing to do (0 `.dop` updated): no ping-pong. |
 
 ### T0 as the watcher saw it
 
@@ -99,7 +102,9 @@ soon as the `.dop` write wakes PhotoLab.
 `SV_DOP_WRITE` test switch is removed, and the module docstring records why.
 Crop and exposure keep going to the `.dop`.
 
-**Step 2: T6, a crop or exposure change while PhotoLab is open.** After step 1 only a crop still
+**Step 2: crop and exposure wait while PhotoLab runs; the button hands them over.** Built and passed T7a/T7b (2026-09-29), not yet committed. The delay between pointing PhotoLab at the folder and writing the `.dop` is `[Global] photolab_handover_delay_s` (default 5 s; PhotoLab needed under 1 s on 6 pictures). Background, from before T6:
+
+**T6, a crop or exposure change while PhotoLab is open.** After step 1 only a crop still
 wakes PhotoLab, and its database is then behind only on colours changed since it
 last looked at the folder. T6 measures whether that still goes wrong.
 

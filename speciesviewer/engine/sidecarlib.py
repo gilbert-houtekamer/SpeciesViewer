@@ -571,6 +571,83 @@ def ensure_xmp(raw_path):
     return ensure_xmps([raw_path]).get(str(raw_path))
 
 
+def _hold_dop_for_photolab(raw_path, res) -> bool:
+    """True when the .dop write must wait because PhotoLab is running.
+
+    Any .dop write wakes a running PhotoLab, which then writes its own database
+    out over the .xmp — replacing a colour it has not read yet with its old one
+    (test T6, docs/plans/photolab_sidecar_fight.md). So while it runs, crop and
+    exposure go to the .xmp only; handover_to_photolab() brings the .dop up to
+    date at "Open in PhotoLab". Only a RAW that already has a .dop is held —
+    without one there is nothing to write anyway (we never create a .dop)."""
+    if not os.path.exists(str(raw_path) + ".dop"):
+        return False
+    from utils.photolab_process import photolab_running
+    if not photolab_running():
+        return False
+    res["dop_held"] = True
+    logger.info(f"PhotoLab is running: {os.path.basename(str(raw_path))} edit goes "
+                f"to the .xmp now, to the .dop at Open in PhotoLab")
+    return True
+
+
+def _edits_differ(a, b, tol=1e-4):
+    if a is None or b is None:
+        return (a is None) != (b is None)
+    if isinstance(a, dict):
+        return any(abs(float(a[k]) - float(b.get(k, -9))) > tol
+                   for k in ("left", "top", "width", "height"))
+    return abs(float(a) - float(b)) > tol
+
+
+def handover_to_photolab(raw_paths):
+    """Bring each RAW's .dop up to date with the crop / exposure / angle in its
+    .xmp — the edits held back while PhotoLab was running. One direction only,
+    .xmp -> .dop: while SV is the editor the .xmp is the truth for these, and a
+    .dop PhotoLab has just rewritten (after reading our colours) looks NEWER, so
+    sync_sidecars()'s newest-wins rule would put the old crop back.
+
+    Only fields that differ are written; a RAW without a .dop is skipped (we
+    never create one). Returns the list of RAW names that were updated."""
+    done = []
+    for raw in raw_paths:
+        raw = str(raw)
+        dop = raw + ".dop"
+        base = os.path.splitext(raw)[0]
+        xmp = next((p for p in (base + ".xmp", base + ".XMP") if os.path.exists(p)), None)
+        if not xmp or not os.path.exists(dop):
+            continue
+        try:
+            x = read_xmp_edits(xmp)
+            d = read_dop_overrides(dop)
+        except Exception as e:
+            logger.warning(f"handover_to_photolab: cannot read {os.path.basename(raw)}: {e}")
+            continue
+        crop = x["crop"] if x["crop"] and _edits_differ(x["crop"], d["crop"]) else None
+        exposure = (x["exposure"] if x["exposure"] is not None
+                    and _edits_differ(x["exposure"], d["exposure"]) else None)
+        # xmp angle is Lightroom's sign, the .dop's is DxO's (negated)
+        angle = (x["angle"] if x["angle"] is not None and _edits_differ(
+                 x["angle"], -d["angle"] if d["angle"] is not None else None) else None)
+        if crop is None and exposure is None and angle is None:
+            continue
+        try:
+            # A crop carries the configured denoise with it, as in suggest_crop.
+            denoise = None
+            if crop:
+                from utils.photolab_denoise import denoise_override_for_crop
+                denoise = denoise_override_for_crop()
+            if write_dop_edits(dop, exposure=exposure,
+                               crop=xmp_crop_to_dop(crop) if crop else None,
+                               angle=angle, denoise=denoise):
+                done.append(os.path.basename(raw))
+        except Exception as e:
+            logger.warning(f"handover_to_photolab: write failed for {dop}: {e}")
+    logger.info(f"handover to PhotoLab: {len(done)} .dop updated"
+                + (f" ({', '.join(done)})" if done else ""))
+    return done
+
+
 def suggest_crop(raw_path, crop, angle=None):
     """Write a suggested crop to the DxO .dop (and, for a RAW source, the
     Lightroom .xmp) so the next edit in PhotoLab or Lightroom opens with it.
@@ -587,9 +664,10 @@ def suggest_crop(raw_path, crop, angle=None):
     default because PhotoLab watches the .xmp and, on our write, re-derives from
     its own reading and discards the .dop crop (see utils/sidecar_policy.py)."""
     from utils.sidecar_policy import crop_to_dop_enabled, crop_to_xmp_enabled
-    res = {"dop": False, "xmp": False, "dop_created": False, "xmp_created": False}
+    res = {"dop": False, "xmp": False, "dop_created": False, "xmp_created": False,
+           "dop_held": False}
 
-    if crop_to_dop_enabled():
+    if crop_to_dop_enabled() and not _hold_dop_for_photolab(raw_path, res):
         dop_before = os.path.exists(str(raw_path) + ".dop")
         dop_path = ensure_dop(raw_path)
         res["dop_created"] = bool(dop_path) and not dop_before
@@ -631,11 +709,14 @@ def suggest_exposure(raw_path, exposure):
     utils/sidecar_policy for why both channels are written unconditionally.
     `exposure` is a float EV; 0.0 clears back to no adjustment. Returns a dict
     describing what was written/created."""
-    res = {"dop": False, "xmp": False, "dop_created": False, "xmp_created": False}
+    res = {"dop": False, "xmp": False, "dop_created": False, "xmp_created": False,
+           "dop_held": False}
 
-    dop_before = os.path.exists(str(raw_path) + ".dop")
-    dop_path = ensure_dop(raw_path)
-    res["dop_created"] = bool(dop_path) and not dop_before
+    dop_path = None
+    if not _hold_dop_for_photolab(raw_path, res):
+        dop_before = os.path.exists(str(raw_path) + ".dop")
+        dop_path = ensure_dop(raw_path)
+        res["dop_created"] = bool(dop_path) and not dop_before
     if dop_path:
         try:
             res["dop"] = write_dop_edits(dop_path, exposure=exposure)

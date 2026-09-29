@@ -17,7 +17,9 @@ Navigation: ←/→ step through keys; assigning a rating or colour auto-advance
 """
 
 import logging
+import os
 import sys
+import time
 from pathlib import Path
 
 from PyQt6.QtWidgets import (
@@ -67,6 +69,85 @@ def _make_pl_icon(size: int = 18) -> QIcon:
     p.drawText(pm.rect(), Qt.AlignmentFlag.AlignCenter, "PL")
     p.end()
     return QIcon(pm)
+
+
+def _handover_delay_s() -> float:
+    """How long a running PhotoLab gets to re-read the folder's .xmp files
+    (colours, ratings) after we point it there, before we write the held .dop
+    edits. [Global] photolab_handover_delay_s, default 5.
+
+    Measured in test T7 (2026-09-29, 6 pictures): PhotoLab had caught up within
+    1 s of being pointed at the folder, both when it came from another folder and
+    when it already showed this one. The default keeps a margin for a full day
+    and a slower machine; a hand-edited value is clamped to 1-60 s."""
+    try:
+        v = float(get_setting("Global", "photolab_handover_delay_s", fallback="5"))
+    except (TypeError, ValueError):
+        v = 5.0
+    return min(60.0, max(1.0, v))
+
+
+def _handover_around_launch(raw) -> None:
+    """Bring the folder's .dop files up to date with the crop/exposure edits SV
+    held back while PhotoLab was running (sidecarlib.handover_to_photolab), timed
+    so the .dop write cannot wipe a colour PhotoLab has not read yet (T6,
+    docs/plans/photolab_sidecar_fight.md):
+
+    * PhotoLab closed  -> write the .dop files now, BEFORE it starts.
+    * PhotoLab running -> the launch that follows points it at the folder, which
+      makes it re-read our .xmp files (T4); write the .dop files only after that.
+
+    Scope: every RAW in the picture's folder that has a .dop."""
+    from engine.sidecarlib import handover_to_photolab
+    from utils.photolab_process import photolab_running
+    folder = Path(str(raw)).parent
+    raws = [str(d)[:-4] for d in folder.glob("*.dop")]
+    if not photolab_running():
+        handover_to_photolab(raws)
+        return
+    delay = _handover_delay_s()
+    logger.info(f"PhotoLab is running: pointing it at {folder.name} ({len(raws)} "
+                f"pictures), handing over held edits in {delay:g} s")
+    before = _dop_mtimes(raws)
+    clicked = time.time()
+
+    def _later():
+        _log_photolab_catch_up(raws, before, clicked, delay)
+        handover_to_photolab(raws)
+
+    QTimer.singleShot(int(delay * 1000), _later)
+
+
+def _dop_mtimes(raws) -> dict:
+    out = {}
+    for r in raws:
+        try:
+            out[r] = os.path.getmtime(r + ".dop")
+        except OSError:
+            pass
+    return out
+
+
+def _log_photolab_catch_up(raws, before, clicked, delay):
+    """Say in the log how long PhotoLab took to catch up, so the delay can be
+    judged on real days. When PhotoLab reads a changed .xmp it writes that
+    picture's .dop (T1b/T3/T4), so the .dop files it rewrote between the click
+    and now, and the latest of those times, are its catch-up as seen from here.
+    Stat only — a full day costs milliseconds."""
+    after = _dop_mtimes(raws)
+    touched = [t for r, t in after.items() if t != before.get(r)]
+    if not touched:
+        logger.info(f"PhotoLab catch-up: no .dop rewritten within {delay:g} s — "
+                    f"nothing new for it to read, or it was slower than that")
+        return
+    last = max(touched) - clicked
+    msg = (f"PhotoLab catch-up: re-read {len(touched)} of {len(raws)} pictures, "
+           f"last one {last:.1f} s after the click (delay {delay:g} s)")
+    if last > 0.7 * delay:
+        logger.warning(msg + " — close to the delay; consider raising "
+                             "[Global] photolab_handover_delay_s")
+    else:
+        logger.info(msg)
 
 
 def dxo_executable() -> str:
@@ -3554,6 +3635,8 @@ class LargeImageView(QDialog):
         # Tell the host we're about to render here — its focus-in scan will check
         # this folder for the JPG that comes back and offer to add it to the master.
         self.dxo_launched.emit(str(raw))
+        # Hand over the crop/exposure edits held back while PhotoLab ran.
+        _handover_around_launch(raw)
         if sys.platform.startswith("win"):
             if open_path(raw):
                 return
