@@ -398,6 +398,37 @@ def write_dop_metadata(dop_path, color=None, rating=None):
     return changed
 
 
+_XMP_LABEL_RE = re.compile(r'<xmp:Label>([^<]*)</xmp:Label>|xmp:Label="([^"]*)"')
+_XMP_RATING_RE = re.compile(r'<xmp:Rating>([^<]*)</xmp:Rating>|xmp:Rating="([^"]*)"')
+
+
+def read_xmp_metadata(xmp_path):
+    """Colour label and star rating from an .xmp — the counterpart of
+    read_dop_metadata, and since 2026-09-29 the place SV writes them (never the
+    .dop; see utils/sidecar_policy.py). Returns {"color": str|None, "rating":
+    int|None}: None when the field is absent. Accepts both spellings in use —
+    PhotoLab writes elements, exiftool attributes. A plain read: never raises,
+    never writes (an .xmp is only ever written through exiftool)."""
+    result = {"color": None, "rating": None}
+    try:
+        with open(xmp_path, encoding="utf-8", errors="replace") as f:
+            text = f.read()
+    except OSError:
+        return result
+    m = _XMP_LABEL_RE.search(text)
+    if m:
+        raw = (m.group(1) if m.group(1) is not None else m.group(2) or "").strip()
+        result["color"] = "" if raw.lower() in ("", "none") else raw.capitalize()
+    m = _XMP_RATING_RE.search(text)
+    if m:
+        try:
+            result["rating"] = int(float((m.group(1) if m.group(1) is not None
+                                          else m.group(2) or "").strip()))
+        except ValueError:
+            pass
+    return result
+
+
 def read_dop_metadata(dop_path):
     """Read the Item-level ColorLabel / Rating from a DxO .dop — the inverse of
     write_dop_metadata. This is PhotoLab's native colour/rating store and, under

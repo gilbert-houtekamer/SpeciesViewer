@@ -127,8 +127,8 @@ last looked at the folder. T6 measures whether that still goes wrong.
   their Green. Nothing to build.
 - Recover 2026-09-06's lost colours and ratings from the `.trash` sidecars
   (`tools/svr_label_audit.py`, `svr_label_repair.py`), as a dry run first.
-- `engine/topics_scan.py` still reads colour/rating from the `.dop`. Now that
-  PhotoLab fills the `.dop` itself, that value lags until PhotoLab has looked at
-  the folder. It should read the `.xmp` instead.
+- ~~`engine/topics_scan.py` reads colour/rating from the `.dop`~~ — DONE: it reads
+  the `.xmp` first (new `sidecarlib.read_xmp_metadata`), the `.dop` only as a
+  fallback for days from before XMP sync, and the report names the source.
 - The Day viewer (`SidecarCollection`) has none of the 2026-09-25 `[colour]`
   trace; the watcher covered for it here.

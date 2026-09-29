@@ -4,9 +4,10 @@ Given a trip's already-frozen CSVs (data_pictures.csv + data_files.csv — the
 species classifier has already run, so WetSoortNaam=="" is the clean, no-GBIF
 signal that a picture resolved to NO species), report every blog-extra
 candidate: where it WOULD land in the master (topics/<topic>/<leaf>/), its
-authoritative rating+colour read from the .dop (NOT the .xmp — the trap that
-silently loses PhotoLab's colour work), whether it has a rendered JPG (a topic
-photo with no JPG is authored but cannot render/ingest), and any conflicts.
+rating+colour read fresh from the .xmp (the .dop only as a fallback for days
+from before PhotoLab synchronised the .xmp — see _meta_for), whether it has a
+rendered JPG (a topic photo with no JPG is authored but cannot render/ingest),
+and any conflicts.
 
 This writes NOTHING to the master. It is the review artifact that must be read
 and confirmed before Phase 3 turns the freeze exclusion into an ingest (see
@@ -46,8 +47,9 @@ class TopicCandidate:
     target_path: str      # topics/<topic>/<leaf>/, or ""
     has_jpg: bool
     best_jpg: str
-    dop_rating: object    # int | None
-    dop_color: object     # str | None
+    rating: object        # int | None
+    color: object         # str | None
+    meta_source: str      # "xmp", "dop" or "" — which sidecar the two came from
     csv_rate: str         # the picture's computed Rate from the CSV
     in_master: object     # bool | None (None = no master consulted)
     status: str
@@ -65,14 +67,18 @@ def _raw_path_for(picture, files_dict):
     return ""
 
 
-def _dop_meta_for(picture, files_dict):
-    """Authoritative colour/rating from the picture's .dop (RAW's first, then any
-    tracked file's). Returns {'color', 'rating'} with None when unavailable."""
+def _meta_for(picture, files_dict):
+    """Colour/rating for the picture, read fresh from disk, and where they came
+    from: ({'color', 'rating'}, "xmp" | "dop" | "").
+
+    The .xmp first: it is where SV writes colour and rating, and PhotoLab keeps
+    it in step with "Synchronize metadata with XMP sidecar files" on. The .dop is
+    the fallback, for days edited before that — this module once read the .dop
+    FIRST, because back then the .xmp was the file that lost PhotoLab's colour
+    work (see docs/plans/photolab_sidecar_fight.md for how that turned round).
+    Candidates: the RAW first, then any tracked file (e.g. a _DxO.jpg)."""
     raw = _raw_path_for(picture, files_dict)
-    candidates = []
-    if raw:
-        candidates.append(raw)
-    # fall back to any tracked file that has a .dop beside it (e.g. a _DxO.jpg)
+    candidates = [raw] if raw else []
     for fname in picture.get("Files", []):
         frow = files_dict.get(fname)
         if frow is None:
@@ -81,12 +87,20 @@ def _dop_meta_for(picture, files_dict):
         if wfn and wfn not in candidates:
             candidates.append(wfn)
     for path in candidates:
+        base = os.path.splitext(path)[0]
+        for xmp in (base + ".xmp", base + ".XMP"):
+            if os.path.exists(xmp):
+                meta = sidecarlib.read_xmp_metadata(xmp)
+                if meta.get("color") is not None or meta.get("rating") is not None:
+                    return meta, "xmp"
+                break
+    for path in candidates:
         dop = sidecarlib.ensure_dop(path)  # returns existing .dop or None
         if dop:
             meta = sidecarlib.read_dop_metadata(dop)
             if meta.get("color") is not None or meta.get("rating") is not None:
-                return meta
-    return {"color": None, "rating": None}
+                return meta, "dop"
+    return {"color": None, "rating": None}, ""
 
 
 def describe_candidate(picture, files_dict, sc, sp, registry, master_upns=None):
@@ -125,13 +139,13 @@ def describe_candidate(picture, files_dict, sc, sp, registry, master_upns=None):
         if in_master:
             status = IN_MASTER
 
-    dop = _dop_meta_for(picture, files_dict)
+    meta, source = _meta_for(picture, files_dict)
 
     return TopicCandidate(
         upn=upn, subject=subject, topic=topic,
         leaf=leaf_info.key if leaf_info else "",
         target_path=target_path, has_jpg=has_jpg, best_jpg=best_jpg,
-        dop_rating=dop.get("rating"), dop_color=dop.get("color"),
+        rating=meta.get("rating"), color=meta.get("color"), meta_source=source,
         csv_rate=csv_rate, in_master=in_master, status=status, note=note,
     )
 
@@ -192,15 +206,16 @@ def format_report(candidates, summary):
         f"{summary['mixed_kept_as_species']} marked-landscape-but-a-species (kept as species).")
     lines.append("")
     for c in candidates:
-        rating = "-" if c.dop_rating is None else c.dop_rating
-        color = "-" if c.dop_color in (None, "") else c.dop_color
+        rating = "-" if c.rating is None else c.rating
+        color = "-" if c.color in (None, "") else c.color
         target = c.target_path or "(unresolved)"
         jpg_note = ("yes - " + c.best_jpg) if c.has_jpg else \
             "NONE (won't render/ingest until PhotoLab makes one)"
         lines.append(f"[{c.status:<18}] {c.upn}")
         lines.append(f"    subject : {c.subject}")
         lines.append(f"    target  : {target}")
-        lines.append(f"    .dop    : rating={rating}  colour={color}   (csv Rate={c.csv_rate})")
+        lines.append(f"    {'.' + c.meta_source if c.meta_source else 'sidecar':<8}: "
+                     f"rating={rating}  colour={color}   (csv Rate={c.csv_rate})")
         lines.append(f"    jpg     : {jpg_note}")
         if c.note:
             lines.append(f"    note    : {c.note}")
