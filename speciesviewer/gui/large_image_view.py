@@ -87,7 +87,7 @@ def _handover_delay_s() -> float:
     return min(60.0, max(1.0, v))
 
 
-def _handover_around_launch(raw) -> None:
+def handover_around_launch(raw) -> None:
     """Bring the folder's .dop files up to date with the crop/exposure edits SV
     held back while PhotoLab was running (sidecarlib.handover_to_photolab), timed
     so the .dop write cannot wipe a colour PhotoLab has not read yet (T6,
@@ -3636,7 +3636,7 @@ class LargeImageView(QDialog):
         # this folder for the JPG that comes back and offer to add it to the master.
         self.dxo_launched.emit(str(raw))
         # Hand over the crop/exposure edits held back while PhotoLab ran.
-        _handover_around_launch(raw)
+        handover_around_launch(raw)
         if sys.platform.startswith("win"):
             if open_path(raw):
                 return

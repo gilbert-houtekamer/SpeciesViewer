@@ -1201,7 +1201,7 @@ class ReadSDCardDialog(QDialog):
         day, colour and crop live in the .xmp alone.
         """
         from pathlib import Path
-        from gui.large_image_view import dxo_executable
+        from gui.large_image_view import dxo_executable, handover_around_launch
         from utils.open_path import launch_app_with_file
 
         # Open a PICTURE, not a folder, and take it from what was actually
@@ -1228,6 +1228,10 @@ class ReadSDCardDialog(QDialog):
                 "Set the correct path in Settings ▸ Interfaces to Lightroom "
                 "and PhotoLab ▸ PhotoLab Location.")
             return
+        # Crop/exposure edits held back while PhotoLab ran go to its .dop now —
+        # before it starts, or just after it has re-read the folder (as in the
+        # Editor; docs/plans/photolab_sidecar_fight.md).
+        handover_around_launch(first)
         if not launch_app_with_file(exe, first):
             QMessageBox.warning(self, "DxO PhotoLab",
                                 f"Could not open PhotoLab for:\n{first}")
