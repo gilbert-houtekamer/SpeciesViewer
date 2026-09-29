@@ -1,6 +1,22 @@
 """Single policy gate: what SpeciesViewer writes to a picture's RAW-adjacent
 sidecars — the DxO PhotoLab `.dop` and the Lightroom `.xmp`.
 
+DECISION 2026-09-29 (user, after live tests): COLOUR AND RATING GO TO THE `.xmp`
+ONLY — never to the `.dop`. Crop and exposure still go to both. Full test record:
+docs/plans/photolab_sidecar_fight.md.
+
+Why. With PhotoLab's "Synchronize metadata with XMP sidecar files" on, PL ignores
+.dop metadata and takes colour/rating from the .xmp — at startup, on "Read from
+image", and when you open the folder again — and then writes them into its own
+.dop. So our .dop colour helped nothing. Worse, writing it (with the advanced
+stamps PL needs, see sidecarlib._touch_dop_stamps) WOKE a running PhotoLab, which
+wrote its database out over the .xmp and wiped the colour we had just set: that
+is what undid an evening of culling on 2026-09-25. An .xmp-only write does not
+wake PL at all. The reasoning below ("writing both cannot cause a conflict") was
+true of the file formats, and wrong about a running PhotoLab.
+
+Earlier decision, kept for the record:
+
 DECISION 2026-07-20 (user): WRITE BOTH, ALWAYS. Colour label, rating and crop go
 to the `.xmp` unconditionally, and to the `.dop` as well whenever PhotoLab has
 already authored one. The four switches that used to gate this are retired — the
@@ -50,8 +66,10 @@ def _flag(key: str) -> bool:
 # instead of every site growing its own copy of the policy.
 
 def color_rating_to_dop_enabled() -> bool:
-    """Colour + rating -> the .dop, when PhotoLab has authored one (never created)."""
-    return True
+    """Colour + rating -> the .dop: NEVER (2026-09-29, see the module docstring).
+    PhotoLab takes them from the .xmp itself; writing them to the .dop only woke
+    a running PhotoLab, which then wiped them."""
+    return False
 
 
 def color_rating_to_xmp_enabled() -> bool:
