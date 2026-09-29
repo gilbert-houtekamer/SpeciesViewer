@@ -287,6 +287,37 @@ surprising:
   pictures.** You flip only through the live candidates. The Fit tab and the
   grids keep normal navigation, so a reject is still reachable to re-judge.
 
+### Working with PhotoLab open
+
+SpeciesViewer and PhotoLab can both be open while you cull. They share the
+pictures' sidecar files, and each is careful not to overwrite the other's work.
+
+| What you change in SpeciesViewer | When PhotoLab sees it |
+|---|---|
+| **Colour, rating** | The next time PhotoLab opens that folder: at startup, when you click the folder, or when you press **Open in PhotoLab**. |
+| **Crop, exposure** | When you press **Open in PhotoLab** in the Editor. If PhotoLab is closed, they go straight to its sidecar. |
+
+**Open in PhotoLab** first brings PhotoLab to the folder, so it reads your
+colours and ratings, and a few seconds later hands over the crops and exposure.
+You see SpeciesViewer refresh, and a moment later PhotoLab. The pause is
+`[Global] photolab_handover_delay_s` (default 5 s), and the log reports how long
+PhotoLab actually needed.
+
+> **Why crops wait.** Handing a crop to a running PhotoLab wakes it, and it then
+> writes its own copy of the colours back. If it has not yet seen a colour you just
+> set, that colour is replaced by its old one. Holding the crop until PhotoLab has
+> read the folder avoids this.
+
+**A colour that disappears outside SpeciesViewer is kept.** If a colour is
+removed from a sidecar by another program, the trip viewer keeps it and notes it
+in the log. A Day has no store of its own, so the colour does go, but the log
+says which picture lost which colour. The price: a colour you remove on purpose in
+PhotoLab or Lightroom does not reach a trip; remove it in SpeciesViewer instead.
+`tools/svr_label_audit.py` lists any picture whose colour differs between the
+trip and its sidecar.
+
+*Background and the tests behind this: `docs/plans/photolab_sidecar_fight.md`.*
+
 ---
 
 ## The master card context menu

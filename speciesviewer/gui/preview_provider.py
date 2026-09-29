@@ -1083,20 +1083,22 @@ class PreviewCollection(PictureCollection):
             diff = False
             new_label = str(r.get("Label", "") or "")
             was_label = str(upn_row.get("Label", "") or "")
-            if new_label != was_label:
-                # THE suspect: this takes disk as truth and cannot tell OUR OWN
-                # write from PhotoLab's, because our write changes the mtime too.
-                # Clearing is the dangerous direction — an absent tag is being
-                # read as "the user removed the colour".
-                if was_label and not new_label:
-                    logger.warning(
-                        f"[colour] refresh CLEARS        {key:34} "
-                        f"memory={was_label!r} -> disk='' (sidecar has no label) "
-                        f"raw_disk={_label_on_disk(xmp)!r}")
-                else:
-                    logger.info(
-                        f"[colour] refresh updates      {key:34} "
-                        f"memory={was_label!r} -> disk={new_label!r}")
+            if was_label and not new_label:
+                # GUARDRAIL (2026-09-29): an ABSENT label never clears a colour we
+                # hold — the same rule the rating below has always had. An absent
+                # tag is what a flattened sidecar looks like (PhotoLab writing its
+                # database over our .xmp, 2026-09-25), and taking it as "the user
+                # removed the colour" is what carried that loss into the CSV.
+                # Keep the colour, say so; svr_label_audit.py lists the drift.
+                # Clearing a colour in SV goes through apply(), not here.
+                logger.warning(
+                    f"[colour] refresh KEEPS         {key:34} "
+                    f"memory={was_label!r}: its sidecar now has no label "
+                    f"(raw_disk={_label_on_disk(xmp)!r}); not clearing it")
+            elif new_label != was_label:
+                logger.info(
+                    f"[colour] refresh updates      {key:34} "
+                    f"memory={was_label!r} -> disk={new_label!r}")
                 upn_row["Label"] = new_label
                 diff = True
             new_rating = r.get("Rating", None)

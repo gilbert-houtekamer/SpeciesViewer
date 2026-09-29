@@ -182,8 +182,10 @@ have reached the disk. What actually happens matters for your data.
   Only new or changed sidecars are actually read; previews come from a separate
   image cache.
 - **Editing is written through, immediately.** A rating / colour / description
-  change is written to the sidecar on disk the moment you make it — to the `.dop`
-  (PhotoLab's channel) and/or the `.xmp`, via one long-running exiftool process.
+  change is written to the sidecar on disk the moment you make it — to the `.xmp`,
+  via one long-running exiftool process. Crop and exposure also go to the `.dop`
+  (PhotoLab's recipe), except while PhotoLab is running; see *Working with
+  PhotoLab open* in chapter 10.
   The in-memory value and the on-disk cache are updated in the same step. It's
   fast because the write is cheap, not because it's deferred.
 

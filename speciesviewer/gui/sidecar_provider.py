@@ -1077,6 +1077,7 @@ class SidecarCollection(MasterCardOpsMixin, PictureCollection):
         whose DISPLAY changed; `self._image_changed` is the subset whose IMAGE
         changed (so the host re-decodes those, not every refreshed card)."""
         text_before = self._row_snapshot()
+        labels_before = {k: r.get("Label") for k, r in self._rows.items() if r.get("Label")}
         self._rows, self._caches = _read_sidecar_rows(
             [g["meta"] for g in self._groups.values() if g.get("meta")])
         # Colour/rating live in the DxO .dop (PhotoLab's channel), NOT the .xmp,
@@ -1099,6 +1100,7 @@ class SidecarCollection(MasterCardOpsMixin, PictureCollection):
         # external edit may have written a name into a JPG that has no .xmp row.
         self._place_by_stem = self._build_place_map()
 
+        self._warn_lost_labels(labels_before)
         text_after = self._row_snapshot()
         text_changed = {s for s in text_after if text_after[s] != text_before.get(s)}
         # Image change is vs the STORED signature from the last refresh/build — an
@@ -1110,6 +1112,21 @@ class SidecarCollection(MasterCardOpsMixin, PictureCollection):
         for s in self._image_changed:
             self._drop_thumb_caches(s)
         return text_changed | self._image_changed
+
+    def _warn_lost_labels(self, labels_before):
+        """Say so when a refresh finds a colour GONE from a sidecar that had one.
+
+        Here the sidecar is the only store (a Day has no CSV), so there is nothing
+        to keep the colour in — but the loss must not pass silently: an absent
+        label is what a flattened sidecar looks like (PhotoLab writing its
+        database over our .xmp, 2026-09-25), and that evening it went unnoticed.
+        A colour cleared in SV itself comes through the write path, so its row is
+        already empty before the refresh and does not show up here."""
+        for k, was in labels_before.items():
+            row = self._rows.get(k)
+            if row is not None and not row.get("Label"):
+                logger.warning(f"[colour] refresh: {Path(str(row.get('SourceFile', k))).name} "
+                               f"lost its colour {was!r} on disk (changed outside SV)")
 
     def _drop_thumb_caches(self, stem):
         """Forget every cached thumbnail (RAM + on-disk) for one picture."""
