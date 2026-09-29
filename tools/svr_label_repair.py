@@ -41,7 +41,7 @@ def _from_file(path, rx):
     return (m.group(1) or m.group(2) or "").strip()
 
 
-def plan_day(metadir, day, csv_wins=False):
+def plan_day(metadir, day, csv_wins=False, picture_root=None):
     """[(upn, xmp_path, label, rating)] to write, plus [(upn, csv, disk)] conflicts."""
     f = os.path.join(metadir, "review", day, "data_files.csv")
     if not os.path.isfile(f):
@@ -53,6 +53,10 @@ def plan_day(metadir, day, csv_wins=False):
         if (r.get("WindowsExtension") or "").lower() != "xmp":
             continue
         path = r.get("WindowsFileName") or ""
+        if picture_root and path.startswith("/"):
+            # Relative, as sv2 stores it — see svr_label_audit._picture_root.
+            from engine.handling import resolve_path
+            path = resolve_path(path, picture_root)
         if not path or not os.path.isfile(path):
             continue
         csv_lab = (r.get("XMP:Label") or "").strip()
@@ -91,9 +95,11 @@ def main(argv):
         d for d in os.listdir(os.path.join(metadir, "review"))
         if os.path.isdir(os.path.join(metadir, "review", d)))
 
+    from svr_label_audit import _picture_root
+    picture_root = _picture_root(metadir)
     all_todo, all_conflicts = [], []
     for day in days:
-        todo, conflicts = plan_day(metadir, day, csv_wins)
+        todo, conflicts = plan_day(metadir, day, csv_wins, picture_root)
         if todo or conflicts:
             print(f"{day}: {len(todo)} sidecar(s) to fill, {len(conflicts)} conflict(s)")
         all_todo += todo

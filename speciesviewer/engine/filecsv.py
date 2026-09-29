@@ -42,6 +42,9 @@ class Files:
         self.files_dict = {}      
         self.filecount = 0
         self.filename = ""
+        # File:FileName -> the root its stored RELATIVE path was resolved against
+        # in read_file, so write_project_files can store it relative again.
+        self._stored_relative = {}
 
         if MyProject != None:
             MyProject.registerSpecies(self)
@@ -69,8 +72,11 @@ class Files:
             reader = csv.DictReader(csvfile, delimiter=';')
             for row in reader:
                 if pictures_root:
-                    row["File:Directory"] = resolve_path(row.get("File:Directory", ""), pictures_root)
+                    stored = row.get("File:Directory", "")
+                    row["File:Directory"] = resolve_path(stored, pictures_root)
                     row["WindowsFileName"] = resolve_path(row.get("WindowsFileName", ""), pictures_root)
+                    if row["File:Directory"] != stored:
+                        self._stored_relative[row.get("File:FileName", "")] = pictures_root
                 if row['File:FileName'] not in self.files_dict:
                     self.files_dict[row['File:FileName']] = row
                     if row['EXIF:DateTimeOriginal'] != "":
@@ -98,6 +104,17 @@ class Files:
                 csvfile, fieldnames=COLUMN_NAMES.values(), quoting=csv.QUOTE_MINIMAL, delimiter=';'
             )
             writer.writeheader()
+            from engine.handling import relativize_path
             for file in self.files_dict:
                 row = self.files_dict[file]
+                # Write a path back in the form it was READ in. read_file resolves
+                # the relative paths sv2 stores (portable between machines, since
+                # 025a682) to absolute; writing them out unchanged quietly turned a
+                # whole day absolute on any colour/rating save (2026-09-07, found
+                # 2026-09-29). Rows that were absolute on disk stay absolute.
+                root = self._stored_relative.get(file)
+                if root is not None:
+                    row = dict(row)
+                    row["File:Directory"] = relativize_path(row.get("File:Directory", ""), root)
+                    row["WindowsFileName"] = relativize_path(row.get("WindowsFileName", ""), root)
                 writer.writerow(row)
