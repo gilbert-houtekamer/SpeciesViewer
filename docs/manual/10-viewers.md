@@ -300,8 +300,28 @@ pictures' sidecar files, and each is careful not to overwrite the other's work.
 **Open in PhotoLab** first brings PhotoLab to the folder, so it reads your
 colours and ratings, and a few seconds later hands over the crops and exposure.
 You see SpeciesViewer refresh, and a moment later PhotoLab. The pause is
-`[Global] photolab_handover_delay_s` (default 5 s), and the log reports how long
-PhotoLab actually needed.
+`[Global] photolab_handover_delay_s` (default 5 s).
+
+PhotoLab makes a picture's recipe (its `.dop`) only when it processes that
+thumbnail, so on a freshly read day a cropped picture may have none yet. Such a
+crop waits: SpeciesViewer keeps an eye on it for 90 seconds and hands it over
+the moment PhotoLab has made the recipe. The log sums it up per picture, with
+the species:
+
+```
+PhotoLab handover 2026-09-07: 1 handed over, 1 waiting for PhotoLab
+   ✓ 2026 Brazilie - N9074161  orange-backed troupial — crop
+   … 2026 Brazilie - N9075264  crane hawk — crop: PhotoLab has no recipe for it yet
+   ✓ 2026 Brazilie - N9075264  crane hawk — crop (PhotoLab made its recipe after 14 s)
+```
+
+A picture still waiting after 90 seconds is named with ✗: in PhotoLab, select it
+and *Write sidecars*, then press **Open in PhotoLab** again.
+
+> **Best: let PhotoLab make all recipes at once.** After reading a day, open it
+> in PhotoLab, select all (Ctrl-A) and *Write sidecars*. Every picture then has
+> its recipe and no crop ever has to wait. SpeciesViewer cannot do this step: a
+> recipe must come from PhotoLab itself.
 
 > **Why crops wait.** Handing a crop to a running PhotoLab wakes it, and it then
 > writes its own copy of the colours back. If it has not yet seen a colour you just

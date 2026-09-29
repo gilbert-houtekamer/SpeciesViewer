@@ -114,6 +114,13 @@ last looked at the folder. T6 measures whether that still goes wrong.
   hands it over: write the pending edits to the `.dop`, then point PhotoLab at the folder (T4 shows
   that is enough for it to catch up).
 
+**In use, 2026-09-29 evening:** on 9/7 a crop "did not always arrive". Not the
+delay: PhotoLab creates a picture's `.dop` only when it processes that thumbnail,
+and a crop on a picture it had not reached had nowhere to go (the handover skipped
+it silently). Now such pictures are reported as waiting, followed for 90 s and
+handed over the moment the `.dop` appears; the log gives one summary per press,
+per picture, with the species name.
+
 **Later, separate:**
 
 - SV's card did not redraw after the T5 crop, although the crop is on disk and

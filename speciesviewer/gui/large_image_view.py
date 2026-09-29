@@ -87,7 +87,14 @@ def _handover_delay_s() -> float:
     return min(60.0, max(1.0, v))
 
 
-def handover_around_launch(raw) -> None:
+# After the button, pictures whose .dop PhotoLab has not created yet are
+# watched this long, and handed over the moment their recipe appears.
+_WAIT_POLL_MS = 3000
+_WAIT_MAX_S = 90
+_followers = []          # keeps the running follow-up timers alive
+
+
+def handover_around_launch(raw, name_for=None) -> None:
     """Bring the folder's .dop files up to date with the crop/exposure edits SV
     held back while PhotoLab was running (sidecarlib.handover_to_photolab), timed
     so the .dop write cannot wipe a colour PhotoLab has not read yet (T6,
@@ -97,25 +104,103 @@ def handover_around_launch(raw) -> None:
     * PhotoLab running -> the launch that follows points it at the folder, which
       makes it re-read our .xmp files (T4); write the .dop files only after that.
 
-    Scope: every RAW in the picture's folder that has a .dop."""
+    A picture PhotoLab has not processed yet has no .dop to write to — it makes
+    one only when it reaches that thumbnail. Those are followed for _WAIT_MAX_S
+    and handed over as soon as the recipe appears (seen live 2026-09-29: crops
+    on a freshly read day that "did not always arrive").
+
+    Everything is reported as ONE summary in the log, per picture and with its
+    species name when `name_for(raw) -> str` is given.
+    Scope: every RAW in the picture's folder that has an .xmp."""
     from engine.sidecarlib import handover_to_photolab
     from utils.photolab_process import photolab_running
+    from utils.raw_extensions import is_raw
     folder = Path(str(raw)).parent
-    raws = [str(d)[:-4] for d in folder.glob("*.dop")]
-    if not photolab_running():
-        handover_to_photolab(raws)
-        return
-    delay = _handover_delay_s()
-    logger.info(f"PhotoLab is running: pointing it at {folder.name} ({len(raws)} "
-                f"pictures), handing over held edits in {delay:g} s")
-    before = _dop_mtimes(raws)
+    raws = [str(p) for p in folder.iterdir()
+            if is_raw(p) and (p.with_suffix(".xmp").exists() or p.with_suffix(".XMP").exists())]
     clicked = time.time()
 
+    def _run(note):
+        res = handover_to_photolab(raws)
+        _log_handover_summary(folder.name, res, name_for, note)
+        if res["waiting"]:
+            _follow_waiting(res["waiting"], name_for, clicked)
+
+    if not photolab_running():
+        _run("PhotoLab was closed")
+        return
+    delay = _handover_delay_s()
+    before = _dop_mtimes(raws)
+    logger.info(f"Open in PhotoLab: pointing it at {folder.name}; handing over "
+                f"waiting crops/exposure in {delay:g} s")
+
     def _later():
-        _log_photolab_catch_up(raws, before, clicked, delay)
-        handover_to_photolab(raws)
+        after = _dop_mtimes(raws)
+        touched = [t for r, t in after.items() if t != before.get(r)]
+        note = (f"PhotoLab re-read {len(touched)} picture(s) in "
+                f"{max(touched) - clicked:.1f} s" if touched else
+                "PhotoLab re-read nothing new")
+        _run(note)
 
     QTimer.singleShot(int(delay * 1000), _later)
+
+
+def _pic_label(raw, name_for) -> str:
+    name = ""
+    if name_for:
+        try:
+            name = name_for(raw) or ""
+        except Exception:
+            name = ""
+    stem = Path(str(raw)).stem
+    return f"{stem:24} {name}".rstrip()
+
+
+def _log_handover_summary(folder_name, res, name_for, note):
+    done, waiting = res["done"], res["waiting"]
+    if not done and not waiting:
+        logger.info(f"PhotoLab handover {folder_name}: nothing waiting ({note})")
+        return
+    logger.info(f"PhotoLab handover {folder_name}: {len(done)} handed over, "
+                f"{len(waiting)} waiting for PhotoLab ({note})")
+    for r, fields in done:
+        logger.info(f"   ✓ {_pic_label(r, name_for)} — {', '.join(fields)}")
+    for r, fields in waiting:
+        logger.info(f"   … {_pic_label(r, name_for)} — {', '.join(fields)}: PhotoLab "
+                    f"has no recipe for it yet; handed over as soon as it has")
+    if waiting:
+        logger.info("   Tip: in PhotoLab, select all (Ctrl-A) and Write sidecars once per "
+                    "day — then every picture has its recipe and nothing has to wait.")
+
+
+def _follow_waiting(waiting, name_for, clicked):
+    """Poll the waiting pictures for their .dop; hand each over when it appears."""
+    from engine.sidecarlib import handover_to_photolab
+    left = {r: f for r, f in waiting}
+    timer = QTimer()
+    timer.setInterval(_WAIT_POLL_MS)
+
+    def _tick():
+        ready = [r for r in left if os.path.exists(r + ".dop")]
+        if ready:
+            res = handover_to_photolab(ready)
+            for r, fields in res["done"]:
+                logger.info(f"   ✓ {_pic_label(r, name_for)} — {', '.join(fields)} "
+                            f"(PhotoLab made its recipe after {time.time() - clicked:.0f} s)")
+            for r in ready:
+                left.pop(r, None)
+        if not left or time.time() - clicked > _WAIT_MAX_S:
+            timer.stop()
+            if timer in _followers:
+                _followers.remove(timer)
+            for r, fields in left.items():
+                logger.warning(f"   ✗ {_pic_label(r, name_for)} — {', '.join(fields)} "
+                               f"still waiting after {_WAIT_MAX_S} s: in PhotoLab, select "
+                               f"it and Write sidecars, then press Open in PhotoLab again")
+
+    timer.timeout.connect(_tick)
+    _followers.append(timer)
+    timer.start()
 
 
 def _dop_mtimes(raws) -> dict:
@@ -126,28 +211,6 @@ def _dop_mtimes(raws) -> dict:
         except OSError:
             pass
     return out
-
-
-def _log_photolab_catch_up(raws, before, clicked, delay):
-    """Say in the log how long PhotoLab took to catch up, so the delay can be
-    judged on real days. When PhotoLab reads a changed .xmp it writes that
-    picture's .dop (T1b/T3/T4), so the .dop files it rewrote between the click
-    and now, and the latest of those times, are its catch-up as seen from here.
-    Stat only — a full day costs milliseconds."""
-    after = _dop_mtimes(raws)
-    touched = [t for r, t in after.items() if t != before.get(r)]
-    if not touched:
-        logger.info(f"PhotoLab catch-up: no .dop rewritten within {delay:g} s — "
-                    f"nothing new for it to read, or it was slower than that")
-        return
-    last = max(touched) - clicked
-    msg = (f"PhotoLab catch-up: re-read {len(touched)} of {len(raws)} pictures, "
-           f"last one {last:.1f} s after the click (delay {delay:g} s)")
-    if last > 0.7 * delay:
-        logger.warning(msg + " — close to the delay; consider raising "
-                             "[Global] photolab_handover_delay_s")
-    else:
-        logger.info(msg)
 
 
 def dxo_executable() -> str:
@@ -3611,6 +3674,23 @@ class LargeImageView(QDialog):
         if dir_path:
             reveal_group(dir_path, key)
 
+    def _species_for_raw(self, raw) -> str:
+        """The species shown for a RAW in this viewer's collection, for the
+        PhotoLab handover summary; "" when the picture is not in it."""
+        from engine.handling import deriveUniquePictureName
+        stem = Path(str(raw)).stem
+        for key in (deriveUniquePictureName(Path(str(raw)).name), stem, stem.lower()):
+            try:
+                idx = self._collection.index_of(key)
+                if idx is None or idx < 0:
+                    continue
+                item = self._collection.item(idx)
+                if getattr(item, "key", key) == key:
+                    return item.display_name or ""
+            except Exception:
+                continue
+        return ""
+
     def _open_in_dxo(self):
         """Open the RAW file in DxO PhotoLab — gives the Customize view with a
         filmstrip of siblings, and the PhotoLibrary tab lands in the right
@@ -3640,7 +3720,7 @@ class LargeImageView(QDialog):
         # this folder for the JPG that comes back and offer to add it to the master.
         self.dxo_launched.emit(str(raw))
         # Hand over the crop/exposure edits held back while PhotoLab ran.
-        handover_around_launch(raw)
+        handover_around_launch(raw, name_for=self._species_for_raw)
         if sys.platform.startswith("win"):
             if open_path(raw):
                 return

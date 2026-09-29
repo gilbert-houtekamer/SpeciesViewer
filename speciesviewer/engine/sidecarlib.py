@@ -638,21 +638,36 @@ def handover_to_photolab(raw_paths):
     .dop PhotoLab has just rewritten (after reading our colours) looks NEWER, so
     sync_sidecars()'s newest-wins rule would put the old crop back.
 
-    Only fields that differ are written; a RAW without a .dop is skipped (we
-    never create one). Returns the list of RAW names that were updated."""
-    done = []
+    Only fields that differ are written. A RAW whose .xmp carries an edit but
+    that has NO .dop yet is reported as waiting, not written: PhotoLab creates a
+    picture's recipe only when it processes it (scrolling through a new day's
+    thumbnails), and we never create one ourselves. Seen live 2026-09-29: a crop
+    on a picture PhotoLab had not reached yet looked like a failed handover.
+
+    Returns {"done": [(raw, [fields])], "waiting": [(raw, [fields])]}."""
+    done, waiting = [], []
     for raw in raw_paths:
         raw = str(raw)
         dop = raw + ".dop"
         base = os.path.splitext(raw)[0]
         xmp = next((p for p in (base + ".xmp", base + ".XMP") if os.path.exists(p)), None)
-        if not xmp or not os.path.exists(dop):
+        if not xmp:
             continue
         try:
             x = read_xmp_edits(xmp)
+        except Exception as e:
+            logger.warning(f"handover_to_photolab: cannot read {os.path.basename(xmp)}: {e}")
+            continue
+        if not os.path.exists(dop):
+            fields = [f for f, v in (("crop", x["crop"]), ("exposure", x["exposure"]),
+                                     ("angle", x["angle"])) if v not in (None, 0.0)]
+            if fields:
+                waiting.append((raw, fields))
+            continue
+        try:
             d = read_dop_overrides(dop)
         except Exception as e:
-            logger.warning(f"handover_to_photolab: cannot read {os.path.basename(raw)}: {e}")
+            logger.warning(f"handover_to_photolab: cannot read {os.path.basename(dop)}: {e}")
             continue
         crop = x["crop"] if x["crop"] and _edits_differ(x["crop"], d["crop"]) else None
         exposure = (x["exposure"] if x["exposure"] is not None
@@ -671,12 +686,11 @@ def handover_to_photolab(raw_paths):
             if write_dop_edits(dop, exposure=exposure,
                                crop=xmp_crop_to_dop(crop) if crop else None,
                                angle=angle, denoise=denoise):
-                done.append(os.path.basename(raw))
+                done.append((raw, [f for f, v in (("crop", crop), ("exposure", exposure),
+                                                  ("angle", angle)) if v is not None]))
         except Exception as e:
             logger.warning(f"handover_to_photolab: write failed for {dop}: {e}")
-    logger.info(f"handover to PhotoLab: {len(done)} .dop updated"
-                + (f" ({', '.join(done)})" if done else ""))
-    return done
+    return {"done": done, "waiting": waiting}
 
 
 def suggest_crop(raw_path, crop, angle=None):
