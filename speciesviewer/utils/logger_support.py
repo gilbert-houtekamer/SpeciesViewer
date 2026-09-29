@@ -5,10 +5,48 @@ from pathlib import Path
 
 from PyQt6.QtCore import QObject, pyqtSignal
 
-# How many previous sessions of studio.log are kept alongside the current one.
+# How long previous sessions of studio.log are kept alongside the current one.
 # One file per run, not per size: away from home the interesting log is usually
 # the one from the run BEFORE the one you are staring at.
-LOG_SESSIONS_KEPT = 5
+#
+# By AGE, not by count (2026-09-29). It used to be the last 5 runs, and a
+# morning of test restarts pushed out the one log that recorded every colour
+# click of the evening the colours were lost — the only record there was.
+# LOG_MIN_SESSIONS are kept whatever their age, so an idle machine still has
+# its last runs.
+LOG_KEEP_DAYS = 14
+LOG_MIN_SESSIONS = 5
+
+
+def _archive_previous_log(path: Path) -> None:
+    """Move the previous session's studio.log aside as studio-<end time>.log,
+    then delete archived sessions older than LOG_KEEP_DAYS (always keeping the
+    newest LOG_MIN_SESSIONS). Also sweeps the old studio.log.N rotation files.
+    Never raises: a log that cannot be archived must not stop the program."""
+    import time
+    try:
+        if path.exists() and path.stat().st_size:
+            stamp = time.strftime("%Y-%m-%d_%H-%M-%S",
+                                  time.localtime(path.stat().st_mtime))
+            dest = path.with_name(f"studio-{stamp}.log")
+            n = 1
+            while dest.exists():
+                dest = path.with_name(f"studio-{stamp}-{n}.log")
+                n += 1
+            path.rename(dest)
+    except OSError:
+        return      # a second instance holding the file: leave it, append below
+    try:
+        old = [p for p in path.parent.iterdir()
+               if p.name != path.name and p.name.startswith("studio")
+               and (p.suffix == ".log" or ".log." in p.name)]
+        old.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+        cutoff = time.time() - LOG_KEEP_DAYS * 86400
+        for p in old[LOG_MIN_SESSIONS:]:
+            if p.stat().st_mtime < cutoff:
+                p.unlink()
+    except OSError:
+        pass
 
 
 def log_path() -> Path:
@@ -123,21 +161,13 @@ def init_logger(log_widget):
     logger.addFilter(warning_counter)
     logger.warning_counter = warning_counter  # Attach for easy access    
 
-    # File output. One log file per session, with the previous LOG_SESSIONS_KEPT
-    # kept beside it: the old mode="w" wiped the file on every start, so the
-    # moment you restarted to look at what went wrong, the evidence was gone.
-    # maxBytes=0 means this handler NEVER rotates on its own — the single
-    # rollover below is the whole rotation policy, so each file is exactly one
-    # run. delay=True keeps the stream shut until the rollover has renamed it.
+    # File output. One log file per session: studio.log is always the current
+    # run, and each earlier run is kept beside it as studio-<end time>.log (see
+    # _archive_previous_log). The old mode="w" wiped the file on every start, so
+    # the moment you restarted to look at what went wrong, the evidence was gone.
     path = log_path()
-    fh = logging.handlers.RotatingFileHandler(
-        str(path), maxBytes=0, backupCount=LOG_SESSIONS_KEPT,
-        encoding="utf-8", delay=True)
-    try:
-        if path.exists() and path.stat().st_size:
-            fh.doRollover()
-    except OSError:
-        pass    # a second instance holding the file: append rather than fail
+    _archive_previous_log(path)
+    fh = logging.FileHandler(str(path), mode="a", encoding="utf-8")
     fh.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s]: %(message)s"))
     logger.addHandler(fh)
 
@@ -162,8 +192,8 @@ def init_logger(log_widget):
     # Say where the file is, every run. The log moved out of the launch
     # directory, so this line is the only thing that makes it findable — and it
     # is the first thing you want when asking someone to send you their log.
-    logger.info(f"Log file: {path}  (previous {LOG_SESSIONS_KEPT} run(s) kept "
-                f"alongside as studio.log.1 …)")
+    logger.info(f"Log file: {path}  (earlier runs kept alongside as "
+                f"studio-<date>.log for {LOG_KEEP_DAYS} days)")
 
     # Global filters
     logger.addFilter(SuppressExifToolOutput())
