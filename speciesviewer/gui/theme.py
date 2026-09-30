@@ -120,6 +120,12 @@ PANEL_BG = _T["PANEL_BG"]
 # hex in both themes — it's a status colour, not a themed surface tone.
 SELECT_MULTI = "#B97A57"
 
+# The CURSOR — the one picture ←/→, s, c and z act on — in every grid, and the
+# current cell of the Editor's filmstrip. A 2px ring, light on dark and dark on
+# light; it wins over SELECT_MULTI, so the cursor stays findable inside a
+# selection. One token so the colour can be tried and changed in one place.
+CURRENT_RING = "#8fd3ff" if is_dark() else "#1f5fa8"
+
 # Previously duplicated verbatim in TripInfoPanel/DaysPanel/SidebarInfoRail/VirtTripInfoPanel.
 FONT_MONO = "font-size: 10pt; font-family: Consolas, monospace;"
 

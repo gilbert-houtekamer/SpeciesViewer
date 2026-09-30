@@ -479,14 +479,14 @@ class _StripItem(QWidget):
 
     def _repaint_border(self):
         """Paint the frame: colour label (grey when unlabelled, or always olive
-        per the viewer's frame setting); current cell = white ring, selected =
-        blue ring."""
+        per the viewer's frame setting); current cell = CURRENT_RING, selected =
+        SELECT_MULTI (brown) ring."""
         if self._cfg.get("frame") == "olive":
             c = theme.ACCENT
         else:
             c = color_to_css(self._item.color) or theme.FRAME_UNRATED
         if self._current:
-            ring = "border:2px solid #fff;"
+            ring = f"border:2px solid {theme.CURRENT_RING};"   # same as the grids' cursor
         elif self._selected:
             ring = f"border:2px solid {theme.SELECT_MULTI};"
         else:

@@ -1438,15 +1438,17 @@ class PictureCard(QFrame):
             # Framed cards carry a surface-coloured base with the app-wide olive
             # selection border; the picture's colour label lives on the inner
             # frame, not here.
-            if self._selected:
+            if self._cursor:
+                # The cursor wins over the selection ring, as in the Editor's
+                # filmstrip — otherwise it vanishes inside a selected range.
+                self.setStyleSheet(f"QFrame#PictureCard {{ background:{_SURFACE};"
+                                   f" border:2px solid {theme.CURRENT_RING}; border-radius:9px; }}")
+            elif self._selected:
                 # Same brown as the Large Image View filmstrip's multi-select
                 # ring (theme.SELECT_MULTI) — not the app-wide olive ACCENT,
                 # which read as a thin, easy-to-miss line here.
                 self.setStyleSheet(f"QFrame#PictureCard {{ background:{_SURFACE};"
                                    f" border:2px solid {theme.SELECT_MULTI}; border-radius:9px; }}")
-            elif self._cursor:
-                self.setStyleSheet(f"QFrame#PictureCard {{ background:{_SURFACE};"
-                                   f" border:1px solid #333; border-radius:9px; }}")
             elif self._from_master:
                 # a master REFERENCE card — subtly off the normal surface so it
                 # reads as "existing" (theme-aware; was a hardcoded light grey)
@@ -1456,7 +1458,11 @@ class PictureCard(QFrame):
                 self.setStyleSheet(f"QFrame#PictureCard {{ background:{_SURFACE};"
                                    f" border:1px solid {_LINE}; border-radius:9px; }}")
             return
-        if self._selected:
+        if self._cursor:
+            bg = f"background: {theme.SURFACE_2}; " if self._from_master else ""
+            self.setStyleSheet(
+                f"QFrame#PictureCard {{ border: 2px solid {theme.CURRENT_RING}; {bg}}}")
+        elif self._selected:
             # Brand olive, not the old off-brand blue — the app-wide selection
             # color everywhere else since ch.15's global QSS (Phase 1) already
             # unified QTreeView/QListView/QTableView; PictureCard is a plain
@@ -1464,9 +1470,6 @@ class PictureCard(QFrame):
             self.setStyleSheet(
                 f"QFrame#PictureCard {{ border: 2px solid {theme.ACCENT}; "
                 f"background: rgba({theme.ACCENT_RGB}, 0.08); }}")
-        elif self._cursor:
-            bg = "background: #e2e2e2; " if self._from_master else ""
-            self.setStyleSheet(f"QFrame#PictureCard {{ border: 1px solid #333; {bg}}}")
         elif self._from_master:
             # Off-surface card so reference pictures read as "existing master"
             # (theme-aware; was a hardcoded light grey that stayed white on dark).
