@@ -1014,25 +1014,6 @@ class _FullResView(QScrollArea):
 
 # ── Main dialog ────────────────────────────────────────────────────────────────
 
-def add_editor_extras(menu, extras) -> dict:
-    """Put the Editor's own entries at the top of a host grid's card menu, each
-    only when the grid has no entry of that name already. Returns {action:
-    callable} for the host to dispatch. `extras` are (label, callable) pairs."""
-    from PyQt6.QtGui import QAction
-    have = {a.text() for a in menu.actions()}
-    first = menu.actions()[0] if menu.actions() else None
-    handlers = {}
-    for label, fn in extras:
-        if label in have:
-            continue
-        act = QAction(label, menu)
-        menu.insertAction(first, act)      # first=None appends
-        handlers[act] = fn
-    if handlers and first is not None:
-        menu.insertSeparator(first)
-    return handlers
-
-
 class LargeImageView(QDialog):
     picture_changed   = pyqtSignal(str)  # key — emitted after rating/colour/desc edit
     picture_image_changed = pyqtSignal(str)  # key — the IMAGE changed (a crop) → host re-decodes the card
@@ -3204,21 +3185,28 @@ class LargeImageView(QDialog):
             return False
         self._save_description()
         self._save_headline()
-        extras = []
-        # Sex / age / plumage on a master picture — the Editor's side-panel
-        # action, kept in the menu wherever the grid's own menu lacks it.
-        try:
-            item = self._collection.item_for_key(key)
-        except (ValueError, KeyError):
-            item = None
-        if (getattr(item, "from_master", False)
-                and hasattr(self._collection, "apply_master_qualifiers")
-                and not getattr(self._collection, "master_read_only", True)):
-            extras.append(("Sex / age / plumage…",
-                           lambda k=key: self._edit_master_qualifiers(k)))
-        acted = fn(key, extras=extras)
-        if acted:
-            self.refresh_after_host_action(set(acted))
+        # Nothing of the Editor's own is added: the menu is the grid's, exactly
+        # (his call, 2026-09-30). Sex / age / plumage for the picture on screen
+        # stays on the side panel's button.
+        acted = set(fn(key) or ())
+        if not acted:
+            return True
+        # A delete, or a move to another species, takes pictures out of the
+        # host's collection (it is rebuilt in place, and this Editor reads the
+        # same object) — drop them here too, whichever action did it.
+        gone = set()
+        for k in acted:
+            try:
+                self._collection.item_for_key(k)
+            except (ValueError, KeyError):
+                gone.add(k)
+        if gone:
+            self.drop_keys(gone)
+        self.refresh_after_host_action(acted - gone)
+        # A host rebuild resets its selection without going through
+        # _clear_selection; follow it, or this window keeps a stale range.
+        if not getattr(self.parent(), "_selected_keys", True):
+            self.clear_selection()
         return True
 
     def _apply_to_all_selected(self):

@@ -279,6 +279,7 @@ detail in [viewer_keybindings.md](../viewer_keybindings.md); in summary:
 | **100%** tab | Decoded from the RAW at full sensor resolution — the embedded preview is only ~3200×2400. Lazily decoded, then cached. Click the tab to open it; its label shows the configured render scale. |
 | **✂ Crop** | Rough-cut a crop to hand to PhotoLab / Lightroom as a starting point. Aspect locked to the camera's nominal ratio. |
 | Navigation | `←` / `→` / `Space` / mouse wheel |
+| **Right-click** | On the image, the panel or a filmstrip picture: **the same menu as the grid you opened the Editor from**, acting on the selection (or on that one picture). See below. |
 
 Two behaviours worth knowing because they are deliberate and initially
 surprising:
@@ -288,6 +289,30 @@ surprising:
 - **While the 100% tab is active, navigation steps over Blue and Purple
   pictures.** You flip only through the live candidates. The Fit tab and the
   grids keep normal navigation, so a reject is still reachable to re-judge.
+
+### Right-click: the grid's own menu
+
+The Editor has no menu of its own. Right-click anywhere in it and you get the
+**exact menu of the grid it was opened from** — the culling grid's, or the
+Trip / Album Species Viewer's — with the same entries, the same rules about
+what is locked, and the same target: the selection when you right-click inside
+it, else that one picture (on the image: the picture on screen).
+
+So a new action only has to be added to a grid to appear in the Editor too, and
+the two can never disagree about what you may do to a picture.
+
+What the action changes shows up in both windows: a new rating, species or
+exposure repaints the Editor; a deleted picture — or one moved to another
+species — leaves its filmstrip and the Editor lands on a neighbour. Selection
+is shared: clearing it in either window clears it in both.
+
+> **Sex / age / plumage** for the picture on screen stays where it was — the
+> button in the panel's Species section. The menu only carries it where the
+> grid's menu does (an album).
+
+Opened from the Biota Browser or a map, which have no card menu, the Editor
+keeps short menus of its own (location, headline / description, species,
+rating, exposure, delete where allowed).
 
 ### Working with PhotoLab open
 

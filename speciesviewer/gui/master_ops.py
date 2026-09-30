@@ -302,22 +302,25 @@ class MasterCardMenuMixin:
             info.setEnabled(False)
         return handlers
 
-    def _master_context_menu(self, upn_key: str, *, ops=None) -> None:
+    def _master_context_menu(self, upn_key: str, *, ops=None) -> bool:
+        """Show the master card menu; True when an action was chosen."""
         from PyQt6.QtWidgets import QMenu
         from PyQt6.QtGui import QCursor
         col = self._collection
         if col is None:
-            return
+            return False
         menu = QMenu(self)
         if col.master_read_only:
             info = menu.addAction("Master is read-only — enable in Repository Settings")
             info.setEnabled(False)
             menu.exec(QCursor.pos())
-            return
+            return False
         handlers = self._build_master_menu(menu, upn_key, ops=ops)
         chosen = menu.exec(QCursor.pos())
         if chosen is not None and chosen in handlers:
             handlers[chosen]()
+            return True
+        return False
 
     # ── handlers ──────────────────────────────────────────────────────────────
     def _do_master_qualifiers(self, upn_key: str):

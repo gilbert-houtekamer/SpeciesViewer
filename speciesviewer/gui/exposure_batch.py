@@ -98,11 +98,31 @@ def write_exposure(parent, collection, keys, value: float, *, on_written=None) -
     return written
 
 
-def open_batch_exposure_dialog(parent, collection, keys, *, initial: float = 0.0,
+def shared_exposure(collection, keys) -> float:
+    """The exposure the pictures already carry when they all agree, else 0.0 —
+    what the dialog should open on, so pressing Enter changes nothing. Stops
+    reading at the first disagreement."""
+    value = None
+    for k in keys:
+        try:
+            ev = float(collection.item_for_key(k).exposure or 0.0)
+        except (ValueError, KeyError, AttributeError, TypeError):
+            return 0.0
+        if value is None:
+            value = ev
+        elif ev != value:
+            return 0.0
+    return value or 0.0
+
+
+def open_batch_exposure_dialog(parent, collection, keys, *, initial: float | None = None,
                                on_written=None) -> int:
-    """Ask for one exposure and write it to `keys`. Returns how many were written."""
+    """Ask for one exposure and write it to `keys`. Returns how many were written.
+    With no `initial`, the dialog opens on the value the pictures share."""
     if not keys or collection is None:
         return 0
+    if initial is None:
+        initial = shared_exposure(collection, keys)
     value = ask_exposure(parent, len(keys), initial)
     if value is None:
         return 0

@@ -25,10 +25,10 @@ when bindings change.
 
 (`[` … `]` select an inclusive range in display order.)
 
-In the **Editor**, right-clicking a filmstrip thumbnail is a second
-way in: it opens **Set species…** / **Set rating…** for the current
-selection (or just that one picture, if nothing's selected) — no need to
-remember `[` / `]` first.
+In the **Editor**, right-clicking the image, the panel or a filmstrip
+thumbnail opens the **same menu as the grid it was opened from**, for the
+current selection (or just that one picture, if nothing's selected) — no need
+to remember `[` / `]` first.
 
 ## Moving the cursor (grids)
 

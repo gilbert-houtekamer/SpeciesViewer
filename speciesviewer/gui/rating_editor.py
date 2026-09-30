@@ -3520,6 +3520,34 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
         self._bracket_left = None
         self._bracket_right = None
         self._update_selection_display()
+        # Shared with the open Editor — see image_viewer.py's twin.
+        lv = getattr(self, "_large_view", None)
+        if lv is not None:
+            try:
+                lv.clear_selection()
+            except RuntimeError:
+                pass   # large view was closed/destroyed
+
+    def _notify_large_view(self, keys, reload_image=False):
+        """Push an edit made here into the open Editor. reload_image=True also
+        re-decodes its image (exposure, a new JPG). Twin of image_viewer.py's."""
+        lv = getattr(self, "_large_view", None)
+        if lv is None:
+            return
+        try:
+            if reload_image:
+                for k in keys:
+                    lv.refresh_external(k, reload_image=True)
+            else:
+                lv.refresh_after_host_action(set(keys))
+        except RuntimeError:
+            pass   # large view was closed/destroyed
+
+    def editor_context_menu(self, upn_key: str) -> set:
+        """The Editor's right-click, when it was opened from this grid: this
+        grid's own card menu (docs/plans/edit_window_parity.md, D5). Twin of
+        image_viewer.py's — returns the keys an action was chosen for."""
+        return self._on_card_context_menu(upn_key)
 
     def _editable_keys(self, keys) -> set:
         """Drop keys that can't be edited here: committed-day trip keys (frozen —
@@ -3533,7 +3561,7 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
                 if (self._album_mode or not self._collection.is_master(k))
                 and not self._collection.is_frozen_day(k)}
 
-    def _on_card_context_menu(self, upn_key: str):
+    def _on_card_context_menu(self, upn_key: str) -> set:
         from PyQt6.QtWidgets import QMenu
         from PyQt6.QtGui import QCursor
         is_master = (self._collection is not None
@@ -3542,8 +3570,9 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
         # trip's own pictures, so it gets the master menu alone, limited to the
         # inventory ops that make sense on a reference (add / delete).
         if is_master and not self._album_mode:
-            self._master_context_menu(upn_key, ops={"add", "delete", "delete_file"})
-            return
+            chosen = self._master_context_menu(
+                upn_key, ops={"add", "delete", "delete_file"})
+            return {upn_key} if chosen else set()
         # In an ALBUM every card is a master picture and this is the ONLY card
         # menu there is, so it carries both halves: this viewer's own actions
         # first, then the full master surface appended (which is what
@@ -3553,7 +3582,7 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
                            else {upn_key})
         keys_for_action = self._editable_keys(keys_for_action)
         if not keys_for_action:
-            return   # master-only selection — nothing editable
+            return set()   # master-only selection — nothing editable
         n = len(keys_for_action)
         menu = QMenu(self)
         lbl = f"{n} picture{'s' if n != 1 else ''}"
@@ -3625,10 +3654,11 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
             info.setEnabled(False)
         chosen = menu.exec(QCursor.pos())
         if chosen is None:
-            return
+            return set()
+        acted = set(keys_for_action)
         if chosen in master_handlers:
             master_handlers[chosen]()
-            return
+            return acted
         if chosen == act_species:
             self._open_species_dialog_for_keys(keys_for_action)
         elif chosen == act_move:
@@ -3650,6 +3680,7 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
             self._edit_headline_description(upn_key, keys_for_action)
         elif chosen == act_addfiles:
             self._do_trip_add(keys_for_action)
+        return acted
 
     def _edit_headline_description(self, upn_key: str, keys: set | None = None):
         """Open the shared Headline / Description editor for the clicked card and
@@ -3759,6 +3790,7 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
             if self._collection is not None else None,
             self._sync_all_cards(),
             self._refresh_quick_view(),
+            self._notify_large_view(upns),
             self._clear_selection(), dlg.accept()))
         dlg_layout.addWidget(panel)
         cancel_btn = QPushButton("Cancel")
@@ -3941,6 +3973,7 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
         """Repaint a card AND re-decode its thumbnail — for an edit that changed
         the picture itself (exposure, crop), not just its metadata. Same pair
         Create JPG uses; a plain refresh() would leave the old pixels on screen."""
+        self._notify_large_view({upn_key}, reload_image=True)
         card = self._bound.get(upn_key)
         if not card:
             return
@@ -4227,6 +4260,7 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
         finally:
             QApplication.restoreOverrideCursor()
         for k in made:
+            self._notify_large_view({k}, reload_image=True)
             card = self._bound.get(k)
             if card:
                 card.refresh()

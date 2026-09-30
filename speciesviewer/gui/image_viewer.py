@@ -1760,16 +1760,15 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
             except RuntimeError:
                 pass   # large view was closed/destroyed
 
-    def editor_context_menu(self, key: str, extras=()) -> set:
+    def editor_context_menu(self, key: str) -> set:
         """The Editor's right-click, when it was opened from this grid: this
         grid's own card menu, so the Editor offers exactly what the grid does
-        (docs/plans/edit_window_parity.md, D5). `extras` are (label, callable)
-        pairs the Editor adds for itself, skipped when the grid already has an
-        entry of that name. Returns the keys an action was chosen for (empty
-        when the menu was dismissed) so the Editor can repaint them."""
-        return self._on_card_context_menu(key, extras=extras)
+        (docs/plans/edit_window_parity.md, D5). Returns the keys an action was
+        chosen for (empty when the menu was dismissed) so the Editor can
+        repaint them."""
+        return self._on_card_context_menu(key)
 
-    def _on_card_context_menu(self, key: str, extras=()) -> set:
+    def _on_card_context_menu(self, key: str) -> set:
         from PyQt6.QtWidgets import QMenu
         from PyQt6.QtGui import QCursor
         keys_for_action = (self._selected_keys
@@ -1871,14 +1870,10 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
             # section here carries only the inventory ops.
             master_handlers = self._build_master_menu(
                 menu, key, ops={"add", "pin", "delete_jpg", "move", "delete", "delete_file"})
-        from gui.large_image_view import add_editor_extras
-        extra_handlers = add_editor_extras(menu, extras)
         chosen = menu.exec(QCursor.pos())
         if chosen is None:
             return set()
-        if chosen in extra_handlers:
-            extra_handlers[chosen]()
-        elif chosen in master_handlers:
+        if chosen in master_handlers:
             master_handlers[chosen]()
         elif act_species is not None and chosen == act_species:
             self._open_species_dialog_for_keys(keys_for_action)
