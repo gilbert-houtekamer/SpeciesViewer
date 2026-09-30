@@ -1014,6 +1014,25 @@ class _FullResView(QScrollArea):
 
 # ── Main dialog ────────────────────────────────────────────────────────────────
 
+def add_editor_extras(menu, extras) -> dict:
+    """Put the Editor's own entries at the top of a host grid's card menu, each
+    only when the grid has no entry of that name already. Returns {action:
+    callable} for the host to dispatch. `extras` are (label, callable) pairs."""
+    from PyQt6.QtGui import QAction
+    have = {a.text() for a in menu.actions()}
+    first = menu.actions()[0] if menu.actions() else None
+    handlers = {}
+    for label, fn in extras:
+        if label in have:
+            continue
+        act = QAction(label, menu)
+        menu.insertAction(first, act)      # first=None appends
+        handlers[act] = fn
+    if handlers and first is not None:
+        menu.insertSeparator(first)
+    return handlers
+
+
 class LargeImageView(QDialog):
     picture_changed   = pyqtSignal(str)  # key — emitted after rating/colour/desc edit
     picture_image_changed = pyqtSignal(str)  # key — the IMAGE changed (a crop) → host re-decodes the card
@@ -2198,14 +2217,17 @@ class LargeImageView(QDialog):
         logger.info(f"Edit location: wrote {place!r} to {n} file(s) for this picture.")
 
     def contextMenuEvent(self, event):
-        """Right-click anywhere in the viewer → location actions ('L' still does
-        Get location). Child widgets with their own menu (the description box)
+        """Right-click anywhere in the viewer → the host grid's menu (_host_menu),
+        or, for a host without one, location actions ('L' still does Get
+        location). Child widgets with their own menu (the description box)
         keep theirs; this only fires for clicks they don't consume."""
         from PyQt6.QtWidgets import QMenu
         if not self._keys:
             return
-        menu = QMenu(self)
         key = self._item.key if self._item else None
+        if key and self._host_menu(key):
+            return
+        menu = QMenu(self)
         host = self.parent()          # the grid dialog — reuse its actions for this key
 
         # Sex / age / plumage — the same form editor as the side-panel button, in the
@@ -3038,13 +3060,14 @@ class LargeImageView(QDialog):
         self.picture_navigated.emit(key)
 
     def _on_filmstrip_context(self, key: str):
-        """Right-click a filmstrip cell → Set species… / Set rating… / Delete, the
-        batch ops for a '[' ... ']' selection. Acts on the current selection when the clicked cell is part of it, else on
+        """Right-click a filmstrip cell → the host grid's menu (_host_menu), or,
+        for a host without one, this Editor's own Set species… / Set rating… /
+        Delete, the batch ops for a '[' ... ']' selection. Acts on the current selection when the clicked cell is part of it, else on
         that one picture. Delete still goes through the host (same protection
         as the grid) via drop_keys()."""
         from PyQt6.QtWidgets import QMenu
         from PyQt6.QtGui import QCursor
-        if key not in self._keys:
+        if key not in self._keys or self._host_menu(key):
             return
         keys = (set(self._selected_keys)
                 if key in self._selected_keys and self._selected_keys else {key})
@@ -3153,6 +3176,50 @@ class LargeImageView(QDialog):
         self._bracket_left = None
         self._bracket_right = None
         self._update_selection_display()
+
+    def clear_selection(self):
+        """Host → Editor: the shared selection was cleared in the grid."""
+        if self._selected_keys or self._bracket_left or self._bracket_right:
+            self._clear_selection()
+
+    def refresh_after_host_action(self, keys):
+        """Repaint after the host grid acted on these pictures from its borrowed
+        menu: filmstrip cells, and — for the picture on screen — the panel, the
+        species section and the name block/title (a species or sex/age/plumage
+        change shows there). Keys the action removed are skipped. Does NOT emit
+        picture_changed: the host made the edit and already knows."""
+        for k in [k for k in keys if k in self._keys]:
+            self.refresh_external(k)
+        if (self._item is not None and self._item.key in keys
+                and self._item.key in self._keys):
+            self._rebuild_species_section(self._item, self._item.key)
+            self._refresh_identity_header(self._item, self._item.key)
+
+    def _host_menu(self, key) -> bool:
+        """Right-click → the menu of the grid this Editor was opened from, when
+        that grid offers one (editor_context_menu). Returns False when it does
+        not, so the caller shows the Editor's own menu (Biota Browser, maps)."""
+        fn = getattr(self.parent(), "editor_context_menu", None)
+        if not callable(fn) or key not in self._keys:
+            return False
+        self._save_description()
+        self._save_headline()
+        extras = []
+        # Sex / age / plumage on a master picture — the Editor's side-panel
+        # action, kept in the menu wherever the grid's own menu lacks it.
+        try:
+            item = self._collection.item_for_key(key)
+        except (ValueError, KeyError):
+            item = None
+        if (getattr(item, "from_master", False)
+                and hasattr(self._collection, "apply_master_qualifiers")
+                and not getattr(self._collection, "master_read_only", True)):
+            extras.append(("Sex / age / plumage…",
+                           lambda k=key: self._edit_master_qualifiers(k)))
+        acted = fn(key, extras=extras)
+        if acted:
+            self.refresh_after_host_action(set(acted))
+        return True
 
     def _apply_to_all_selected(self):
         """Apply the current picture's rating + colour to every selected picture."""

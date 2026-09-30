@@ -117,6 +117,14 @@ already uses between display name and code name.
    right-click, and cleared with Esc.
 4. **The rest of the parity table** (D1 + D5) — mechanical once the action set is
    named and the Editor inherits it from its host.
+   *Built as delegation, not copying (2026-09-30):* the Editor's right-click —
+   image, panel or filmstrip — opens the host grid's own card menu when the host
+   offers `editor_context_menu(key, extras)`; hosts without one (Biota Browser,
+   maps) keep the Editor's own menus. The Editor adds only *Sex / age /
+   plumage…* for a master picture, and only when the grid's menu lacks it. The
+   host must push its edits back (`refresh_after_host_action`, `drop_keys`,
+   `clear_selection`). Dialogs are NOT re-parented to the Editor; none opened
+   behind it in testing. Stage 1 culling grid ✅; stage 2 Trip Species Viewer.
 
 Each step is independently testable and independently useful, so they can land as
 separate commits and be abandoned at any point without leaving a half-state.

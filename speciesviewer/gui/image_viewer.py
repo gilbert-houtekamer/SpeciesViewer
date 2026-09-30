@@ -1692,9 +1692,7 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
         """Right-click Delete from the large viewer's filmstrip: trash the keys (same
         protection + confirm-only-when-protected as the grid), refresh the grid, then
         tell the viewer to drop the removed cells and land on a neighbour."""
-        deleted = self._delete_keys_ui(set(keys))
-        if deleted:
-            dlg.drop_keys(deleted)
+        self._delete_keys_ui(set(keys))   # it drops them from the viewer too
 
     def refresh_after_species_change(self, updated_upns):
         """Called by SpeciesInfoDialog after a commit: repaint affected cards
@@ -1714,6 +1712,14 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
                 qv.refresh_current()
             except RuntimeError:
                 pass   # quick view was closed/destroyed
+        # Same for the Editor: the commit may come from this grid's menu,
+        # borrowed by the Editor, while the Editor is the window in front.
+        lv = getattr(self, "_large_view", None)
+        if lv is not None and updated_upns:
+            try:
+                lv.refresh_after_host_action(set(updated_upns))
+            except RuntimeError:
+                pass   # large view was closed/destroyed
 
     # ── Multi-select ────────────────────────────────────────────────────────
 
@@ -1743,8 +1749,27 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
         self._bracket_left = None
         self._bracket_right = None
         self._update_selection_display()
+        # The selection is shared with the open Editor (it pushes its changes
+        # here via selection_changed); a clear made here — after a species
+        # commit, say — must reach it too, or it keeps highlighting a range
+        # its right-click no longer acts on.
+        lv = getattr(self, "_large_view", None)
+        if lv is not None:
+            try:
+                lv.clear_selection()
+            except RuntimeError:
+                pass   # large view was closed/destroyed
 
-    def _on_card_context_menu(self, key: str):
+    def editor_context_menu(self, key: str, extras=()) -> set:
+        """The Editor's right-click, when it was opened from this grid: this
+        grid's own card menu, so the Editor offers exactly what the grid does
+        (docs/plans/edit_window_parity.md, D5). `extras` are (label, callable)
+        pairs the Editor adds for itself, skipped when the grid already has an
+        entry of that name. Returns the keys an action was chosen for (empty
+        when the menu was dismissed) so the Editor can repaint them."""
+        return self._on_card_context_menu(key, extras=extras)
+
+    def _on_card_context_menu(self, key: str, extras=()) -> set:
         from PyQt6.QtWidgets import QMenu
         from PyQt6.QtGui import QCursor
         keys_for_action = (self._selected_keys
@@ -1846,8 +1871,14 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
             # section here carries only the inventory ops.
             master_handlers = self._build_master_menu(
                 menu, key, ops={"add", "pin", "delete_jpg", "move", "delete", "delete_file"})
+        from gui.large_image_view import add_editor_extras
+        extra_handlers = add_editor_extras(menu, extras)
         chosen = menu.exec(QCursor.pos())
-        if chosen in master_handlers:
+        if chosen is None:
+            return set()
+        if chosen in extra_handlers:
+            extra_handlers[chosen]()
+        elif chosen in master_handlers:
             master_handlers[chosen]()
         elif act_species is not None and chosen == act_species:
             self._open_species_dialog_for_keys(keys_for_action)
@@ -1877,6 +1908,7 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
             self._set_album_picture(key)
         elif act_delete is not None and chosen == act_delete:
             self._delete_keys_ui(keys_for_action)
+        return set(keys_for_action)
 
     def _edit_headline_description(self, key: str, keys: set | None = None):
         """Open the shared Headline / Description editor for the clicked card and
@@ -3285,7 +3317,15 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
             self._day_edited = True     # non-frozen day: offer a re-read on close
         # Stay on the filter the user was using (e.g. Species), minus the removed.
         self._reapply_filter()
-        return set(deletable)   # the keys the large viewer should drop
+        # Whichever window asked (the grid, or the Editor borrowing this menu),
+        # the open Editor must lose the trashed pictures and land on a neighbour.
+        lv = getattr(self, "_large_view", None)
+        if lv is not None:
+            try:
+                lv.drop_keys(set(deletable))
+            except RuntimeError:
+                pass   # large view was closed/destroyed
+        return set(deletable)
 
     def _reapply_filter(self):
         """Rebuild the grid for the current combined filter (after a delete the
