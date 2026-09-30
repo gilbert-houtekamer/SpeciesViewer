@@ -27,7 +27,8 @@ from PyQt6.QtGui import QImage
 
 from gui.picture_provider import (
     PictureItem, PictureCollection, ExifSummary, PixmapCallback, exif_from_rows,
-    sweep_dop, apply_crop, crop_for, exposure_for, jpg_is_crop_by_size)
+    sweep_dop, apply_crop, crop_for, exposure_for, jpg_is_crop_by_size,
+    jpg_ignores_crop)
 from gui.image_loader import AsyncImageLoader
 from gui.rating_editor import _compute_rate
 from engine.exif_writer import exiftool_write
@@ -349,6 +350,10 @@ class PreviewItem(PictureItem):
         return self._c.crop_rect(self._key)
 
     @property
+    def jpg_out_of_date(self) -> bool:
+        return self._c.jpg_out_of_date(self._key)
+
+    @property
     def file_exts(self) -> list[str]:
         files = self._row.get("Files", [])
         exts = ({Path(f).suffix.lstrip(".").upper() for f in files if f}
@@ -464,6 +469,9 @@ class PreviewCollection(PictureCollection):
         # re-decoding every preview. Keyed by (key, width, image signature).
         from gui.thumb_cache import ThumbCache
         self._thumb_cache = ThumbCache()
+        # {upn -> its render shows the full frame, not the crop}: filled by
+        # request_image (gui.picture_provider.jpg_ignores_crop).
+        self._jpg_stale: dict[str, bool] = {}
         self._order: list[str] = []
         self.rebuild()
         # Baseline the colour/rating sidecar mtimes NOW (the fpr matches disk at
@@ -1130,6 +1138,7 @@ class PreviewCollection(PictureCollection):
         """Forget every cached thumbnail (RAM + on-disk) for one picture — its
         image changed (re-crop / new render / Create JPG)."""
         self._thumb_cache.invalidate(key)
+        self._jpg_stale.pop(key, None)
         from gui.thumb_cache import drop_disk_thumbs
         seen = set()
         for p in (self._display_source(key), self._raw_path(key)):
@@ -1265,69 +1274,74 @@ class PreviewCollection(PictureCollection):
             return None
         return cached_jpg_for(src, preview_cache_dir_for(src.parent))
 
-    def _stale_render_fallback(self, upn_key: str, render_src: Path):
-        """A render (_DxO/-small) is normally trusted as already-cropped. But if our
-        crop is NEWER than the render, the render predates the crop (DxO hasn't
-        re-exported yet) and is full-frame — so fall back to the RAW/original + the
-        crop, so the thumbnail matches the edit. Returns (base, crop) to switch to,
-        or (None, None) to keep trusting the render."""
-        base = self._crop_source(upn_key)          # RAW / original JPG (never a render)
-        if base is None:
-            return None, None
-        crop = crop_for(base, self._xmp_for(upn_key))
-        if not crop:
-            return None, None                      # no crop → nothing to apply
-        # mtime of whichever sidecar holds the crop (.dop preferred, else .xmp).
-        dop = Path(str(base) + ".dop")
-        crop_mtime = dop.stat().st_mtime if dop.exists() else None
-        if crop_mtime is None:
-            xmp = self._xmp_for(upn_key)
-            crop_mtime = Path(xmp).stat().st_mtime if xmp and Path(xmp).exists() else None
-        try:
-            render_mtime = Path(render_src).stat().st_mtime
-        except OSError:
-            return None, None
-        if crop_mtime is not None and crop_mtime > render_mtime:
-            return base, crop                      # render is stale → show base + crop
-        return None, None
-
     def request_image(self, upn_key: str, target_w, on_ready: PixmapCallback) -> None:
         src = self._display_source(upn_key)
         # Crop the preview to the PhotoLab/LR crop so the composition matches the
         # edit. Applies to a RAW preview OR an ORIGINAL camera JPG (reads its crop
         # from <source>.dop — what our crop tool wrote). A render (_DxO/-small) is
-        # normally shown as-is (already cropped) — unless it's older than our crop,
-        # in which case it's stale and we show the RAW/original + crop instead.
+        # normally shown as-is (already cropped) — unless its pixels show the full
+        # frame, not the crop (exported before the crop reached PhotoLab): then the
+        # RAW/original + crop is shown instead and the JPG is flagged out of date.
         crop = None
+        is_render = False
         if src:
             ext = src.suffix.lower()
             is_render = "dxo" in src.name.lower() or "-small" in src.name.lower()
             if is_render:
-                base, base_crop = self._stale_render_fallback(upn_key, src)
-                if base is not None:
-                    src, crop = base, base_crop
+                pass                   # decided in produce(): it decodes pixels
             elif ext in _RAW_EXTS:
                 crop = crop_for(src, self._xmp_for(upn_key))
             elif ext in (".jpg", ".jpeg"):
                 crop = crop_for(src)   # <jpg>.dop, written by suggest_crop
+        disk_dir = preview_cache_dir_for(src.parent) if src is not None else None
+        stem = src.stem if src is not None else None
+        # A disk-cached thumb skips produce(), so the verdict for a stale render
+        # is kept as a marker beside it (drop_disk_thumbs removes both together
+        # on a re-export or re-crop).
+        marker = disk_dir / f"{stem}@stale.jpg" if is_render and disk_dir else None
+        if marker is not None and upn_key not in self._jpg_stale and marker.exists():
+            self._jpg_stale[upn_key] = True
 
         def produce():
-            if src is None:
+            show, show_crop = src, crop
+            if is_render:
+                base = self._crop_source(upn_key)   # RAW / original JPG, never a render
+                base_crop = crop_for(base, self._xmp_for(upn_key)) if base else None
+                stale = False
+                if base_crop:
+                    base_pv = cached_jpg_for(base, preview_cache_dir_for(base.parent))
+                    stale = bool(base_pv and base_pv.exists()
+                                 and jpg_ignores_crop(src, base_pv, base_crop))
+                self._jpg_stale[upn_key] = stale
+                if stale:
+                    show, show_crop = base, base_crop
+                try:
+                    if stale:
+                        marker.parent.mkdir(parents=True, exist_ok=True)
+                        marker.touch()
+                    elif marker.exists():
+                        marker.unlink()
+                except OSError:
+                    pass
+            if show is None:
                 return None
-            p = cached_jpg_for(src, preview_cache_dir_for(src.parent))
+            p = cached_jpg_for(show, preview_cache_dir_for(show.parent))
             if p and p.exists():
                 img = QImage(str(p))
                 if img.isNull():
                     return None
-                return apply_crop(img, crop) if crop else img
+                return apply_crop(img, show_crop) if show_crop else img
             return None
         from gui.thumb_cache import cached_thumb_request
         sig = self._img_sigs.get(upn_key)   # source + mtimes; changes on re-crop / new render
-        disk_dir = preview_cache_dir_for(src.parent) if src is not None else None
-        stem = src.stem if src is not None else None
         cached_thumb_request(self._thumb_cache, self._loader, upn_key,
                              target_w, sig, produce, on_ready,
                              disk_dir=disk_dir, stem=stem)
+
+    def jpg_out_of_date(self, upn_key: str) -> bool:
+        """True when this picture's render shows the full frame, not its crop —
+        known once request_image has loaded it (or from its disk marker)."""
+        return self._jpg_stale.get(upn_key, False)
 
     def crop_present(self, upn_key: str) -> bool:
         """True if this picture carries a crop, for the card's "#" marker. Checks
