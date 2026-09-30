@@ -109,6 +109,10 @@ class RatingEditorItem(PictureItem):
         return self._c.crop_rect(self._key)
 
     @property
+    def jpg_out_of_date(self) -> bool:
+        return self._c.jpg_out_of_date(self._key)
+
+    @property
     def can_set_crop(self) -> bool:
         """A crop suggestion is written to the RAW's DxO .dop / Lightroom .xmp for
         PhotoLab to open with, so it needs a writable trip picture that has a RAW.
@@ -358,6 +362,10 @@ class RatingEditorCollection(PictureCollection):
         # a species' whole grid isn't re-reading sidecars; cleared on rebuild and
         # invalidated per key on set_crop.
         self._crop_flag_cache: dict[str, bool] = {}
+        # {upn -> the JPG shows the full frame, not the crop}: filled by
+        # request_image (gui.picture_provider.jpg_ignores_crop). Cleared with
+        # _crop_flag_cache.
+        self._jpg_stale_cache: dict[str, bool] = {}
         # JPGs baked in-session by Create JPG (embedded preview + crop). Not in
         # the trip CSVs until the next Read & Summarize, so jpg_path() consults
         # this so the card can show the new image right away.
@@ -736,6 +744,7 @@ class RatingEditorCollection(PictureCollection):
         # across the NL/Eng/Sci display languages. The Master Species Viewer has
         # no trip rows to resolve from, so it passes the sci in directly.
         self._crop_flag_cache.clear()   # sidecars may have changed since last build
+        self._jpg_stale_cache.clear()
         sci = (forced_sci or "").strip().casefold() or None
         if sci is None and filter_name and self._include_master and self._master_db is not None:
             for row in self.fpr.upn.UniquePictureName_dict.values():
@@ -1218,23 +1227,38 @@ class RatingEditorCollection(PictureCollection):
 
     def request_image(self, upn_key: str, target_w, on_ready: PixmapCallback) -> None:
         def produce():
+            from gui.picture_provider import crop_for, apply_crop, jpg_ignores_crop
             p = self._image_path(upn_key)   # may extract RAW — off the GUI thread
             if not (p and p.exists()):
                 return None
+            jpg = self.jpg_path(upn_key)
+            crop = crop_for(self.raw_path(upn_key))
+            # A JPG render is normally already cropped and shown as-is. But one
+            # made before the crop reached PhotoLab is the full frame: then show
+            # the RAW's own preview + the crop, and flag the JPG as out of date.
+            if jpg is not None and crop and upn_key not in self._master_keys:
+                raw_thumb = self._raw_thumb_path(upn_key)
+                stale = bool(raw_thumb and raw_thumb.exists()
+                             and jpg_ignores_crop(jpg, raw_thumb, crop))
+                self._jpg_stale_cache[upn_key] = stale
+                if stale:
+                    p, jpg = raw_thumb, None
             img = QImage(str(p))
             if img.isNull():
                 return None
             # When we're showing the RAW's own embedded preview (no JPG render
-            # yet), overlay any PhotoLab/Lightroom crop so the composition matches
-            # the edit — the same as the culling viewer. A JPG render is already
-            # cropped, so it's shown as-is.
-            if self.jpg_path(upn_key) is None:
-                from gui.picture_provider import crop_for, apply_crop
-                crop = crop_for(self.raw_path(upn_key))
-                if crop:
-                    img = apply_crop(img, crop)
+            # yet, or a stale one), overlay any PhotoLab/Lightroom crop so the
+            # composition matches the edit — the same as the culling viewer.
+            if jpg is None and crop:
+                img = apply_crop(img, crop)
             return img
         self._loader.request(produce, on_ready, target_w=target_w)
+
+    def jpg_out_of_date(self, upn_key: str) -> bool:
+        """True when this picture's JPG shows the full frame, not its crop — set by
+        request_image once the image has loaded (the check decodes pixels, so it
+        runs there, off the GUI thread). False until then, and for master cards."""
+        return self._jpg_stale_cache.get(upn_key, False)
 
     def request_uncropped_image(self, upn_key: str, on_ready: PixmapCallback) -> None:
         """The RAW's full, UNCROPPED embedded preview — what the crop tool draws a
@@ -1260,6 +1284,7 @@ class RatingEditorCollection(PictureCollection):
         from engine.sidecarlib import suggest_crop
         res = suggest_crop(str(raw), crop)
         self._crop_flag_cache.pop(upn_key, None)   # crop marker must re-evaluate
+        self._jpg_stale_cache.pop(upn_key, None)
         from gui.picture_provider import verify_crop_written
         verify_crop_written(raw, crop, res, who="RatingEditorCollection")
         return res
@@ -1351,6 +1376,7 @@ class RatingEditorCollection(PictureCollection):
             return {"status": "failed", "reason": str(e)}
         self._blog_jpgs[upn_key] = out
         self._crop_flag_cache.pop(upn_key, None)   # image is now the baked JPG
+        self._jpg_stale_cache.pop(upn_key, None)
         logger.info(f"Blog JPG created → {out.name} "
                     f"({baked_size[0]}×{baked_size[1]}, "
                     f"{'cropped' if crop else 'full frame'}).")
@@ -1567,6 +1593,7 @@ class RatingEditorCollection(PictureCollection):
         self._redistill_upn(upn_key)
         self._persist_upn(upn_key, wrote_file=True)
         self._crop_flag_cache.pop(upn_key, None)   # a new render/crop may have arrived
+        self._jpg_stale_cache.pop(upn_key, None)
 
         jpgs = [n for n in added if n.rsplit(".", 1)[-1].lower() in ("jpg", "jpeg")]
         metas = [n for n in added if n not in jpgs]

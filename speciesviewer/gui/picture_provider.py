@@ -126,6 +126,82 @@ def crop_for(raw_path, xmp_path=None):
     return _sidecar_edit(raw_path, xmp_path, "crop")
 
 
+def jpg_ignores_crop(jpg_path, preview_path, crop) -> bool:
+    """True when the JPG shows the FULL frame, not `crop` — it was made before
+    the crop reached the editor, so it is the old framing.
+
+    A JPG beside the RAW (a DxO render, a Make JPG, a camera JPEG) is normally
+    shown as-is: it is taken to be the finished, already-cropped picture. On
+    2026-09-30 (Brazil n9074067) that showed the full frame while PhotoLab showed
+    the crop: the _DxO.jpg had been exported while the crop was still held out of
+    the .dop (PhotoLab was running), so PhotoLab rendered it uncropped.
+
+    Only the PIXELS can say so. Timestamps cannot: PhotoLab rewrites the RAW's
+    .dop ~3 s after every export and often hours later (324 of 379 Brazil
+    renders have a newer .dop). The JPG's own metadata cannot either: this very
+    export carries the crs:Crop of the crop it does NOT show — PhotoLab copies the
+    .xmp across without applying it.
+
+    So compare a tiny grey version of the JPG with the RAW preview whole and
+    with the preview cropped. Stale only when the whole frame is a near-perfect
+    match AND clearly beats the crop — on the Brazil trip (292 cropped renders)
+    that is n9074067 alone (0.99 vs 0.27); the near-ties are JPGs that match
+    neither (cropped differently in PhotoLab) and are left alone.
+
+    Cached per (jpg, its mtime, crop): decodes two images, so run it off the GUI
+    thread (a provider's produce()). Unreadable input → False (trust the JPG)."""
+    from pathlib import Path
+    try:
+        key = (str(jpg_path), Path(str(jpg_path)).stat().st_mtime_ns,
+               str(preview_path),
+               tuple(round(float(crop[k]), 6) for k in ("left", "top", "width", "height")))
+    except (OSError, KeyError, TypeError, ValueError):
+        return False
+    hit = _JPG_VERDICTS.get(key)
+    if hit is not None:
+        return hit
+    try:
+        from PIL import Image, ImageOps
+        import numpy as np
+        jpg = Image.open(str(jpg_path))
+        jpg.draft("L", (400, 400))          # JPEG decode at 1/2..1/8 scale: cheap
+        jpg = ImageOps.grayscale(jpg)
+        pv = Image.open(str(preview_path))
+        pv.draft("L", (1200, 1200))
+        pv = ImageOps.grayscale(pv)
+        w, h = pv.size
+        box = (round(crop["left"] * w), round(crop["top"] * h),
+               round((crop["left"] + crop["width"]) * w),
+               round((crop["top"] + crop["height"]) * h))
+        size = (48, max(8, round(48 * jpg.size[1] / jpg.size[0])))
+
+        def vec(im):
+            v = np.asarray(im.resize(size, Image.BILINEAR), dtype=float).ravel()
+            v -= v.mean()
+            n = np.linalg.norm(v)
+            return v / n if n else v
+        j = vec(jpg)
+        full, cropped = float(j @ vec(pv)), float(j @ vec(pv.crop(box)))
+        verdict = full >= 0.9 and full - cropped >= 0.2
+    except Exception as e:
+        logger.debug(f"jpg_ignores_crop: could not compare {jpg_path}: {e}")
+        verdict = False
+    if verdict:
+        logger.info(f"{Path(str(jpg_path)).name} shows the full frame, not the "
+                    f"crop (match {full:.2f} vs {cropped:.2f}): showing the crop instead")
+    _JPG_VERDICTS[key] = verdict
+    return verdict
+
+
+_JPG_VERDICTS: dict = {}
+
+
+JPG_OUT_OF_DATE_TIP = (
+    "This picture's JPG shows the whole frame, not the crop, so it was made before "
+    "the crop. The picture here shows the crop. Export the JPG again (PhotoLab or "
+    "Make JPG) before it goes to the website.")
+
+
 def verify_crop_written(raw_path, crop, res=None, who="") -> bool:
     """Read the crop straight back out of the files and log what happened.
 
@@ -354,6 +430,13 @@ class PictureItem(ABC):
         None when no rectangle is readable — has_crop can still be True then (a
         baked render is recognised by its size alone)."""
         return None
+
+    @property
+    def jpg_out_of_date(self) -> bool:
+        """True when the picture's JPG shows the full frame, not its crop (see
+        jpg_ignores_crop): the viewer shows the RAW + crop, the JPG is stale.
+        Known once the image has been loaded — False until then."""
+        return False
 
     # ── location line (grid card, opt-in) ────────────────────────────────────
     # show_location_line → the card draws a place line under the species name.

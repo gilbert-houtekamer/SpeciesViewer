@@ -1187,6 +1187,12 @@ class PictureCard(QFrame):
         marks = []
         if getattr(self._item, "has_crop", False):
             marks.append("⌗ Crop")
+        # The JPG shows the full frame, not the crop (set once the image loaded —
+        # set_thumbnail calls this again). The card shows the crop regardless.
+        stale = getattr(self._item, "jpg_out_of_date", False)
+        if stale:
+            marks.append(f'<span style="color:{theme.WARN};font-weight:700;">'
+                         f'JPG out of date</span>')
         if self._show_status and self._item.description:
             if self._notes_editable():
                 # A clickable link → the Headline/Description editor; the label
@@ -1206,8 +1212,12 @@ class PictureCard(QFrame):
                 f'font-weight:700;" title="New render{plural} on disk, not in the '
                 f'master yet — click to add">+ JPG</a>')
         self._lbl_crop.setText("&nbsp;&nbsp;".join(marks))
-        self._lbl_crop.setToolTip("This picture carries a crop" if getattr(
-            self._item, "has_crop", False) else "")
+        if stale:
+            from gui.picture_provider import JPG_OUT_OF_DATE_TIP
+            self._lbl_crop.setToolTip(JPG_OUT_OF_DATE_TIP)
+        else:
+            self._lbl_crop.setToolTip("This picture carries a crop" if getattr(
+                self._item, "has_crop", False) else "")
 
     def _on_crop_link(self, href: str):
         """Route the two links that can appear on the filename line: the 📝 notes
@@ -1516,6 +1526,8 @@ class PictureCard(QFrame):
                 px = stamp_play_marker(px)
             self._thumb.setPixmap(px)
             self._update_thumb_style()
+            if getattr(self._item, "jpg_out_of_date", False):
+                self._refresh_crop_mark()  # the JPG-vs-crop verdict came with the image
             return
         # Legacy card: grow the label to the image, keep the '#' crop stamp.
         self._thumb.setFixedHeight(px.height() + 6)   # +6 for the 3px frame border

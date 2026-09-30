@@ -2551,10 +2551,7 @@ class LargeImageView(QDialog):
         if exts:
             _full += "  (" + " · ".join(exts) + ")"
         self._file_key_lbl.setToolTip(_full)
-        _crop = getattr(item, "has_crop", False)
-        self._file_crop_lbl.setText(("⌗ Crop  " + _cropped_size_text(item)).rstrip()
-                                    if _crop else "")
-        self._file_crop_lbl.setVisible(_crop)
+        self._refresh_crop_row(item)
         self._explorer_btn.setEnabled(bool(dir_path))
         raw = self._collection.raw_path(key)
         self._dxo_btn.setEnabled(raw is not None)
@@ -2659,9 +2656,27 @@ class LargeImageView(QDialog):
                 and self._view_tabs.currentIndex() == self._TAB_FULLRES:
             self._load_fullres()
 
+    def _refresh_crop_row(self, item):
+        """The FILE panel's crop row: '⌗ Crop <size>', plus a warning when the
+        picture's JPG shows the full frame, not the crop (known only once the
+        image has loaded — _on_pixmap calls this again)."""
+        _crop = getattr(item, "has_crop", False)
+        text = ("⌗ Crop  " + _cropped_size_text(item)).rstrip() if _crop else ""
+        stale = getattr(item, "jpg_out_of_date", False)
+        if stale:
+            from gui.picture_provider import JPG_OUT_OF_DATE_TIP
+            text += f'  ·  <span style="color:{theme.WARN};">JPG out of date</span>'
+            self._file_crop_lbl._v.setToolTip(JPG_OUT_OF_DATE_TIP)
+        else:
+            self._file_crop_lbl._v.setToolTip("")
+        self._file_crop_lbl.setText(text)
+        self._file_crop_lbl.setVisible(_crop)
+
     def _on_pixmap(self, token, pixmap):
         if token != self._load_token:
             return
+        if self._item is not None:
+            self._refresh_crop_row(self._item)   # the JPG-vs-crop verdict is in now
         # Kept UNADJUSTED — _render_fit re-applies the LUT from here on every
         # exposure-slider tick, same reasoning as _embed_base_img/
         # _fullres_base_img. This is the Fit tab: the FIRST thing shown when a
