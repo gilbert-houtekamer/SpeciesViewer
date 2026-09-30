@@ -1802,6 +1802,7 @@ class RatingEditorCollection(PictureCollection):
             upn_dir = trash_root / day / key
             upn_dir.mkdir(parents=True, exist_ok=True)
             raw_src = None
+            moved_here = []
             for fname in files:
                 frow = self.fpr.fi.files_dict.get(fname)
                 if not frow:
@@ -1813,13 +1814,14 @@ class RatingEditorCollection(PictureCollection):
                     try:
                         shutil.move(str(src), str(upn_dir / src.name))
                         srcs.append(src)
+                        moved_here.append(src)
                     except Exception as e:
                         logger.error(f"Trash move failed for {src.name}: {e}")
                 self.fpr.fi.files_dict.pop(fname, None)
                 # Also clean the per-day files dict (shared reference won't auto-reflect pops)
                 if self._day_objects and day in self._day_objects:
                     self._day_objects[day][0].files_dict.pop(fname, None)
-            sweep_dop(raw_src, upn_dir)
+            sweep_dop(raw_src, upn_dir, moved_here)
             self.fpr.upn.UniquePictureName_dict.pop(key, None)
             if self._day_objects and day in self._day_objects:
                 self._day_objects[day][1].UniquePictureName_dict.pop(key, None)

@@ -1544,6 +1544,7 @@ class PreviewCollection(PictureCollection):
             upn_dir = trash_root / key
             upn_dir.mkdir(parents=True, exist_ok=True)
             raw_src = None
+            moved_here = []
             for fname in self._files(key):
                 frow = self.fpr.fi.files_dict.get(fname)
                 if not frow:
@@ -1555,10 +1556,11 @@ class PreviewCollection(PictureCollection):
                     try:
                         shutil.move(str(src), str(upn_dir / src.name))
                         srcs.append(src)
+                        moved_here.append(src)
                     except Exception as e:
                         logger.error(f"Trash move failed for {src.name}: {e}")
                 self.fpr.fi.files_dict.pop(fname, None)
-            sweep_dop(raw_src, upn_dir)
+            sweep_dop(raw_src, upn_dir, moved_here)
             self.fpr.upn.UniquePictureName_dict.pop(key, None)
             deleted += 1
             if progress_cb and progress_cb(i + 1, total) is False:
@@ -1622,7 +1624,7 @@ class PreviewCollection(PictureCollection):
                 except Exception as e:
                     logger.error(f"trash_upn move failed for {src.name}: {e}")
             self.fpr.fi.files_dict.pop(fname, None)
-        sweep_dop(raw_src, dest)
+        sweep_dop(raw_src, dest, srcs)
         self.fpr.upn.UniquePictureName_dict.pop(key, None)
         from utils.preview_cache import drop_for_files
         drop_for_files(srcs)     # the RAW is gone; its cached preview is now junk

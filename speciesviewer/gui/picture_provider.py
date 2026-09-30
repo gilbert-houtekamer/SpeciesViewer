@@ -242,18 +242,30 @@ def verify_crop_written(raw_path, crop, res=None, who="") -> bool:
     return ok
 
 
-def sweep_dop(raw_src, dest_dir) -> None:
-    """Move a RAW's DxO recipe (``<rawname>.dop``) into dest_dir when the picture
-    is deleted, so no orphan recipe is left behind — Read & Summarize would
-    otherwise synthesise a phantom, image-less picture from a lone .dop. No-op
-    without a RAW or a .dop; idempotent (a .dop already trashed with the files is
-    simply gone). Shared by every delete path so they stay consistent."""
-    if not raw_src:
-        return
+def sweep_dop(raw_src, dest_dir, moved=()) -> None:
+    """Move the DxO recipes of a deleted picture into dest_dir — the RAW's
+    (``<rawname>.dop``) AND one beside every other file the delete moved
+    (`moved`, e.g. ``<name>_DxO.jpg.dop``) — so no orphan recipe is left behind:
+    Read & Summarize would otherwise synthesise a phantom, image-less picture
+    from a lone .dop.
+
+    Why every file, not just the RAW: PhotoLab writes a .dop for its own exported
+    JPG too, and does so whenever that JPG changes — a colour click on it is
+    enough (2026-09-30: 32 `_DxO.jpg.dop` left behind by a Blue delete, all
+    stamped 13 s after the Blue click). Such a .dop appears after the last read,
+    so it is not in the index and nothing else moves it.
+
+    No-op for a file without a .dop; idempotent (a .dop already trashed with the
+    files is simply gone). Shared by every delete path so they stay consistent."""
     import shutil
     from pathlib import Path
-    dop = Path(str(raw_src) + ".dop")
-    if dop.exists():
+    sources = [s for s in [raw_src, *moved] if s]
+    seen = set()
+    for src in sources:
+        dop = Path(str(src) + ".dop")
+        if dop.name.lower() in seen or not dop.exists():
+            continue
+        seen.add(dop.name.lower())
         try:
             shutil.move(str(dop), str(Path(dest_dir) / dop.name))
         except Exception as e:
