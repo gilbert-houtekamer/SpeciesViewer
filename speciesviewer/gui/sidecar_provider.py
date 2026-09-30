@@ -28,7 +28,7 @@ from PyQt6.QtGui import QImage
 from gui.picture_provider import (PictureItem, PictureCollection, ExifSummary,
                                   PixmapCallback, sweep_dop, apply_crop, crop_for,
                                   exposure_for, jpg_is_crop_by_size,
-                                  verify_crop_written)
+                                  verify_crop_written, jpg_ignores_crop)
 from gui.image_loader import AsyncImageLoader
 from gui.master_ops import MasterCardOpsMixin
 from gui.preview_provider import cached_jpg_for, preview_cache_dir_for
@@ -414,6 +414,10 @@ class SidecarItem(PictureItem):
         return self._c._crop_for(self._stem)
 
     @property
+    def jpg_out_of_date(self) -> bool:
+        return self._c.jpg_out_of_date(self._stem)
+
+    @property
     def place_fields(self) -> dict:
         r = self._row
         base = {k: str(r.get(k, "") or "")
@@ -645,6 +649,8 @@ class SidecarCollection(MasterCardOpsMixin, PictureCollection):
                 g["meta"] = g["xmp"]
         _mark("group")
         self._crop_cache: dict = {}      # stem -> normalised crop | None (cleared on refresh)
+        # stem -> its JPG shows the full frame, not the crop (jpg_ignores_crop)
+        self._jpg_stale: dict = {}
         self._exposure_cache: dict = {}  # stem -> EV float | None (cleared on refresh)
         self._jpg_dims_cache: dict = {}  # jpg path -> "WxH" (header read, for the crop size cue)
         self._created_blog_jpgs: set = set()  # stems whose <stem>.jpg WE baked (safe to overwrite)
@@ -1092,6 +1098,7 @@ class SidecarCollection(MasterCardOpsMixin, PictureCollection):
         from gui import geolocate
         geolocate._LOCATION_READ_CACHE.clear()
         self._crop_cache.clear()         # a re-crop in PhotoLab/LR must re-read
+        self._jpg_stale.clear()
         self._exposure_cache.clear()     # ditto for an exposure change made externally
         # A render (PhotoLab _DxO.jpg, LR/v5 export) may have appeared — fold it in
         # (switches the display source RAW→JPG, caught by the image signature too).
@@ -1131,6 +1138,7 @@ class SidecarCollection(MasterCardOpsMixin, PictureCollection):
     def _drop_thumb_caches(self, stem):
         """Forget every cached thumbnail (RAM + on-disk) for one picture."""
         self._thumb_cache.invalidate(stem)
+        self._jpg_stale.pop(stem, None)
         src = self._source_file(stem)
         raw = self._groups.get(stem, {}).get("raw")
         from gui.thumb_cache import drop_disk_thumbs
@@ -1622,31 +1630,63 @@ class SidecarCollection(MasterCardOpsMixin, PictureCollection):
         src = self._source_file(stem)
         # Crop the RAW embedded preview to the PhotoLab/Lightroom crop so the cull
         # composition matches the edit. A JPG source (a DxO/LR render) is already
-        # cropped, so it's shown as-is. crop=False (the crop tool) shows the full
-        # uncropped frame so the user can draw a fresh rectangle.
+        # cropped, so it's shown as-is — unless its pixels show the full frame, not
+        # the crop (made before the crop reached PhotoLab): then the RAW preview +
+        # crop is shown and the JPG is flagged out of date. crop=False (the crop
+        # tool) shows the full uncropped frame so the user can draw a fresh rectangle.
+        raw = self._groups.get(stem, {}).get("raw")
+        is_jpg = bool(src and Path(src).suffix.lower() not in _RAW_EXTS)
+        raw_crop = (self._crop_for(stem)
+                    if crop and is_jpg and raw and Path(raw).exists() else None)
         crop = (self._crop_for(stem)
                 if crop and src and Path(src).suffix.lower() in _RAW_EXTS else None)
+        disk_dir = self._cache_dir_for(Path(src)) if src else None
+        stem_name = Path(src).stem if src else None
+        # A disk-cached thumb skips produce(), so a stale verdict is kept as a
+        # marker beside it (drop_disk_thumbs removes both on a re-crop / new render).
+        marker = disk_dir / f"{stem_name}@stale.jpg" if raw_crop and disk_dir else None
+        if marker is not None and stem not in self._jpg_stale and marker.exists():
+            self._jpg_stale[stem] = True
 
         def produce():
             if not src:
                 return None
-            p = cached_jpg_for(Path(src), self._cache_dir_for(Path(src)))
+            show, show_crop = Path(src), crop
+            if raw_crop:
+                raw_pv = cached_jpg_for(Path(raw), self._cache_dir_for(Path(raw)))
+                stale = bool(raw_pv and raw_pv.exists()
+                             and jpg_ignores_crop(src, raw_pv, raw_crop))
+                self._jpg_stale[stem] = stale
+                if stale:
+                    show, show_crop = Path(raw), raw_crop
+                try:
+                    if stale:
+                        marker.parent.mkdir(parents=True, exist_ok=True)
+                        marker.touch()
+                    elif marker.exists():
+                        marker.unlink()
+                except OSError:
+                    pass
+            p = cached_jpg_for(show, self._cache_dir_for(show))
             if p and p.exists():
                 img = QImage(str(p))
                 if img.isNull():
                     return None
-                return apply_crop(img, crop) if crop else img
+                return apply_crop(img, show_crop) if show_crop else img
             return None
         from gui.thumb_cache import cached_thumb_request
         # Uncropped (crop-tool) requests come with target_w=None, so they take
         # the straight-through branch and are never cached alongside the cropped
         # display pixmap.
         sig = self._image_sigs.get(stem)   # source + mtimes; changes on re-crop / new render
-        disk_dir = self._cache_dir_for(Path(src)) if src else None
-        stem_name = Path(src).stem if src else None
         cached_thumb_request(self._thumb_cache, self._loader, stem,
                              target_w, sig, produce, on_ready,
                              disk_dir=disk_dir, stem=stem_name)
+
+    def jpg_out_of_date(self, stem: str) -> bool:
+        """True when this picture's JPG shows the full frame, not its crop — known
+        once request_image has loaded it (or from its disk marker)."""
+        return self._jpg_stale.get(stem, False)
 
     def jpg_path(self, key: str):
         g = self._groups.get(key, {})
