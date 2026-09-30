@@ -2003,35 +2003,6 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
         main_layout.addWidget(self._status)
 
         # ── Scroll area ───────────────────────────────────────────────────────
-        # ── Selection bar (hidden until ≥1 card is selected) ─────────────────
-        self._sel_bar = QWidget()
-        _sb_layout = QHBoxLayout(self._sel_bar)
-        _sb_layout.setContentsMargins(4, 2, 4, 2)
-        _sb_layout.setSpacing(8)
-        self._sel_label = QLabel()
-        self._sel_label.setStyleSheet("color: #1565c0; font-weight: bold;")
-        _sb_layout.addWidget(self._sel_label)
-        self._sel_species_btn = QPushButton("Set species…")
-        self._sel_species_btn.clicked.connect(self._open_species_dialog_for_selection)
-        _sb_layout.addWidget(self._sel_species_btn)
-        # Move the selection to a DIFFERENT species that already exists (the two
-        # swans mislabelled among the ducks). Target is constrained to the trip's
-        # species list — no new species, no GBIF.
-        self._sel_move_btn = QPushButton("Move to species…")
-        self._sel_move_btn.setToolTip(
-            "Reassign the selected pictures to an existing species")
-        self._sel_move_btn.clicked.connect(self._move_selection_to_species)
-        _sb_layout.addWidget(self._sel_move_btn)
-        if self._album_mode:
-            self._sel_species_btn.hide()   # re-shown by _apply_lock_ui if editable
-            self._sel_move_btn.hide()
-        _sb_layout.addStretch()
-        _sel_clear_btn = QPushButton("Clear selection")
-        _sel_clear_btn.clicked.connect(self._clear_selection)
-        _sb_layout.addWidget(_sel_clear_btn)
-        self._sel_bar.setVisible(False)
-        main_layout.addWidget(self._sel_bar)
-
         self._scroll = QScrollArea()
         self._scroll.setWidgetResizable(True)
         # Wrap grid in a VBox so the stretch below it absorbs extra viewport
@@ -2133,8 +2104,7 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
         # A fully-locked (Day scope, frozen) panel hides the cull + species-edit
         # actions. In Trip scope with only SOME frozen, they stay (they act on the
         # editable pictures; frozen keys are filtered by each handler).
-        for w in (self._del_blue_btn, self._del_purple_btn,
-                  self._sel_move_btn, self._sel_species_btn):
+        for w in (self._del_blue_btn, self._del_purple_btn):
             w.setVisible(not locked and not self._view_read_only)
         if self._album_mode:
             # Both act on the master, so they follow the same write policy. ↻
@@ -3527,10 +3497,6 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
         # set_selected() from self._selected_keys the moment they're bound.
         for c in self._pool:
             c.set_selected(c.upn_key in self._selected_keys)
-        n = len(self._selected_keys)
-        self._sel_bar.setVisible(n > 0)
-        if n > 0:
-            self._sel_label.setText(f"{n} picture{'s' if n != 1 else ''} selected")
 
     def _selection_from_brackets(self) -> set:
         order = list(self._order)
@@ -3566,11 +3532,6 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
         return {k for k in keys
                 if (self._album_mode or not self._collection.is_master(k))
                 and not self._collection.is_frozen_day(k)}
-
-    def _open_species_dialog_for_selection(self):
-        keys = self._editable_keys(self._selected_keys)
-        if keys:
-            self._open_species_dialog_for_keys(keys)
 
     def _on_card_context_menu(self, upn_key: str):
         from PyQt6.QtWidgets import QMenu
@@ -3808,12 +3769,7 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
         dlg_layout.addLayout(row)
         dlg.show()
 
-    # ── Move a selection to an existing species ───────────────────────────────
-    def _move_selection_to_species(self):
-        keys = self._editable_keys(self._selected_keys)
-        if keys:
-            self._move_keys_to_species(keys)
-
+    # ── Move pictures to an existing species ──────────────────────────────────
     def _move_keys_to_species(self, keys: set):
         """Reassign the given pictures to a species that already exists in the
         trip's species list (species.csv). Unlike 'Set species…' this offers no

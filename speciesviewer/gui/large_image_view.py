@@ -1425,26 +1425,6 @@ class LargeImageView(QDialog):
         pl.addWidget(sec_desc)
         pl.addStretch(1)
 
-        # ── Selection bar (same markup in both layout modes) ──────────────────
-        self._sel_bar = QWidget()
-        self._sel_bar.setStyleSheet("background: #1e2a3a; border-radius: 3px;")
-        sel_row = QHBoxLayout(self._sel_bar)
-        sel_row.setContentsMargins(8, 4, 8, 4)
-        sel_row.setSpacing(8)
-        self._sel_label = QLabel("")
-        self._sel_label.setStyleSheet("font-size: 11px; color: #ccc;")
-        sel_row.addWidget(self._sel_label)
-        sel_row.addStretch()
-        for _txt, _slot in (("Set species…", self._batch_species),
-                             ("Set rating…",  self._batch_rating),
-                             ("Clear",        self._clear_selection)):
-            _btn = QPushButton(_txt)
-            _btn.setFlat(True)
-            _btn.setStyleSheet("font-size: 11px; color: #aad4ff; padding: 2px 6px;")
-            _btn.clicked.connect(_slot)
-            sel_row.addWidget(_btn)
-        self._sel_bar.setVisible(False)
-
         sep = QFrame()
         sep.setFrameShape(QFrame.Shape.HLine)
         sep.setStyleSheet("color: #555; margin: 0;")
@@ -1463,14 +1443,13 @@ class LargeImageView(QDialog):
         self._filmstrip_bottom.item_clicked.connect(self._on_filmstrip_click)
         self._filmstrip_bottom.item_right_clicked.connect(self._on_filmstrip_context)
 
-        # Content wrapper: image+panel splitter + sel-bar + sep
+        # Content wrapper: image+panel splitter + sep
         # (top pane of _v_splitter in both modes)
         content_wrapper = QWidget()
         wrap_vbox = QVBoxLayout(content_wrapper)
         wrap_vbox.setContentsMargins(0, 0, 0, 0)
         wrap_vbox.setSpacing(0)
         wrap_vbox.addWidget(self._splitter, stretch=1)
-        wrap_vbox.addWidget(self._sel_bar)
         wrap_vbox.addWidget(sep)
 
         # _v_splitter: content (top) | bottom filmstrip (bottom). Content takes
@@ -3059,9 +3038,8 @@ class LargeImageView(QDialog):
         self.picture_navigated.emit(key)
 
     def _on_filmstrip_context(self, key: str):
-        """Right-click a filmstrip cell → Set species… / Set rating… / Delete, a
-        second way into the same batch ops as the '[' ... ']' selection bar. Acts
-        on the current selection when the clicked cell is part of it, else on
+        """Right-click a filmstrip cell → Set species… / Set rating… / Delete, the
+        batch ops for a '[' ... ']' selection. Acts on the current selection when the clicked cell is part of it, else on
         that one picture. Delete still goes through the host (same protection
         as the grid) via drop_keys()."""
         from PyQt6.QtWidgets import QMenu
@@ -3156,11 +3134,8 @@ class LargeImageView(QDialog):
         for _fs in (self._filmstrip_left, self._filmstrip_bottom):
             _fs.set_selected(self._selected_keys)
         n = len(self._selected_keys)
-        self._sel_bar.setVisible(n > 0)
         self._update_exposure_apply_btn()
         if n > 0:
-            self._sel_label.setText(
-                f"{n} picture{'s' if n != 1 else ''} selected")
             self._apply_all_btn.setText(f"Apply to {n} selected")
             self._apply_all_btn.setEnabled(True)
             self._apply_all_btn.setStyleSheet(
@@ -3261,8 +3236,8 @@ class LargeImageView(QDialog):
             self._load_current()
 
     def _batch_species(self, keys=None):
-        # Default to the selection bar's target: whatever's multi-selected, else
-        # the currently-viewed picture. A caller with its own target (the
+        # Default target (the 's' key): whatever's multi-selected, else the
+        # currently-viewed picture. A caller with its own target (the
         # filmstrip right-click menu) passes keys explicitly.
         if keys is None:
             keys = set(self._selected_keys) or ({self._item.key} if self._item else set())
@@ -3497,13 +3472,13 @@ class LargeImageView(QDialog):
             self._on_species_committed(set(keys))
 
     def _batch_rating(self, keys=None):
-        # Default to the selection bar's target; a caller with its own target
+        # Default target (the 'c' key) is the selection; a caller with its own target
         # (the filmstrip right-click menu) passes keys explicitly.
         if keys is None:
             keys = set(self._selected_keys)
         if not keys:
             return
-        # The selection bar's "Set rating…" is always visible, but a read-only
+        # The 'c' key reaches this whatever the viewer, but a read-only
         # viewer with no edit carve-out must not batch-write to the master. Edit
         # flags are per-collection, so one representative item answers for all.
         rep = self._collection.item_for_key(next(iter(keys)))

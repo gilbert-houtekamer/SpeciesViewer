@@ -67,6 +67,9 @@ retired.
 
 **5. The bottom selection bar is unique in the app.** Nothing else uses a
 persistent action bar for a selection; every other surface uses a context menu.
+*Correction (2026-09-30): not true — both grids (A and B) also raise a selection
+bar with Set species… / Clear selection (B adds Move to species…). The Editor's
+was the only one on a non-grid window.*
 It is also where the duplication in (4) lives.
 
 **6. Some gaps are arguably correct.** *Full resolution* pre-decodes so the 100%
@@ -107,7 +110,11 @@ already uses between display name and code name.
 1. **Exposure** (D2) — the reported bug, and the one costing time now.
 2. **The rename** (D4) — cheap, and it makes the parity requirement self-evident
    to anyone who opens the window afterwards.
-3. **Retire the bottom bar** (D3) — removes two duplicate paths with it.
+3. ~~**Retire the bottom bar** (D3)~~ ✅ 2026-09-30 — removed outright, count label
+   included; right-click, `s`/`c`, Esc/Ctrl+D cover everything it did. The two
+   grids' selection bars went too (his call, same day): no surface in the app
+   has a persistent selection bar any more — a selection is acted on by
+   right-click, and cleared with Esc.
 4. **The rest of the parity table** (D1 + D5) — mechanical once the action set is
    named and the Editor inherits it from its host.
 

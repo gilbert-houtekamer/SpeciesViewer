@@ -596,24 +596,6 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
             _sbl.addStretch()
             layout.addWidget(self._start_bar)
 
-        # ── Selection bar (hidden until ≥1 card is selected) ─────────────────
-        self._sel_bar = QWidget()
-        _sb_layout = QHBoxLayout(self._sel_bar)
-        _sb_layout.setContentsMargins(4, 2, 4, 2)
-        _sb_layout.setSpacing(8)
-        self._sel_label = QLabel()
-        self._sel_label.setStyleSheet("color: #1565c0; font-weight: bold;")
-        _sb_layout.addWidget(self._sel_label)
-        _sel_species_btn = QPushButton("Set species…")
-        _sel_species_btn.clicked.connect(self._open_species_dialog_for_selection)
-        _sb_layout.addWidget(_sel_species_btn)
-        _sb_layout.addStretch()
-        _sel_clear_btn = QPushButton("Clear selection")
-        _sel_clear_btn.clicked.connect(self._clear_selection)
-        _sb_layout.addWidget(_sel_clear_btn)
-        self._sel_bar.setVisible(False)
-        layout.addWidget(self._sel_bar)
-
         # Scroll area + grid (grid wrapped in a VBox with a trailing stretch so
         # rows stay top-aligned instead of expanding to fill the viewport).
         self.scroll_area = QScrollArea()
@@ -1738,10 +1720,6 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
     def _update_selection_display(self):
         for c in list(self._bound.values()):
             c.set_selected(c.upn_key in self._selected_keys)
-        n = len(self._selected_keys)
-        self._sel_bar.setVisible(n > 0)
-        if n > 0:
-            self._sel_label.setText(f"{n} picture{'s' if n != 1 else ''} selected")
 
     def _selection_from_brackets(self) -> set:
         order = list(self._order)
@@ -1765,10 +1743,6 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
         self._bracket_left = None
         self._bracket_right = None
         self._update_selection_display()
-
-    def _open_species_dialog_for_selection(self):
-        if self._selected_keys:
-            self._open_species_dialog_for_keys(self._selected_keys)
 
     def _on_card_context_menu(self, key: str):
         from PyQt6.QtWidgets import QMenu

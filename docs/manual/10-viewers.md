@@ -168,13 +168,15 @@ by body — useful on a trip shot with two.
 > is why regenerating a page can come back looking unchanged. **↻** does that
 > scan, and ingests anything new it finds.
 
-Select one or more cards and a **selection bar** appears:
+Select one or more cards and **right-click** one of them; the menu acts on the
+whole selection. Two of its entries name the pictures:
 
-| Button | Does |
+| Menu item | Does |
 |---|---|
 | **Set species…** | Identify the whole selection at once |
-| **Move to species…** | Reassign the selection to a *different existing* species — the two swans mislabelled among the ducks. Constrained to the trip's species list: no new species, no GBIF lookup. |
-| **Clear selection** | |
+| **Move to existing species…** | Reassign the selection to a *different existing* species — the two swans mislabelled among the ducks. Constrained to the trip's species list: no new species, no GBIF lookup. |
+
+**Esc** clears the selection.
 
 > **"look in trip names"** in the Set species dialog narrows its as-you-type
 > suggestions to species already recorded on this trip, instead of the full
@@ -244,8 +246,8 @@ These stack on top of whichever view filter is active, and on each other:
 | **Per row:** | Cards per row, 1 to 10 |
 | **Cancel** | Stop the scan in progress |
 
-Selecting cards raises the same selection bar, with **Set species…** and
-**Clear selection**.
+Select cards and **right-click** one to act on the whole selection;
+**Esc** clears it.
 
 > **🔄 Refresh is the answer to "I changed it in PhotoLab and nothing happened."**
 > The colour and rating live in the sidecar; SpeciesViewer re-reads on focus, but
