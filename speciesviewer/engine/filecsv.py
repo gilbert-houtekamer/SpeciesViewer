@@ -8,32 +8,8 @@ from engine.csv_columns import COLUMN_NAMES
 logger = logging.getLogger("speciesviewer")
 
 # strip all suffixes for files from Lightroom, DxO PureRaw, DxO Photolab, Capture etc
-def deriveUniquePictureName(windows_filename):
-    # start with filename.extensiom
-    # strip extension, make it lower case
-    uniquename, extension = os.path.splitext(windows_filename)
-    if extension.lower() == ".dop":  # DOP sidecars carry a double extension (e.g. foo.ORF.dop)
-        uniquename, extension = os.path.splitext(uniquename)
-    uniquename = uniquename.lower()
-    # look for common extensions
-    uniquename = uniquename.split("-small")[0]  # SpeciesViewer
-    uniquename = uniquename.replace(
-        "-nef", ""
-    )  # Remove "-NEF" from the uniquename (if present)
-    # the following should be externalized!  BUGBUG
-    uniquename = uniquename.split("-orf")[0]  # Remove "-ORF" from the uniquename (if present)
-    # Remove "-DxO" and any characters after it (if present)
-    uniquename = uniquename.split("-DxO")[0]  # PureRaw 4
-    uniquename = uniquename.split("_DxO")[0]  # PureRaw 3
-    uniquename = uniquename.split("_dxo")[0]  # PhotoLab
-    # 
-    uniquename = uniquename.split("-jpg")[0]  # PhotoLab
-    uniquename = uniquename.split("-JPG")[0]  # PhotoLab
-    # Windows? - Copy
-    uniquename = uniquename.replace(
-        " - copy", ""
-    )  # Remove "-ORF" from the uniquename (if present)
-    return uniquename
+# One copy, in engine.handling — two identical ones had already been edited apart once.
+from engine.handling import deriveUniquePictureName  # noqa: F401 (re-exported)
 
 
 # read files without MyProject

@@ -48,7 +48,9 @@ def ensure_list(subject):
 # confirmed writable 2026-09-18 with exiftool against a real camera .MOV).
 # RAW files are skipped — their XMP sidecar holds the keyword, so embedding in
 # the raw is redundant — and the DxO .dop is skipped because it is a database
-# with no XMP:Subject (writing there only produced a warning).
+# with no XMP:Subject (writing there only produced a warning). The headline and
+# description writers use the same list: a HEIC carries its own metadata, and a
+# .dop refuses an XMP tag ("Writing of this type of file is not supported").
 _SUBJECT_WRITE_EXT = {"xmp", "jpg", "jpeg", "heic", "heif", "png"} | bare(VIDEO)
 
 # The RAW extensions, bare, for "which file does this picture's sidecar belong
@@ -134,15 +136,14 @@ class FilePicture:
         except KeyError:
             logger.warning(f"updateDescription: no CSV row for {filename}")
             return 0
-        raw_exts = bare(RAW_OR_HEIC)  # canonical table — see utils/raw_extensions.py
         files_written = 0
         for f_key, f_row in self.fi.files_dict.items():
             if f_row.get("UniquePictureName") != upn_name:
                 continue
             f_row["XMP:Description"] = new_description
             ext = f_row.get("WindowsExtension", "").lower()
-            if ext in raw_exts:
-                continue  # RAW files stay immutable
+            if ext not in _SUBJECT_WRITE_EXT:
+                continue  # RAW stays immutable; a .dop has no XMP to write
             filepath = Path(f_row.get("WindowsFileName", ""))
             if not filepath.exists():
                 continue
@@ -170,15 +171,14 @@ class FilePicture:
         except KeyError:
             logger.warning(f"updateHeadline: no CSV row for {filename}")
             return 0
-        raw_exts = bare(RAW_OR_HEIC)  # canonical table — see utils/raw_extensions.py
         files_written = 0
         for f_key, f_row in self.fi.files_dict.items():
             if f_row.get("UniquePictureName") != upn_name:
                 continue
             f_row["XMP:Headline"] = new_headline
             ext = f_row.get("WindowsExtension", "").lower()
-            if ext in raw_exts:
-                continue  # RAW files stay immutable
+            if ext not in _SUBJECT_WRITE_EXT:
+                continue  # RAW stays immutable; a .dop has no XMP to write
             filepath = Path(f_row.get("WindowsFileName", ""))
             if not filepath.exists():
                 continue
