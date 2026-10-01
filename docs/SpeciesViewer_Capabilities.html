@@ -36,7 +36,7 @@
 <body>
 
 <h1>SpeciesViewer — Capabilities Added</h1>
-<div class="meta">Updated: 14 August 2026 &nbsp;·&nbsp; Branch: ClaudeSpecies &nbsp;·&nbsp; Author: Gilbert Houtekamer &nbsp;·&nbsp; companion to <em>SpeciesViewer — Project Backlog</em></div>
+<div class="meta">Updated: 1 October 2026 &nbsp;·&nbsp; Branch: SpeciesViewer03 &nbsp;·&nbsp; Author: Gilbert Houtekamer &nbsp;·&nbsp; companion to <em>SpeciesViewer — Project Backlog</em></div>
 
 <p>Everything that has <strong>shipped</strong> in the SpeciesViewer nature-photo pipeline and GUI, in fixed chapter order. Its companion, <strong>SpeciesViewer — Project Backlog</strong>, holds the open work under the same chapter numbers. Chapter 6, Taxonomy &amp; Species, is parked by design and carries no shipped work yet — it lives only in the Backlog. Chapter 7, Rating &amp; Website, is likewise still open-only for now, no longer parked by design now that the viewer convergence it was waiting on is complete.</p>
 
@@ -1573,6 +1573,143 @@ shows only what the current mode needs.</p>
     to three lines) with reserved height so nothing clips; higher taxa keep “vernacular + scientific”
     while species follow the profile; grid cells are top-aligned so a tall neighbour can't stretch a
     card's photo frame and a short row can't balloon to fill the window.</li>
+</ul>
+
+<!-- ============================================================ -->
+<h2>23. Brazil trip &mdash; field feedback <span class="tag-shipped">SHIPPED</span></h2>
+<p>What the 2026 Brazil trip asked for while culling, on the road and back home &mdash; kept together because it came from real use rather than planning. What is still open is in the Backlog, ch.&nbsp;23.</p>
+
+<ul>
+  <li><strong>Species picker pre-fills from the selection</strong>
+      <span class="tag-shipped">SHIPPED</span> &mdash; in a guided setting the guide names one
+      frame of a burst to go fast; the culler then selects the whole burst and expects that
+      name to carry. <em>Set species&hellip;</em> now inspects the selection: one distinct name
+      &rarr; it is pre-filled, flagged <code>&#9733; name &mdash; set on 1 of 16; the rest are
+      blank</code> when not every picture has it; two or more different names &rarr; the field
+      is left blank with a <code>Mixed &mdash; a, b (5 of 16 named)</code> line, so a stray
+      Enter cannot overwrite the odd one out. Lightroom's convention, adapted.
+      <span class="note">Culling (pre-pipeline) path only &mdash; the pipeline's own
+      multi-picture species panel already lists each file's current name.</span></li>
+
+  <li><strong>Filtered count in the grid title</strong>
+      <span class="tag-shipped">SHIPPED</span> &mdash; after a first culling pass the colour
+      filter (Green/Red/Yellow) hides the rest, but the title still read <em>all 393
+      pictures</em> with no way to see how many survived. It now reads
+      <code>127 of 393 pictures &middot; colour Green/Red/Yellow</code> whenever a colour /
+      find / JPG overlay narrows the sheet; unchanged when nothing is hidden.</li>
+
+  <li><strong>Camera-JPEG zoom held across auto-advance</strong>
+      <span class="tag-shipped">SHIPPED</span> &mdash; judging a burst for sharpness at 1:1 in
+      the Editor's <em>Camera JPEG</em> tab: applying a colour label auto-advances, and
+      the view used to snap back to fit. It now keeps the zoom the user set and lands on the
+      same spot, so ten near-identical frames can be checked without re-zooming each one.
+      Double-click, or scroll fully out, returns to fit and releases the hold.</li>
+
+  <li><strong>More than one tracklog per day</strong>
+      <span class="tag-shipped">SHIPPED</span> &mdash; the phone names every GPS export after
+      the day only (<code>20260828.log</code>), so an afternoon session overwrites the
+      morning's unless it is renamed by hand. Auto-discovery now accepts <em>any</em> file in
+      <code>&lt;gpslogs&gt;/&lt;year&gt;/</code> whose name starts with the day's
+      <code>yyyymmdd</code> stem &mdash; <code>20260828a.log</code>,
+      <code>20260828-afternoon.log</code>, <code>20260828_2.gpx</code> &mdash; and merges every
+      match before correlating. A digit straight after the stem is rejected, so a neighbouring
+      day cannot slip in on a shared prefix. The Read-SD day table shows
+      <code>&#10003; name (+1)</code> when more than one is found.
+      <span class="note">The single-log callers (the day-overview satellite glyph, the
+      card-clock UTC-offset probe) still take the first match; only the geotag passes merge.</span></li>
+
+  <li><strong>&ldquo;NEW SPECIES&rdquo; tag in the Editor</strong>
+      <span class="tag-shipped">SHIPPED</span> &mdash; a small amber tag on the SPECIES section
+      header when the current picture's species resolves to a scientific name the master has
+      <em>no picture of</em> &mdash; a first for the collection, spotted while culling. The
+      master's <code>species.csv</code> is read once per window and cached, so navigation stays
+      instant; a SmallMaster laptop works too (it carries the full <code>metadata/active/</code>,
+      only the images are a subset) with the tag then reading against the snapshot date.
+      Shown only while culling (a master picture is never new), and only once the species is
+      actually resolved &mdash; a half-typed name shows nothing.
+      <span class="note">Definition is the simple one: &ldquo;never in the master&rdquo;, not
+      &ldquo;new since this trip started&rdquo;. Mid-trip the two coincide, and the date-scoped
+      version is a later refinement on the same wiring.</span></li>
+
+  <li><strong>Translation: MyMemory fallback + honest success line</strong>
+      <span class="tag-shipped">SHIPPED</span> &mdash; <code>deep-translator</code>'s
+      <code>GoogleTranslator</code> scrapes Google's web page, and Google had blocked it again
+      &mdash; every blog line came back untranslated. Two fixes: (1) <code>_live_translate()</code>
+      falls back to <strong>MyMemory</strong> (a real API, same package, no new dependency) when
+      Google returns nothing, chunking text past MyMemory's 500-char cap on sentence / word
+      boundaries; (2) the trip blog dialogs no longer print <code>&#9989; Translated&hellip;</code>
+      unconditionally &mdash; <code>cachedTranslate</code> swallowed the failure and handed back
+      the original text, so a no-op read as done. <code>CachedTranslate.last_error</code> now
+      carries the reason and the caller prints <code>&#9989;</code> or
+      <code>&#9888; Translation incomplete&hellip;</code> accordingly.
+      <span class="note">Same lesson as the earlier googletrans retirement: an unofficial
+      scraped endpoint breaks on its own schedule. The fallback makes that a quality dip, not an
+      outage. <code>pip install -U deep-translator</code> may also restore Google directly.</span></li>
+
+  <li><strong><code>g</code> / <code>h</code> &mdash; the keepers colour filter in one rebuild</strong>
+      <span class="tag-shipped">SHIPPED</span> &mdash; after a first culling pass you want to see
+      only Red+Yellow+Green, but clicking the three toolbar swatches is three separate grid
+      rebuilds (~2&nbsp;s each on a 478-card sheet &mdash; the window locks up between them).
+      <code>g</code> sets Red+Yellow+Green in a <em>single</em> rebuild and toggles back off when
+      the filter is already exactly those three; <code>h</code> clears the colour filter from
+      <em>any</em> state in one press (kept alongside the toggle deliberately &mdash; <code>g,g</code>
+      only clears if you started on the keepers, and after sending more frames to Blue you want a
+      guaranteed one-key &ldquo;show everything again&rdquo;). Both go through the toolbar bar, so
+      its swatches light up to match; ignored while a text field has focus. Works in both the
+      SD-card culling grid and the pipeline Species Image Preview (one class).
+      <span class="note">New <code>ColorFilterBar.set_selection()</code> replaces the whole
+      selection and notifies once. <code>g</code> <em>replaces</em> rather than adds &mdash; a
+      hand-picked Blue filter is dropped when you press it; that is a known edge, not yet worth a
+      union/difference toggle. Like <code>s</code> / <code>f</code>, the key needs grid focus
+      &mdash; it does nothing right after the window opens (focus is on the search box) until a
+      card is clicked; accepted, since a card is usually already selected. A debounce that also
+      skips intermediate rebuilds on rapid changes was considered and left &mdash; <code>g</code>
+      is the cheap 90% win; a slow <em>single</em> rebuild is a separate &ldquo;make the grid
+      build yield properly&rdquo; task.</span></li>
+
+  <li><strong>Culling colour / rating write failures are now loud</strong>
+      <span class="tag-shipped">SHIPPED</span> &mdash; raised after losing a few colour labels on
+      app close. A swatch click in the culling grid / Editor writes the <code>.xmp</code>
+      synchronously, but every failure path in <code>SidecarCollection.write_tag</code> /
+      <code>write_tag_many</code> was silent: the card repainted optimistically, nothing reached
+      disk, one log line. Now the exiftool write <strong>retries 3&times;</strong>
+      (0.4/0.8/1.2&nbsp;s &mdash; a PhotoLab or Dropbox lock clears in about that long), and a
+      persistent failure logs <code>SIDECAR WRITE FAILURE</code> with the real reason, keeps the
+      value in memory, and fires a host callback that pops a <em>modal</em> &ldquo;Edit not
+      saved&rdquo; dialog plus a status-bar counter. Culling stops until the user has seen it.
+      <span class="note">The pipeline (fpr) preview is unaffected &mdash; its <code>apply()</code>
+      always writes the day CSV, so a failed sidecar write there degrades sync but loses nothing.
+      The original loss could not be reproduced; the fix is defensive and, whatever the cause,
+      will now name it.</span></li>
+
+  <li><strong>Working with PhotoLab open</strong> <span class="tag-shipped">SHIPPED</span>
+      (2026-09-29) &mdash; colour labels set while culling kept vanishing. The cause was our own
+      <code>.dop</code> writes: any change to a <code>.dop</code> wakes a running PhotoLab, which then
+      writes its own view out over the <code>.xmp</code> and takes the colour with it. Now colour and
+      rating go to the <code>.xmp</code> only, never the <code>.dop</code>. Crop and exposure are held
+      in the <code>.xmp</code> while PhotoLab runs and handed over by <em>Open in PhotoLab</em> (in the
+      Editor and in the card reader): with PhotoLab closed the <code>.dop</code> files are written
+      before it starts; with it running it is pointed at the folder first and the <code>.dop</code>
+      files follow a few seconds later. A picture PhotoLab has no recipe for yet is waited for and
+      handed over the moment its <code>.dop</code> appears; each handover logs one summary per
+      picture (&#10003; handed over, &hellip; waiting, &#10007; still waiting).
+      <span class="note">Reference manual ch.&nbsp;10, <em>Working with PhotoLab open</em>; design
+      in <code>docs/plans/photolab_sidecar_fight.md</code>. Commits <code>ca93186</code>,
+      <code>47ece74</code>, <code>f78220d</code>, <code>7c8b4ce</code>. The card reader's button is
+      still waiting for its live test (Backlog ch.&nbsp;23).</span></li>
+
+  <li><strong>The Editor does what the grid does</strong> <span class="tag-shipped">SHIPPED</span>
+      (2026-09-25 &ndash; 30) &mdash; the large image view offered one action on right-click where
+      the grid it was opened from offered eight. It is now called the <em>Editor</em>; exposure is
+      read from the <code>.xmp</code> as well as the <code>.dop</code> and can be set from every
+      surface; the selection bars are gone everywhere (a selection is acted on by right-click and
+      cleared with Esc); and the Editor's right-click &mdash; on the image, the panel or the
+      filmstrip &mdash; opens the menu of the grid it came from (culling grid, Trip Species Viewer).
+      Every grid shows a ring on the current picture, and a soft tick sounds when there is no next
+      picture (<code>[Global] end_of_list_sound = no</code> turns it off).
+      <span class="note">Plan: <code>docs/plans/edit_window_parity.md</code>. Commits
+      <code>2c03738</code>, <code>85a7c1b</code>, <code>a61b775</code>, <code>887d2bf</code>,
+      <code>078e346</code>, <code>5e2cf4b</code>, <code>972e26b</code>.</span></li>
 </ul>
 
 <!-- ============================================================ -->

@@ -37,7 +37,7 @@
 <body>
 
 <h1>SpeciesViewer — Project Backlog</h1>
-<div class="meta">Updated: 28 August 2026 &nbsp;·&nbsp; Branch: SpeciesViewer03 &nbsp;·&nbsp; Author: Gilbert Houtekamer</div>
+<div class="meta">Updated: 1 October 2026 &nbsp;·&nbsp; Branch: SpeciesViewer03 &nbsp;·&nbsp; Author: Gilbert Houtekamer</div>
 
 <p>Open work for the SpeciesViewer nature-photo pipeline and GUI. This document holds
 only what is <strong>still to do</strong> — everything that has shipped now lives in the companion
@@ -55,30 +55,18 @@ reads <em>No current work planned</em>.</p>
 <span class="tag-rejected">REJECTED</span> decided against (won't build).</p>
 
 <div class="next">
-  <strong>Active shortlist — week of 18 August 2026: QA &amp; documentation.</strong>
+  <strong>Active shortlist — week of 29 September 2026: closing out the Brazil trip.</strong>
   <ul>
-    <li><strong>Usability QA</strong> <span class="tag-progress">IN PROGRESS</span> — two open items
-      left in ch. 9: the AVI list processing upgrade and the website hosting hardening leftovers. The
-      third — the FTP cache that could not be seen in <em>Manage Caches</em> — shipped on 19 August
-      2026 and is off the list.</li>
-    <li><strong>Documentation</strong> <span class="tag-progress">IN PROGRESS</span> — the two
-      documents no longer line up. <em>Capabilities Added</em> has no chapter for <strong>17. Capture
-      time &amp; time zones</strong>, the tracklog geotagging and camera-clock work of 16–17 August
-      and the largest thing to ship this month; the <strong>Trip/Album overview parity</strong> work
-      has no chapter either and still needs a home (ch. 4? ch. 15?). Chapter placement is a call to
-      make before anything is written.</li>
+    <li><strong>Brazil leftovers</strong> <span class="tag-open">OPEN</span> — one live test (the
+      card reader's PhotoLab handover), one small HEIC headline bug and the window-title scheme
+      (ch. 23), plus the HEIC GPS lane and picture-name tidy-up (ch. 7). Everything else the trip
+      raised has shipped.</li>
+    <li><strong>Documentation</strong> <span class="tag-progress">IN PROGRESS</span> —
+      <em>Capabilities Added</em> now has ch. 23, but still no write-up for ch. 17–22 (capture time,
+      trip readiness, refactors, installable v1, modern RAW bodies, emptying a card). Those chapters'
+      shipped detail still lives here, in the Backlog.</li>
   </ul>
-  <strong>Finished, off the list:</strong>
-  <ul>
-    <li><strong>Rating &amp; Website</strong> <span class="tag-shipped">DONE</span> — the formula
-      tuning that had been in progress since 15 August is complete, applied to the real master on
-      BigBoy and confirmed by a validation run on 18 August 2026 (ch. 7).</li>
-  </ul>
-  <strong>New — ch. 18 Away from home — trip readiness:</strong> the things that only bite when the
-  nearest spare drive or second computer is thousands of kilometres away. Its first two items (free
-  space, and reserving room for the card's own ingest cache) are QA-shaped and belong in this week
-  if anything does.
-  <br><strong>Deliberately not scheduled in the coming month:</strong> ch. 6 Taxonomy &amp; Species
+  <strong>Deliberately not scheduled in the coming month:</strong> ch. 6 Taxonomy &amp; Species
   and ch. 17 Capture time &amp; time zones. Both work as they stand; revisit after mid-September.
   <strong>Not planned, but relevant — don't forget:</strong>
   <ul style="margin-bottom:0;">
@@ -508,56 +496,19 @@ reads <em>No current work planned</em>.</p>
     appears nowhere in the extension table or the code, so such a file is not even offered as a
     card. Adding it to <code>HEIC</code> widens what gets ingested, so it is a deliberate change
     rather than a typo fix.</li>
+  <li><span class="tag-bug">BUG</span> <strong>A HEIC's GPS still goes to its <code>.xmp</code></strong>
+    (raised 2026-09-24, Brazil iPhone import) — every annotation now goes INTO the HEIC, one truth
+    per picture, but the master GPS backfill (<code>geo_backfill._write_targets</code>) still prefers a
+    <code>.xmp</code> beside it when one exists: the same two-channel bug, one lane behind. 11 master
+    pictures. Fix: use the same “self-describing file” rule as the annotations.</li>
+  <li><span class="tag-open">OPEN</span> <strong>Picture-name derivation tidy-up</strong> —
+    <code>deriveUniquePictureName</code> carries three markers that can never match after it
+    lower-cases the name (<code>-DxO</code>, <code>_DxO</code>, <code>-JPG</code>) and has none for
+    <code>-heic</code>. Audited: 7 of 162,181 master rows would get a different picture name. Small, but
+    it changes identity, so a dry run and your review come first.</li>
 </ul>
 <h3>Done</h3>
 <ul>
-  <li><strong>A PNG is now shown as if it were a JPG, and Create JPG works on a
-    phone picture</strong> <span class="tag-shipped">SHIPPED</span> (2026-09-24) — his ask:
-    “PNG should be shown as if it was a JPG. That does not make it suitable for websites, but
-    bring them on par with HEICs.” Three things were in the way:
-    <ul>
-      <li><code>preview_provider._source_file</code> tested <code>ext == "heic"</code>, a literal
-        that left a PNG (and a <code>.heif</code>) with NO display source at all — the card read
-        “(no image)” however loadable the file was. <code>rating_provider</code> had no HEIC or
-        PNG source either, so the Rating Editor showed neither. Both now resolve a
-        self-describing picture and route it through the same
-        <code>cached_jpg_for()</code> as every other viewer.</li>
-      <li>A PNG had been put in the group's “finished render” slot, because it needs no develop
-        step to be DISPLAYED. That made it count as a web-ready JPG: the JPG-only overlay listed
-        it, the “a JPG is the finished asset” delete protection covered it, and Create JPG
-        refused it as already having one. It now sits in the SOURCE slot beside RAW and HEIC —
-        displayable is not the same as web-ready.</li>
-      <li>Create JPG could not bake a HEIC or PNG at all. It asks
-        <code>extract_preview_bytes()</code> for an embedded JPEG and then
-        <code>decode_preview_jpeg()</code> via LibRaw, and a HEIC has neither an embed nor a
-        LibRaw reader — so it reported “no preview, and the RAW could not be decoded” about a
-        file Pillow opens without complaint. Worse, that block existed in THREE copies (culling
-        grid, day viewer, rating editor), which is how one gap became three. There is now one
-        bake, <code>preview_extract.bake_blog_jpg</code>, and all three call it — as does the
-        crop tool's <code>_bake_heic_crop</code>, since both write the very same
-        <code>&lt;stem&gt;.jpg</code> for the same picture and their sizes must not depend on
-        which button was pressed last.</li>
-    </ul>
-    Sizing is <strong>one rule with two numbers</strong>, in his words: “if the long side is
-    larger than 3200, rescale to a max of 2000”. The GAP between them is the point — a single
-    2000 cap would resample a 2400 px frame for almost no saving while throwing away detail, so
-    nothing between target and threshold is touched. That removed every per-format exception:
-    an OM-1's 3200 px embed and a PNG screenshot are left exactly as they are, with no rule
-    about either. Both numbers live in <strong>Look &amp; Feel ▸ Make JPG — resize</strong>
-    (threshold 0 reads “Never resize”), which also became a two-column dialog: it had grown too
-    tall in one stack, so viewer-content settings moved to a second column beside appearance
-    (~1300×480, where the stack was ~500×930). Measured across every body:
-    OM-1 3200×2400 → unchanged; PNG 1206×2622 → unchanged; iPhone HEIC 4284×5712 → 1500×2000;
-    Nikon D500 3712×5568 → 1333×2000; Panasonic G9 II 5776×4336 → 2000×1501; Canon R5
-    8192×5464 → 2000×1334; Sony A1 8640×5760 → 2000×1333.</li>
-  <li><strong>A JPG-only picture is told so, and never resized in place</strong>
-    <span class="tag-shipped">SHIPPED</span> (2026-09-24) — Create JPG reported “without a RAW”
-    about a picture whose only file IS a JPG, which is true and useless. It now says “already a
-    JPG — nothing to bake”. Resizing it in place was considered and rejected by him outright:
-    the output name <code>&lt;stem&gt;.jpg</code> IS the source (Windows ignores the case
-    difference), so it would overwrite an original — “I would never do an update in place”. A
-    suffixed copy (<code>_sv</code>) was his own alternative and his own verdict was that it is
-    not worth the work. Verified the source JPG stays byte-identical.</li>
   <li><strong>A PNG is now shown as if it were a JPG, and Create JPG works on a
     phone picture</strong> <span class="tag-shipped">SHIPPED</span> (2026-09-24) — his ask:
     “PNG should be shown as if it was a JPG. That does not make it suitable for websites, but
@@ -2705,112 +2656,29 @@ of how the two restores happen to be written, not because anything enforces it.<
 <!-- ============================================================ -->
 <h2 id="brazil-feedback">23. Brazil trip &mdash; field feedback</h2>
 
-<p>Notes raised while culling the 2026 Brazil take on the road &mdash; kept together as one
-chapter because they came from real use rather than planning. Small, and mostly already done;
-recorded so the trigger and the reasoning survive.</p>
+<p>Notes raised while culling the 2026 Brazil take, on the road and back home &mdash; kept
+together as one chapter because they came from real use rather than planning. Everything that
+shipped (the field fixes, working with PhotoLab open, the Editor) is written up in
+<em>Capabilities Added</em>, ch.&nbsp;23. What is left:</p>
 
 <ul>
-  <li><strong>Species picker pre-fills from the selection</strong>
-      <span class="tag-shipped">SHIPPED</span> &mdash; in a guided setting the guide names one
-      frame of a burst to go fast; the culler then selects the whole burst and expects that
-      name to carry. <em>Set species&hellip;</em> now inspects the selection: one distinct name
-      &rarr; it is pre-filled, flagged <code>&#9733; name &mdash; set on 1 of 16; the rest are
-      blank</code> when not every picture has it; two or more different names &rarr; the field
-      is left blank with a <code>Mixed &mdash; a, b (5 of 16 named)</code> line, so a stray
-      Enter cannot overwrite the odd one out. Lightroom's convention, adapted.
-      <span class="note">Culling (pre-pipeline) path only &mdash; the pipeline's own
-      multi-picture species panel already lists each file's current name.</span></li>
-
-  <li><strong>Filtered count in the grid title</strong>
-      <span class="tag-shipped">SHIPPED</span> &mdash; after a first culling pass the colour
-      filter (Green/Red/Yellow) hides the rest, but the title still read <em>all 393
-      pictures</em> with no way to see how many survived. It now reads
-      <code>127 of 393 pictures &middot; colour Green/Red/Yellow</code> whenever a colour /
-      find / JPG overlay narrows the sheet; unchanged when nothing is hidden.</li>
-
-  <li><strong>Camera-JPEG zoom held across auto-advance</strong>
-      <span class="tag-shipped">SHIPPED</span> &mdash; judging a burst for sharpness at 1:1 in
-      the Editor's <em>Camera JPEG</em> tab: applying a colour label auto-advances, and
-      the view used to snap back to fit. It now keeps the zoom the user set and lands on the
-      same spot, so ten near-identical frames can be checked without re-zooming each one.
-      Double-click, or scroll fully out, returns to fit and releases the hold.</li>
-
-  <li><strong>More than one tracklog per day</strong>
-      <span class="tag-shipped">SHIPPED</span> &mdash; the phone names every GPS export after
-      the day only (<code>20260828.log</code>), so an afternoon session overwrites the
-      morning's unless it is renamed by hand. Auto-discovery now accepts <em>any</em> file in
-      <code>&lt;gpslogs&gt;/&lt;year&gt;/</code> whose name starts with the day's
-      <code>yyyymmdd</code> stem &mdash; <code>20260828a.log</code>,
-      <code>20260828-afternoon.log</code>, <code>20260828_2.gpx</code> &mdash; and merges every
-      match before correlating. A digit straight after the stem is rejected, so a neighbouring
-      day cannot slip in on a shared prefix. The Read-SD day table shows
-      <code>&#10003; name (+1)</code> when more than one is found.
-      <span class="note">The single-log callers (the day-overview satellite glyph, the
-      card-clock UTC-offset probe) still take the first match; only the geotag passes merge.</span></li>
-
-  <li><strong>&ldquo;NEW SPECIES&rdquo; tag in the Editor</strong>
-      <span class="tag-shipped">SHIPPED</span> &mdash; a small amber tag on the SPECIES section
-      header when the current picture's species resolves to a scientific name the master has
-      <em>no picture of</em> &mdash; a first for the collection, spotted while culling. The
-      master's <code>species.csv</code> is read once per window and cached, so navigation stays
-      instant; a SmallMaster laptop works too (it carries the full <code>metadata/active/</code>,
-      only the images are a subset) with the tag then reading against the snapshot date.
-      Shown only while culling (a master picture is never new), and only once the species is
-      actually resolved &mdash; a half-typed name shows nothing.
-      <span class="note">Definition is the simple one: &ldquo;never in the master&rdquo;, not
-      &ldquo;new since this trip started&rdquo;. Mid-trip the two coincide, and the date-scoped
-      version is a later refinement on the same wiring.</span></li>
-
-  <li><strong>Translation: MyMemory fallback + honest success line</strong>
-      <span class="tag-shipped">SHIPPED</span> &mdash; <code>deep-translator</code>'s
-      <code>GoogleTranslator</code> scrapes Google's web page, and Google had blocked it again
-      &mdash; every blog line came back untranslated. Two fixes: (1) <code>_live_translate()</code>
-      falls back to <strong>MyMemory</strong> (a real API, same package, no new dependency) when
-      Google returns nothing, chunking text past MyMemory's 500-char cap on sentence / word
-      boundaries; (2) the trip blog dialogs no longer print <code>&#9989; Translated&hellip;</code>
-      unconditionally &mdash; <code>cachedTranslate</code> swallowed the failure and handed back
-      the original text, so a no-op read as done. <code>CachedTranslate.last_error</code> now
-      carries the reason and the caller prints <code>&#9989;</code> or
-      <code>&#9888; Translation incomplete&hellip;</code> accordingly.
-      <span class="note">Same lesson as the earlier googletrans retirement: an unofficial
-      scraped endpoint breaks on its own schedule. The fallback makes that a quality dip, not an
-      outage. <code>pip install -U deep-translator</code> may also restore Google directly.</span></li>
-
-  <li><strong><code>g</code> / <code>h</code> &mdash; the keepers colour filter in one rebuild</strong>
-      <span class="tag-shipped">SHIPPED</span> &mdash; after a first culling pass you want to see
-      only Red+Yellow+Green, but clicking the three toolbar swatches is three separate grid
-      rebuilds (~2&nbsp;s each on a 478-card sheet &mdash; the window locks up between them).
-      <code>g</code> sets Red+Yellow+Green in a <em>single</em> rebuild and toggles back off when
-      the filter is already exactly those three; <code>h</code> clears the colour filter from
-      <em>any</em> state in one press (kept alongside the toggle deliberately &mdash; <code>g,g</code>
-      only clears if you started on the keepers, and after sending more frames to Blue you want a
-      guaranteed one-key &ldquo;show everything again&rdquo;). Both go through the toolbar bar, so
-      its swatches light up to match; ignored while a text field has focus. Works in both the
-      SD-card culling grid and the pipeline Species Image Preview (one class).
-      <span class="note">New <code>ColorFilterBar.set_selection()</code> replaces the whole
-      selection and notifies once. <code>g</code> <em>replaces</em> rather than adds &mdash; a
-      hand-picked Blue filter is dropped when you press it; that is a known edge, not yet worth a
-      union/difference toggle. Like <code>s</code> / <code>f</code>, the key needs grid focus
-      &mdash; it does nothing right after the window opens (focus is on the search box) until a
-      card is clicked; accepted, since a card is usually already selected. A debounce that also
-      skips intermediate rebuilds on rapid changes was considered and left &mdash; <code>g</code>
-      is the cheap 90% win; a slow <em>single</em> rebuild is a separate &ldquo;make the grid
-      build yield properly&rdquo; task.</span></li>
-
-  <li><strong>Culling colour / rating write failures are now loud</strong>
-      <span class="tag-shipped">SHIPPED</span> &mdash; raised after losing a few colour labels on
-      app close. A swatch click in the culling grid / Editor writes the <code>.xmp</code>
-      synchronously, but every failure path in <code>SidecarCollection.write_tag</code> /
-      <code>write_tag_many</code> was silent: the card repainted optimistically, nothing reached
-      disk, one log line. Now the exiftool write <strong>retries 3&times;</strong>
-      (0.4/0.8/1.2&nbsp;s &mdash; a PhotoLab or Dropbox lock clears in about that long), and a
-      persistent failure logs <code>SIDECAR WRITE FAILURE</code> with the real reason, keeps the
-      value in memory, and fires a host callback that pops a <em>modal</em> &ldquo;Edit not
-      saved&rdquo; dialog plus a status-bar counter. Culling stops until the user has seen it.
-      <span class="note">The pipeline (fpr) preview is unaffected &mdash; its <code>apply()</code>
-      always writes the day CSV, so a failed sidecar write there degrades sync but loses nothing.
-      The original loss could not be reproduced; the fix is defensive and, whatever the cause,
-      will now name it.</span></li>
+  <li><span class="tag-test">NEEDS TEST</span> <strong>The card reader's <em>Open in PhotoLab</em>
+      hands over held edits</strong> &mdash; the same handover as the Editor's button (crop and
+      exposure held back while PhotoLab ran go to the <code>.dop</code>). Tested without the GUI only;
+      it needs one real card read and one click.</li>
+  <li><span class="tag-bug">BUG</span> <strong>A headline edit on a HEIC picture tries to write its
+      <code>.HEIC.dop</code></strong> &mdash; seen in the 30 September log
+      (<code>IMG_6280.HEIC.dop</code>: <em>Writing of this type of file is not supported</em>).
+      Nothing is lost &mdash; the <code>.jpg</code> and <code>.xmp</code> get the headline &mdash; but
+      the headline/description writers walk every non-RAW file of the picture, a <code>.dop</code>
+      included, and skip the HEIC itself, which goes against &ldquo;a HEIC carries its own
+      metadata&rdquo; (ch.&nbsp;7).</li>
+  <li><span class="tag-open">OPEN</span> <strong>One window-title scheme</strong> (agreed in
+      principle 2026-09-25) &mdash; with half a dozen windows open the titles are inconsistent and
+      the Editor sits on top of the grid it came from. To settle first: the date part is a day, a
+      range, or nothing, depending on the window.</li>
+  <li><strong>HEIC leftovers</strong> &mdash; the GPS lane, the picture-name tidy-up and Canon
+      <code>.HIF</code> live in ch.&nbsp;7, where the rest of the HEIC work is.</li>
 </ul>
 
 </body>
