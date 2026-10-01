@@ -1128,9 +1128,25 @@ class PreviewCollection(PictureCollection):
                 upn_row["Rating"] = str(new_rating)
                 diff = True
             if diff:
+                # The Rate is computed from the FILE rows, so carry the new values
+                # there and recompute it — as apply() does. Without this a colour
+                # set in another window (Trip Species Viewer, Editor, PhotoLab)
+                # reached this window's Label but left its Rate stale, and the next
+                # CSV flush wrote the stale Rate over the other window's correct
+                # one: a whole culled species sorted as Rate 23 (2026-09-09).
+                xkey = os.path.normcase(os.path.normpath(str(xmp)))
+                for fname in self._files(key):
+                    frow = self.fpr.fi.files_dict.get(fname)
+                    if frow and os.path.normcase(os.path.normpath(
+                            frow.get("WindowsFileName", ""))) == xkey:
+                        frow["XMP:Label"] = upn_row.get("Label", "")
+                        if new_rating not in (None, ""):
+                            frow["XMP:Rating"] = str(new_rating)
+                upn_row["Rate"] = str(_compute_rate(upn_row, self.fpr.fi.files_dict))
                 changed.add(key)
         if changed:
             try:
+                self.fpr.fi.write_project_files()
                 self.fpr.upn.write_project_summary()
             except Exception as e:
                 logger.warning(f"External-edit refresh: could not persist summary: {e}")
