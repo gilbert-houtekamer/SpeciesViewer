@@ -58,9 +58,8 @@ reads <em>No current work planned</em>.</p>
   <strong>Active shortlist — week of 29 September 2026: closing out the Brazil trip.</strong>
   <ul>
     <li><strong>Brazil leftovers</strong> <span class="tag-open">OPEN</span> — one live test (the
-      card reader's PhotoLab handover), one small HEIC headline bug and the window-title scheme
-      (ch. 23), plus the HEIC GPS lane and picture-name tidy-up (ch. 7). Everything else the trip
-      raised has shipped.</li>
+      card reader's PhotoLab handover) and the window-title scheme (ch. 23); Canon
+      <code>.HIF</code> waits for a sample file. Everything else the trip raised has shipped.</li>
     <li><strong>Documentation</strong> <span class="tag-progress">IN PROGRESS</span> —
       <em>Capabilities Added</em> now has ch. 23, but still no write-up for ch. 17–22 (capture time,
       trip readiness, refactors, installable v1, modern RAW bodies, emptying a card). Those chapters'
@@ -496,16 +495,6 @@ reads <em>No current work planned</em>.</p>
     appears nowhere in the extension table or the code, so such a file is not even offered as a
     card. Adding it to <code>HEIC</code> widens what gets ingested, so it is a deliberate change
     rather than a typo fix.</li>
-  <li><span class="tag-bug">BUG</span> <strong>A HEIC's GPS still goes to its <code>.xmp</code></strong>
-    (raised 2026-09-24, Brazil iPhone import) — every annotation now goes INTO the HEIC, one truth
-    per picture, but the master GPS backfill (<code>geo_backfill._write_targets</code>) still prefers a
-    <code>.xmp</code> beside it when one exists: the same two-channel bug, one lane behind. 11 master
-    pictures. Fix: use the same “self-describing file” rule as the annotations.</li>
-  <li><span class="tag-open">OPEN</span> <strong>Picture-name derivation tidy-up</strong> —
-    <code>deriveUniquePictureName</code> carries three markers that can never match after it
-    lower-cases the name (<code>-DxO</code>, <code>_DxO</code>, <code>-JPG</code>) and has none for
-    <code>-heic</code>. Audited: 7 of 162,181 master rows would get a different picture name. Small, but
-    it changes identity, so a dry run and your review come first.</li>
 </ul>
 <h3>Done</h3>
 <ul>
@@ -2666,19 +2655,12 @@ shipped (the field fixes, working with PhotoLab open, the Editor) is written up 
       hands over held edits</strong> &mdash; the same handover as the Editor's button (crop and
       exposure held back while PhotoLab ran go to the <code>.dop</code>). Tested without the GUI only;
       it needs one real card read and one click.</li>
-  <li><span class="tag-bug">BUG</span> <strong>A headline edit on a HEIC picture tries to write its
-      <code>.HEIC.dop</code></strong> &mdash; seen in the 30 September log
-      (<code>IMG_6280.HEIC.dop</code>: <em>Writing of this type of file is not supported</em>).
-      Nothing is lost &mdash; the <code>.jpg</code> and <code>.xmp</code> get the headline &mdash; but
-      the headline/description writers walk every non-RAW file of the picture, a <code>.dop</code>
-      included, and skip the HEIC itself, which goes against &ldquo;a HEIC carries its own
-      metadata&rdquo; (ch.&nbsp;7).</li>
   <li><span class="tag-open">OPEN</span> <strong>One window-title scheme</strong> (agreed in
       principle 2026-09-25) &mdash; with half a dozen windows open the titles are inconsistent and
       the Editor sits on top of the grid it came from. To settle first: the date part is a day, a
       range, or nothing, depending on the window.</li>
-  <li><strong>HEIC leftovers</strong> &mdash; the GPS lane, the picture-name tidy-up and Canon
-      <code>.HIF</code> live in ch.&nbsp;7, where the rest of the HEIC work is.</li>
+  <li><strong>Canon <code>.HIF</code></strong> &mdash; waits for one sample file from a birder
+      who shoots Canon (decided 2026-10-01); see ch.&nbsp;7 and ch.&nbsp;21.</li>
 </ul>
 
 </body>
