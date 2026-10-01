@@ -72,6 +72,32 @@ def generate_trip_ini(
         return head + "\n" + "\n".join(("    " + l) if l.strip() else l
                                         for l in rest)
 
+    # This writes the WHOLE file, so every [trip_config] key this dialog does not
+    # own (tz_offset, picture_prefix, name_profile, retired_to_album, ...) must be
+    # carried over — otherwise "Update Trip Settings" silently erases them, and a
+    # lost picture_prefix orphans every sidecar on the next card read.
+    _owned = {"master_repository_web", "master_repository_disk", "trip_banner",
+              "trip_picture", "created", "trip_name", "trip_id", "web_slug",
+              "picture_root", "fromdate", "todate", "oneblog"}
+    carried = ""
+    created = datetime.now().strftime('%Y-%m-%d %H:%M')
+    if os.path.isfile(ini_path):
+        from configparser import ConfigParser
+        from utils.trip_config import coerce_orphan_continuations
+        with open(ini_path, "rb") as f:
+            raw = f.read()
+        try:
+            old_text = raw.decode("utf-8")
+        except UnicodeDecodeError:
+            old_text = raw.decode("cp1252")
+        old = ConfigParser(interpolation=None)
+        old.read_string(coerce_orphan_continuations(old_text))
+        if old.has_section("trip_config"):
+            carried = "".join(f"{k} = {v}\n" for k, v in old.items("trip_config")
+                              if k not in _owned)
+            # an update is not a re-creation
+            created = old.get("trip_config", "created", fallback="") or created
+
     ini_text = f"""\
 [trip_config]
 master_repository_web = {master_web}
@@ -79,7 +105,7 @@ master_repository_disk = {master_disk}
 ; the banner size is 2000x270 jpg, and the picture is 600x450 jpg
 trip_banner = {banner_filename}
 trip_picture = {picture_filename}
-created = {datetime.now().strftime('%Y-%m-%d %H:%M')}
+created = {created}
 trip_name = {trip_name}
 trip_id = {trip_id}
 web_slug = {web_slug}
@@ -87,7 +113,7 @@ picture_root = {picture_root}
 fromdate = {from_date}
 todate = {to_date}
 oneblog = day
-
+{carried}
 [trip_text]
 title_nl = {_ini_escape(title_nl)}
 message_nl = {_ini_escape(message_nl)}
@@ -313,6 +339,7 @@ class TripCreationDialog(QDialog):
 
         # Add all tabs to main layout
         main_layout.addWidget(tabs)
+        self.tabs = tabs
 
         # Status label
         self.status_label = QLabel("")
@@ -429,10 +456,19 @@ class TripCreationDialog(QDialog):
             self.message_nl_field.field.setText(trip_data.get('message_nl', ""))
             self.title_en_field.field.setText(trip_data.get('title_en', ""))
             self.message_en_field.field.setText(trip_data.get('message_en', ""))
-            # do we have the corresponding projects
-            pictdir = get_cache_gui_section("trip_project_map", trip_name)
-            if pictdir != "":
-                _config["project"]["picturedirectory"] = pictdir
+            # The trip's pictures folder. trip.ini's picture_root is the truth; the
+            # per-machine cache is only a fallback and goes STALE when the folder is
+            # renamed ("2026 Brazilie" → "2026 Brazil"). A dead path here made every
+            # "Update Trip Settings" fail validation on a tab you weren't looking at.
+            from utils.trip_identity import resolve_trip_picture_root
+            pictdir = resolve_trip_picture_root(new_path, "trip", active_picturedirectory="")
+            if not os.path.isdir(pictdir):
+                pictdir = get_cache_gui_section("trip_project_map", trip_name)
+            if pictdir and os.path.isdir(pictdir):
+                # [project] picturedirectory must stay a DAY (WP8)
+                _config["project"]["picturedirectory"] = (
+                    pictdir if _DAY_RE.match(Path(pictdir).name)
+                    else _first_day_under(pictdir) or pictdir)
                 self.project_path.field.setText(pictdir)
         else:
             self.logger.debug(f"No trip.ini at {new_path} — all tabs must be filled in.")
@@ -442,6 +478,15 @@ class TripCreationDialog(QDialog):
             return
         self.logger.info("Trip settings updated (trip.ini written; repository not rebuilt).")
         self.passed_parent.status_bar.showMessage("Trip settings updated.")
+        self.status_label.setText("✅ Trip settings saved.")
+
+    def _refuse_save(self, reason: str) -> bool:
+        """A refused save must be SEEN: the red hint sits on the first tab, and
+        you are usually on another one — it used to fail with no trace at all."""
+        self.tabs.setCurrentIndex(0)
+        self.status_label.setText(f"❌ Not saved: {reason}.")
+        self.logger.warning(f"Trip settings not saved: {reason}.")
+        return False
 
     def _picturedirectory_for_config(self) -> str:
         """The value to store in [project] picturedirectory — always a DAY folder.
@@ -550,7 +595,7 @@ class TripCreationDialog(QDialog):
 
         if not trip_root or not os.path.isdir(trip_root):
             self.root_field.show_hint("Please select a valid trip folder.")
-            return False
+            return self._refuse_save("the trip folder does not exist")
         else:
             self.root_field.clear_hint()
 
@@ -591,7 +636,8 @@ class TripCreationDialog(QDialog):
         project_dir = self.project_path.get_path()
         if not project_dir or not os.path.isdir(project_dir):
             self.project_path.show_hint("Please select a valid trip pictures folder.")
-            return False
+            return self._refuse_save(
+                f"the trip pictures folder does not exist ({project_dir or 'empty'})")
         else:
             self.project_path.clear_hint()
 
