@@ -782,30 +782,13 @@ class Project:
             upn["subject"] =       self.findXMPItem(files, "IPTC:Keywords")
         upn["Rating"] =            self.findXMPItem(files, "XMP:Rating")
         upn["Label"] =             self.findXMPItem(files, "XMP:Label")
-        # ⚠ REVERTED 2026-09-25. This guard briefly read `in ("", "0")`, on the
-        # reasoning that "0" is unrated exactly as "" is (computeRating treats the
-        # two as one) and that it would fix 47 master pictures whose sidecars spell
-        # a non-rating as 0. That reasoning was right about the 47 and blind to the
-        # scale: an ORF sidecar NORMALLY carries XMP:Rating = 0, so widening it
-        # silently defaulted an entire trip's unlabelled pictures to Green
-        # overnight — 2026-09-06 came back all-green and a whole evening's culling
-        # looked undone.
-        #
-        # Keep it at "" only. A default that repaints thousands of pictures is not
-        # a default, it is a mass edit, and this is the wrong place to make one.
-        # The 47 master pictures remain unfixed on purpose; that is the smaller
-        # problem by a wide margin. If they are worth fixing, fix them where they
-        # live, not by broadening a rule that runs over everything.
-        #
-        # CLOSED 2026-09-29 (user): keep it at "" and do not add a grey display.
-        # Measured: on a current trip day it touches only phone pictures (7 of 935
-        # on 2026-09-06, HEIC/PNG), and only their shown colour — computeRating
-        # scores from the file's own label, not this one. The old Nikon-era
-        # pictures it once covered earned their place in the master: Green is right
-        # for them. The confusion of 2026-09-25 needed PhotoLab wiping colours too,
-        # and that is fixed (docs/plans/photolab_sidecar_fight.md).
-        if upn["Rating"] == "" and upn["Label"] == "":  # for waarneming.nl
-            upn["Label"] = "Green"
+        # No colour stays NO colour. Until 2026-10-01 a picture with neither a
+        # rating nor a colour was shown Green ("for waarneming.nl"). That made
+        # un-culled pictures look like keepers: 1,380 never-culled frames of
+        # 2026-09-04 read as Green, the `g` keepers filter and the day statistics
+        # counted them, and the external-edit refresh had to special-case the fake
+        # value. The colour bar's Grey swatch is the honest "not judged yet".
+        # computeRating never used this value (it scores the file's own label).
         if upn["ImageSize"] == "": upn["ImageSize"] = self.findCameraOrXMPItem(files, "ImageSize")
         # Phone/compact JPGs have no RAW/HEIC/XMP source, so ImageSize stayed
         # empty and the "better crop" ×1.5 reward below could never fire. Fall

@@ -934,10 +934,24 @@ class PreviewCollection(PictureCollection):
                     return xmp
         return None
 
+    def _label_file_for(self, upn_key: str):
+        """The file that holds this picture's colour/rating: the HEIC/PNG itself
+        for a HEIC/PNG-only picture (that is where _write_into_heic puts them),
+        else its .xmp. Reading the .xmp beside a HEIC found no label and logged
+        a "refresh KEEPS" warning on every pass."""
+        if self._heic_only_upn(upn_key):
+            for fname in self._files(upn_key):
+                frow = self.fpr.fi.files_dict.get(fname) or {}
+                if "." + frow.get("WindowsExtension", "").lower() in SELF_DESCRIBING:
+                    p = Path(frow.get("WindowsFileName", ""))
+                    if p.exists():
+                        return p
+        return self._xmp_for(upn_key)
+
     def _baseline_xmp_mtimes(self):
         import os
         for key in self.all_keys():
-            xmp = self._xmp_for(key)
+            xmp = self._label_file_for(key)
             if xmp:
                 try:
                     self._xmp_mtimes[str(xmp)] = os.stat(xmp).st_mtime_ns
@@ -1001,7 +1015,7 @@ class PreviewCollection(PictureCollection):
     def sidecar_paths(self) -> list:
         out = []
         for key in self.all_keys():
-            xmp = self._xmp_for(key)
+            xmp = self._label_file_for(key)
             if xmp:
                 out.append(str(xmp))
             raw = self._raw_path(key)
@@ -1053,7 +1067,7 @@ class PreviewCollection(PictureCollection):
         changed = set()
         to_read = []
         for key in self.all_keys():
-            xmp = self._xmp_for(key)
+            xmp = self._label_file_for(key)
             if not xmp:
                 continue
             try:
