@@ -683,6 +683,19 @@ class FilmstripWidget(QWidget):
             total_w = n * _ITEM_W + max(0, n - 1) * _ITEM_GAP + 4
             self._strip.setFixedSize(max(total_w, 1), _ITEM_H)
 
+    def set_order(self, keys):
+        """Show the SAME pictures in a new order (Editor re-sort / time order).
+        Moves the existing cells — loaded thumbnails stay loaded."""
+        if set(keys) != set(self._keys):
+            return
+        lay = self._strip.layout()
+        for key in self._keys:
+            lay.removeWidget(self._cells[key])
+        self._keys = list(keys)
+        for key in self._keys:
+            lay.addWidget(self._cells[key])
+        QTimer.singleShot(0, self._load_visible)
+
     def set_current(self, key: str, index: int, total: int):
         """Highlight `key`, scroll it into view, update the counter."""
         old = self._cells.get(self._current_key) if self._current_key else None
@@ -1166,6 +1179,35 @@ class LargeImageView(QDialog):
         self._hd_btn.setToolTip("Edit the headline / description for this picture")
         self._hd_btn.clicked.connect(self._edit_headline_description_current)
         top_bar_row.addWidget(self._hd_btn)
+        # Order on demand. The Editor keeps the order it opened with, so culling
+        # never shuffles the picture under you; these re-order when YOU ask. Only
+        # where the host grid can supply an order (editor_resort_keys — the Trip
+        # Species Viewer). Time order toggles: oldest first follows the session,
+        # newest first puts the end of an approach — often the best frames — on top.
+        _orders = callable(getattr(parent, "editor_resort_keys", None))
+        self._resort_btn = QToolButton()
+        self._resort_btn.setAutoRaise(True)
+        self._resort_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._resort_btn.setStyleSheet("font-size: 10px; padding: 1px 5px;")
+        self._resort_btn.setText("⟳ Re-sort")
+        self._resort_btn.setToolTip(
+            "Re-sort these pictures the way the grid sorts them (F5) — picks up "
+            "the colours and ratings you just gave.")
+        self._resort_btn.clicked.connect(self._resort_from_host)
+        self._resort_btn.setVisible(_orders)
+        top_bar_row.addWidget(self._resort_btn)
+        self._time_desc = None          # None = not in time order yet
+        self._time_btn = QToolButton()
+        self._time_btn.setAutoRaise(True)
+        self._time_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._time_btn.setStyleSheet("font-size: 10px; padding: 1px 5px;")
+        self._time_btn.setToolTip(
+            "Order by capture time; click again to flip between oldest first "
+            "and newest first.")
+        self._time_btn.clicked.connect(self._toggle_time_order)
+        self._time_btn.setVisible(_orders)
+        self._update_time_btn()
+        top_bar_row.addWidget(self._time_btn)
         self._filmstrip_btn = QToolButton()
         self._filmstrip_btn.setAutoRaise(True)
         self._filmstrip_btn.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -2315,6 +2357,10 @@ class LargeImageView(QDialog):
         self._batch_rating()
 
     def keyPressEvent(self, event):
+        if event.key() == Qt.Key.Key_F5 and not self._resort_btn.isHidden():
+            self._resort_from_host()
+            event.accept()
+            return
         # Space = next, routed through _go so it honours the 100%-tab reject-skip
         # (handle_cull_key's generic 'next' would jump straight to the literal next).
         if event.key() == Qt.Key.Key_Space and not self._desc_edit.hasFocus():
@@ -2991,6 +3037,45 @@ class LargeImageView(QDialog):
         except (ValueError, KeyError):
             return False
         return (item.color or "").capitalize() in ("Blue", "Purple")
+
+    # ── order on demand (host-supplied) ─────────────────────────────────────
+    def _update_time_btn(self):
+        self._time_btn.setText({None: "🕘 Time order", False: "🕘 Old → new",
+                                True: "🕘 New → old"}[self._time_desc])
+
+    def _resort_from_host(self):
+        self._time_desc = None
+        self._update_time_btn()
+        self._apply_host_order("sort")
+
+    def _toggle_time_order(self):
+        self._time_desc = self._time_desc is False   # None → old→new → new→old → …
+        self._update_time_btn()
+        # A time order is a fresh walk through the session: start at its first
+        # picture — the newest for New → old — so "next" steps one picture on.
+        self._apply_host_order("time_desc" if self._time_desc else "time_asc",
+                               from_start=True)
+
+    def _apply_host_order(self, mode: str, from_start: bool = False):
+        """Ask the host grid for these same pictures in `mode` order and show
+        them so — staying on the picture you are looking at (a re-sort mid-cull),
+        or jumping to the first one (`from_start`, a time order)."""
+        fn = getattr(self.parent(), "editor_resort_keys", None)
+        if not callable(fn) or not self._keys:
+            return
+        keys = fn(list(self._keys), mode)
+        if not keys or set(keys) != set(self._keys):
+            return
+        if keys == self._keys and not from_start:
+            return
+        self._save_description()
+        self._save_headline()
+        current = self._keys[self._index]
+        self._keys = list(keys)
+        self._index = 0 if from_start else self._keys.index(current)
+        for _fs in (self._filmstrip_left, self._filmstrip_bottom):
+            _fs.set_order(self._keys)
+        self._load_current()
 
     def _go(self, delta: int):
         if not self._keys:

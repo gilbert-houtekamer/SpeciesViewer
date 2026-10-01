@@ -3546,6 +3546,29 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
         except RuntimeError:
             pass   # large view was closed/destroyed
 
+    def editor_resort_keys(self, keys: list, mode: str) -> list:
+        """The Editor's ⟳ Re-sort (F5) and 🕘 Time order, when it was opened from
+        this grid: the same pictures in a new order. "sort" re-applies this
+        grid's own sort (normally Rate ↓, so the colours just given count);
+        "time_asc" / "time_desc" order by capture time. The grid itself follows
+        a re-sort, so the two stay in step; a time order is the Editor's alone."""
+        if self._collection is None:
+            return keys
+        wanted = set(keys)
+        if mode == "sort":
+            self._resort_if_needed()
+            ordered = [k for k in self._order if k in wanted]
+            return ordered + [k for k in keys if k not in set(ordered)]
+        if mode in ("time_asc", "time_desc"):
+            def _when(k):
+                try:
+                    return self._collection.item_for_key(k).date or ""
+                except (KeyError, ValueError):
+                    return ""
+            return sorted(keys, key=lambda k: (_when(k), k),
+                          reverse=(mode == "time_desc"))
+        return keys
+
     def editor_context_menu(self, upn_key: str) -> set:
         """The Editor's right-click, when it was opened from this grid: this
         grid's own card menu (docs/plans/edit_window_parity.md, D5). Twin of
