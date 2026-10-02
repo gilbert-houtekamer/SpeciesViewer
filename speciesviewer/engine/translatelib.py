@@ -1,7 +1,9 @@
 import csv
 import os
+import time
 from collections import namedtuple
 from deep_translator import GoogleTranslator
+from deep_translator.exceptions import TooManyRequests
 from langdetect import detect as _langdetect_detect, DetectorFactory
 from fastcrc import crc32
 import logging
@@ -145,6 +147,17 @@ class CachedTranslate:
         self._dirty = True
         return translatedText
 
+    # When Google refuses this internet connection (its "unusual traffic" page,
+    # which deep_translator reports as "too many requests" whatever the real
+    # reason), stop asking it for a while: every further try costs ~1.5 s and
+    # one more identical log line. Class-level, so it holds across the several
+    # CachedTranslate instances one session creates; time-limited, because the
+    # block lifts on its own (hours, or a different network).
+    _GOOGLE_PAUSE_S = 30 * 60
+    _google_blocked_until = 0.0
+    _GOOGLE_BLOCKED_MSG = ("Google is blocking automatic translation from this "
+                           "internet connection")
+
     # MyMemory wants region-tagged codes and caps a request at 500 characters.
     _MYMEM_REGION = {'nl': 'nl-NL', 'en': 'en-GB'}
     _MYMEM_LIMIT = 480
@@ -154,13 +167,22 @@ class CachedTranslate:
         endpoint is down — which it is, periodically, by design — fall back to
         MyMemory, a real documented API. Returns '' when both fail, with the
         reason in self.last_error; '' is never cached, so it retries next run."""
-        try:
-            out = GoogleTranslator(source=from_lang, target=to_lang).translate(text)
-            if out:
-                return out
-            self.last_error = "Google Translate returned nothing"
-        except Exception as e:
-            self.last_error = f"Google Translate: {e}"
+        cls = CachedTranslate
+        if time.time() < cls._google_blocked_until:
+            self.last_error = cls._GOOGLE_BLOCKED_MSG
+        else:
+            try:
+                out = GoogleTranslator(source=from_lang, target=to_lang).translate(text)
+                if out:
+                    return out
+                self.last_error = "Google Translate returned nothing"
+            except TooManyRequests:
+                cls._google_blocked_until = time.time() + cls._GOOGLE_PAUSE_S
+                self.last_error = cls._GOOGLE_BLOCKED_MSG
+                logger.info(f"Translation: {cls._GOOGLE_BLOCKED_MSG}; using MyMemory "
+                            f"for the next {cls._GOOGLE_PAUSE_S // 60} minutes.")
+            except Exception as e:
+                self.last_error = f"Google Translate: {e}"
         try:
             from deep_translator import MyMemoryTranslator
             mm = MyMemoryTranslator(source=self._MYMEM_REGION.get(from_lang, from_lang),
@@ -168,8 +190,9 @@ class CachedTranslate:
             parts = self._split_for_limit(text, self._MYMEM_LIMIT)
             out = "".join(mm.translate(p) for p in parts)
             if out:
-                logger.info(f"Translation: Google unavailable ({self.last_error}); "
-                            f"used MyMemory instead.")
+                if self.last_error != cls._GOOGLE_BLOCKED_MSG:
+                    logger.info(f"Translation: Google unavailable ({self.last_error}); "
+                                f"used MyMemory instead.")
                 self.last_error = None
                 return out
         except Exception as e:
