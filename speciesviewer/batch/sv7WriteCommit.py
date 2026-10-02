@@ -105,6 +105,40 @@ def putSharedWebAssets(MyProject, sftp):
         logger.info("Shared web assets (stylesheet / map library) were already current.")
 
 
+def putTripImages(MyProject, sftp):
+    """Upload the trip's banner and trip picture to the trip's web root.
+
+    Only repository creation (sv1MakeReposity) ever uploaded them, so a banner
+    or picture changed afterwards in the trip settings was named by every page
+    but never reached the server: the blogs showed a broken banner. They now
+    ship with every commit; cachedUpload skips them once the site is current.
+    The names are the ones the pages use (the trip registry), plus trip.ini's
+    in case the two disagree. The files live in the trip folder itself."""
+    if MyProject.isMasterRepository() or not MyProject.Trip:
+        return
+    names = set()
+    try:
+        row = MyProject.Trip.getTrip(MyProject.Trip.getTripName())
+        names.update((row.get("trip_banner", ""), row.get("trip_picture", "")))
+    except Exception:
+        pass
+    try:
+        from utils.trip_config import read_trip_ini
+        ini = read_trip_ini(MyProject.getRepositoryPath()) or {}
+        names.update((ini.get("trip_banner", ""), ini.get("trip_picture", "")))
+    except Exception as e:
+        logger.warning(f"sv7WriteCommit: could not read trip.ini: {e}")
+    target = sftp.remotePrefix() + MyProject.getBiotaWebRoot()
+    for name in sorted(n.strip() for n in names if n and n.strip()):
+        src = os.path.join(MyProject.getRepositoryPath(), name)
+        if not os.path.isfile(src):
+            logger.warning(f"Trip banner/picture not found in the trip folder, "
+                           f"not uploaded: {src}")
+            continue
+        if not sftp.cachedUpload(src, target.rstrip("/") + "/" + name, preserve_mtime=True):
+            logger.info(f"Uploaded trip image {name}.")
+
+
 def putRecursiveTreeWeb(MyProject, config):
     password = config.get("websettings","Sftppwd").strip("'")
     sftp = engine.sftplib.Sftp(
@@ -119,6 +153,7 @@ def putRecursiveTreeWeb(MyProject, config):
     fromdisk = MyProject.ReviewFrozen()
     toweb = sftp.remotePrefix() + MyProject.getBiotaWebRoot()
     putSharedWebAssets(MyProject, sftp)
+    putTripImages(MyProject, sftp)
     sftp.put_r_portable(os.path.join(fromdisk, 'biota/'), toweb + 'biota/', preserve_mtime=True)
 
     fromintro = MyProject.getBiotaDir()

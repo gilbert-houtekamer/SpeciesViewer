@@ -164,6 +164,10 @@ def main(args, config):
                 logger.info(f"removeBlogArtifacts (empty day; may not exist yet): {e}")
         else:
             blog.uploadBlog(sftp)
+        # The banner every blog page shows, and the trip picture. Cached, so
+        # this sends nothing once the site has them.
+        from batch.sv7WriteCommit import putTripImages
+        putTripImages(MyProject, sftp)
         # Always push the rebuilt index + admin so the removed day drops off the site.
         blog.uploadBlogIndex(sftp)
         blog.uploadBlogAdmin(sftp)
