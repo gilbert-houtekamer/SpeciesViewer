@@ -4084,10 +4084,13 @@ class CountSpeciesDialog(BaseTripModuleDialog):
         # Add buttons
         button_layout = QHBoxLayout()
         save_button = QPushButton("Save As")
+        table_button = QPushButton("Save Species Table (Excel / CSV)")
         copy_button = QPushButton("Copy to Clipboard")
         save_button.clicked.connect(self.save_report)
+        table_button.clicked.connect(self.save_table)
         copy_button.clicked.connect(self.copy_to_clipboard)
         button_layout.addWidget(save_button)
+        button_layout.addWidget(table_button)
         button_layout.addWidget(copy_button)
         self.layout().addLayout(button_layout)
 
@@ -4151,6 +4154,62 @@ class CountSpeciesDialog(BaseTripModuleDialog):
         if filename:
             with open(filename, "w", encoding="utf-8") as f:
                 f.write(self.report_viewer.toPlainText())
+
+    def save_table(self):
+        """Save the species table as a spreadsheet, one column per report
+        column and one per day, so it can be filtered (e.g. no JPG yet, seen
+        on these days). The step writes the table next to the text report;
+        this only converts it to the format the user picks."""
+        import csv
+        source = (Path(_config.get("trip", "tripbiotadatabase")) / "metadata"
+                  / "reports" / "Species overview.csv")
+        if not source.exists():
+            QMessageBox.information(
+                self, "Save Species Table",
+                "There is no species table yet. Press Run Step first.")
+            return
+        with open(source, "r", encoding="utf-8-sig", newline="") as f:
+            rows = list(csv.reader(f))
+        pic_dir = _config.get("project", "picturedirectory", fallback="").strip()
+        default_dir = str(Path(pic_dir).parent) if pic_dir else ""
+        default_path = str(Path(default_dir) / "Species table.xlsx") if default_dir else ""
+        filename, chosen = QFileDialog.getSaveFileName(
+            self, "Save Species Table As", default_path,
+            "Excel Workbook (*.xlsx);;CSV (*.csv)")
+        if not filename:
+            return
+        try:
+            if filename.lower().endswith(".csv") or chosen.startswith("CSV"):
+                with open(filename, "w", encoding="utf-8-sig", newline="") as f:
+                    csv.writer(f).writerows(rows)
+            else:
+                from openpyxl import Workbook
+                from openpyxl.styles import Font
+                wb = Workbook()
+                ws = wb.active
+                ws.title = "Species"
+                for r in rows:
+                    # Numbers as numbers, so Excel can sort and filter on them.
+                    ws.append([int(v) if v.isdigit() else v for v in r])
+                for cell in ws[1]:
+                    cell.font = Font(bold=True)
+                ws.auto_filter.ref = ws.dimensions
+                ws.freeze_panes = "C2"
+                widths = {"Nr": 5, "Group": 8, "English": 32, "Dutch": 32,
+                          "Scientific": 30, "New": 6, "Days": 6, "Pics": 6,
+                          "Best": 6, "JPG": 6}
+                from openpyxl.utils import get_column_letter
+                for i, name in enumerate(rows[0], start=1):
+                    ws.column_dimensions[get_column_letter(i)].width = widths.get(name, 11)
+                wb.save(filename)
+        except OSError as e:
+            QMessageBox.warning(self, "Save Species Table",
+                                f"Could not save the table:\n{e}")
+            return
+        # Open it in whatever the system uses for .xlsx/.csv (Excel, Numbers).
+        from PyQt6.QtGui import QDesktopServices
+        from PyQt6.QtCore import QUrl
+        QDesktopServices.openUrl(QUrl.fromLocalFile(filename))
 
     def copy_to_clipboard(self):
         clipboard = QGuiApplication.clipboard()

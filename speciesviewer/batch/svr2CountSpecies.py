@@ -40,6 +40,7 @@ topics_skipped = 0
 jpgneeded = 0
 legacy_days = []         # days summarized before the #Keep column existed
 reference_names = set()  # lowercase ScientificNames that are already in the master collection
+table_rows = []          # the species table as data, one dict per row -> Species overview.csv
 
 # read parameters, but will be overwritten probably
 def readConfig():
@@ -170,10 +171,14 @@ def scanSpecies(sc, speciesname, report):
                 english = species['EnglishName'] if species['EnglishName'] else f"*{sci}*"
                 dutch = species['DutchName'] if species['DutchName'] else f"*{sci}*"
                 data_line = str(counter).rjust(3) + ' ' + english.ljust(32) + dutch.ljust(40)
+                row_nr = counter
+                row_new = ''
+                day_marks = {}
                 if scientific in reference_names:
                     data_line += '     '
                 else:
                     data_line += str(newcounter).rjust(3) + '  '
+                    row_new = newcounter
                     newcounter += 1
                     total_new += 1
                 counter += 1
@@ -217,6 +222,7 @@ def scanSpecies(sc, speciesname, report):
                             break
                     if summary != "":
                         days_line += summary
+                        day_marks[header] = summary.strip()
                     else:
                         days_line += '.  '
 
@@ -233,6 +239,18 @@ def scanSpecies(sc, speciesname, report):
                 elif scientific not in reference_names:
                     data_line += '   No JPG     '
                 print(data_line, file=report)
+                # The same row as data, for the spreadsheet export. The text
+                # report stays the thing to read; this one is for filtering.
+                row = {"Nr": row_nr,
+                       "Group": "Other" if subheaderdone else "Birds",
+                       "English": english, "Dutch": dutch, "Scientific": sci,
+                       "New": row_new}
+                for header in headers:
+                    row[header] = day_marks.get(header, "")
+                row.update({"Days": seen, "Pics": pics,
+                            "Best": best_rating if best_rating > 0 else ("j" if has_jpg else ""),
+                            "JPG": "yes" if has_jpg else "no"})
+                table_rows.append(row)
         else:
             scanSpecies(sc, leaf, report)
     return
@@ -267,8 +285,9 @@ def print_headers(sc, report):
 def main(args, config):
     global starttime, SpeciesDebug, reference_names
     global result_dict, headers, counter, newcounter, jpgneeded
-    global total_species, total_new, topics_skipped, legacy_days
+    global total_species, total_new, topics_skipped, legacy_days, table_rows
     legacy_days = []
+    table_rows = []
     result_dict = {}
     headers = []
     counter = 1
@@ -411,6 +430,16 @@ def main(args, config):
         if topics_skipped:
             print(f"({topics_skipped} landscape/topic entries were ignored — they are "
                   f"not species.)", file=report)
+
+    # The species table as a CSV next to the text report, for the dialog's
+    # "Save Species Table (Excel / CSV)" button. utf-8-sig so Excel reads the accents right.
+    columns = (["Nr", "Group", "English", "Dutch", "Scientific", "New"]
+               + headers + ["Days", "Pics", "Best", "JPG"])
+    with open(reports_dir / "Species overview.csv", "w", encoding="utf-8-sig",
+              newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=columns)
+        writer.writeheader()
+        writer.writerows(table_rows)
 
     # print(f'{len(species_dict)} lines written for species data to "{config.get("directories","Tables").replace('"', '').replace("'", '')+'species.csv'}".')
     totaltime = time.time() - starttime      
