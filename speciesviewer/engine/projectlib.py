@@ -70,6 +70,12 @@ class Project:
         self.NewPictDir = newpictdir.replace('"', "").replace("'", "")
         self.BiotaWebRoot = biotawebroot.replace('"', "").replace("'", "").rstrip('/') + '/'
         self.projectName = Path(self.NewPictDir.replace('*','')).stem
+        # Per instance, not the class-level {}: addAllSpeciesFiles mutates it in
+        # place, so the class dict was shared by every Project the GUI made in
+        # one session. Publishing day after day, each day's allspecies.csv then
+        # carried every earlier day's entries too, some pointing at frozen JPGs
+        # since rebuilt away — a burst of "source missing" on the last day.
+        self.AllSpeciesFiles = {}
         # global files
         self.files_dict = {}         # all files
         self.UniquePictureName_dict = {}      
