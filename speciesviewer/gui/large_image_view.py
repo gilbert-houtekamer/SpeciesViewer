@@ -2638,8 +2638,13 @@ class LargeImageView(QDialog):
         date_t = item.date.replace(":", "-", 2) if item.date else ""
         self._exif_date_lbl.setText(date_t)
         self._exif_date_lbl.setVisible(bool(date_t))
-        self._gps_lbl.setText(exif.gps or "")
-        self._gps_lbl.setVisible(bool(exif.gps))
+        # Altitude after the coordinates — "(1456 m)" — when the picture has one
+        # (the camera rarely writes it; the tracklog geotag does).
+        from gui.picture_provider import altitude_text
+        alt = altitude_text(exif.altitude)
+        gps_t = f"{exif.gps}   ({alt})" if exif.gps and alt else (exif.gps or "")
+        self._gps_lbl.setText(gps_t)
+        self._gps_lbl.setVisible(bool(gps_t))
 
         self._show_location(key)
 

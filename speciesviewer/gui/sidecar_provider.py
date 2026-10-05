@@ -456,6 +456,7 @@ class SidecarItem(PictureItem):
             distance=str(r.get("SubjectDistance", "") or ""),
             dimensions=dims,
             gps=str(r.get("GPSPosition", "") or ""),
+            altitude=str(r.get("GPSAltitude", "") or ""),
         )
 
     # async image — embedded preview from the best source (JPG if present, else RAW)

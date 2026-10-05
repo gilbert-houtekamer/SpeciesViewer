@@ -12,7 +12,7 @@ from pathlib import Path
 logger = logging.getLogger("speciesviewer")
 
 _FILENAME = ".sv_sidecar_cache.json"
-_VERSION = 5   # v2 added location text; v3 adds CountryCode so the cached row is a
+_VERSION = 6   # v6 adds GPSAltitude (shown after the coordinates in the Editor). v2 added location text; v3 adds CountryCode so the cached row is a
                # complete substitute for a read_location() exiftool spawn; v4 adds
                # GPSProcessingMethod — WITHOUT the bump, an existing cache is only
                # re-read when a file's mtime changes, so a picture seeded from a place
@@ -29,7 +29,7 @@ _CACHE_TAGS = [
     "-Subject", "-Rating", "-Label", "-Description", "-Headline",
     "-DateTimeOriginal", "-ISO", "-FNumber", "-ExposureTime", "-FocalLength",
     "-Make", "-Model", "-LensModel", "-SubjectDistance", "-ImageWidth", "-ImageHeight",
-    "-GPSPosition", "-GPSLatitude", "-GPSLongitude",
+    "-GPSPosition", "-GPSLatitude", "-GPSLongitude", "-GPSAltitude",
     # HOW the fix was obtained. Blank = the camera measured it, and the map refuses
     # to move it. "MANUAL" = a human placed it (map drag / place-name lookup), so it
     # may still be dragged onto the exact spot. Cached because the map asks this of

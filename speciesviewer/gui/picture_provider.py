@@ -289,6 +289,21 @@ class ExifSummary:
     dimensions: str = ""        # the master/RAW image size, e.g. "5600x3728"
     jpg_dimensions: str = ""    # the displayed/web JPG size, e.g. "800x533"
     gps: str = ""
+    altitude: str = ""          # GPSAltitude as stored, e.g. "156.3505028 m"
+
+
+def altitude_text(raw: str) -> str:
+    """'1456 m' (whole metres) for a stored GPSAltitude — '156.3505028 m',
+    '154.8 m Above Sea Level', '-3 m', '2 m Below Sea Level' — or '' when there
+    is no number in it."""
+    s = str(raw or "").strip()
+    m = re.search(r"-?\d+(?:\.\d+)?", s)
+    if not m:
+        return ""
+    v = float(m.group())
+    if "below" in s.lower() and v > 0:
+        v = -v
+    return f"{round(v)} m"
 
 
 def exif_from_rows(upn_row: dict, file_row: dict) -> ExifSummary:
@@ -310,6 +325,7 @@ def exif_from_rows(upn_row: dict, file_row: dict) -> ExifSummary:
         dimensions=u.get("ImageSize", "") or f.get("ImageSize", ""),
         jpg_dimensions=u.get("JPGSize", ""),
         gps=u.get("GPSPosition", "") or f.get("Composite:GPSPosition", ""),
+        altitude=u.get("GPSAltitude", "") or f.get("EXIF:GPSAltitude", ""),
     )
 
 
