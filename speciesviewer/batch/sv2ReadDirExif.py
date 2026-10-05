@@ -273,6 +273,19 @@ def main(args, config):
             if merged_distance:
                 row["MakerNotes:FocusDistance"] = merged_distance
 
+            # One altitude, wherever the file keeps it. The column is named after
+            # the camera's EXIF tag, but a sidecar holds it as XMP:GPSAltitude —
+            # that is where the card-read tracklog geotag writes it — so the loop
+            # above never saw it, and a whole trip of OM-1 pictures (whose RAW says
+            # "undef") ended up with no altitude in the CSVs although ~90% of their
+            # sidecars had one. Composite:GPSAltitude is exiftool's merge of either
+            # source (the same way Composite:GPSPosition already feeds the
+            # coordinates), and it is already in every read, so no re-read and no
+            # new column. "undef" is cleared too: as a non-empty value it would win
+            # findAnySourceItem over the sidecar's real one.
+            if row.get("EXIF:GPSAltitude", "") in ("", "undef"):
+                row["EXIF:GPSAltitude"] = d.get("Composite:GPSAltitude", "")
+
             # One capture time, chosen by ONE rule for photos and movies alike
             # (engine.capture_time). A movie carries no EXIF:DateTimeOriginal,
             # and the QuickTime tag a phone fills is not the one a camera fills
