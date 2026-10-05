@@ -2070,6 +2070,65 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
         from gui.window_state import give_independent_taskbar_entry
         QTimer.singleShot(0, lambda: give_independent_taskbar_entry(self))
 
+    # ── follow edits made elsewhere (Day scope) ───────────────────────────────
+
+    def _setup_disk_follow(self):
+        """Watch the day's sidecars so a colour/rating written by another window
+        or PhotoLab shows here without reopening. Only when the collection
+        supports it (a trip's Day scope); otherwise any old watch is dropped."""
+        from PyQt6.QtCore import QFileSystemWatcher
+        old = getattr(self, "_fs_watcher", None)
+        if old is not None:
+            old.deleteLater()
+        self._fs_watcher = None
+        if not getattr(self._collection, "supports_external_refresh", False):
+            return
+        if getattr(self, "_fs_debounce", None) is None:
+            self._fs_debounce = QTimer(self)
+            self._fs_debounce.setSingleShot(True)
+            self._fs_debounce.setInterval(400)      # one save emits several events
+            self._fs_debounce.timeout.connect(self._refresh_from_disk)
+        paths = self._collection.sidecar_paths()
+        dirs = {str(Path(p).parent) for p in paths}   # catches atomic renames
+        self._fs_watcher = QFileSystemWatcher(self)
+        if paths:
+            self._fs_watcher.addPaths(paths + sorted(dirs))
+        self._fs_watcher.fileChanged.connect(lambda _p: self._fs_debounce.start())
+        self._fs_watcher.directoryChanged.connect(lambda _p: self._fs_debounce.start())
+
+    def _refresh_from_disk(self):
+        coll = self._collection
+        if (coll is None or getattr(self, "_loading", False)
+                or not getattr(coll, "supports_external_refresh", False)):
+            return
+        try:
+            changed = coll.refresh()
+        except Exception as e:
+            logger.warning(f"Trip Species Viewer: refresh from disk failed: {e}")
+            return
+        # An atomic write (exiftool, PhotoLab) drops the file from the watch.
+        w = getattr(self, "_fs_watcher", None)
+        if w is not None:
+            watched = set(w.files())
+            for p in coll.sidecar_paths():
+                if p not in watched:
+                    w.addPath(p)
+        if not changed:
+            return
+        for k in changed:
+            self._cull_refresh_key(k)
+        self._notify_large_view(changed)
+        self._resort_if_needed()
+        self._status.setText(f"Updated {len(changed)} picture(s) changed elsewhere")
+
+    def changeEvent(self, event):
+        # Coming back to this window (from PhotoLab or another SV window) is the
+        # moment to look: a cheap mtime check, re-reading only what moved.
+        super().changeEvent(event)
+        if (event.type() == QEvent.Type.ActivationChange and self.isActiveWindow()
+                and getattr(self, "_fs_watcher", None) is not None):
+            self._refresh_from_disk()
+
     def closeEvent(self, event):
         save_window(self, self._geo_key, cols=self.columns)
         # Species named through the editor here were buffered, not written per
@@ -2413,6 +2472,11 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
             view_read_only=(self._view_read_only or self._day_scope_locked),
             frozen_days=self._frozen_days,
         )
+        # Day scope of a trip follows colour/rating edits made elsewhere (another
+        # window, PhotoLab); Trip / Trip+Master and albums stay read-on-open.
+        if scope_day and not self._album_query:
+            self._collection.enable_external_refresh()
+        self._setup_disk_follow()
         if self._album_query:
             # The whole of an album scope: which UPNs the per-species master
             # query may return, plus the album's full set for the "from Album"

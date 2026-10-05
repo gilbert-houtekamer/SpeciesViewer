@@ -16,7 +16,9 @@ own a RatingEditorCollection and drop its inline grid/write logic).
 
 from __future__ import annotations
 
+import json
 import logging
+import os
 import re
 from pathlib import Path
 
@@ -1477,6 +1479,116 @@ class RatingEditorCollection(PictureCollection):
         upn_row["Rate"] = str(new_rate)
         self._persist_upn(upn_key, wrote_file)
         return new_rate
+
+    # ── follow edits made elsewhere (Day scope only) ─────────────────────────
+    # Another window (Species Image Preview, the culling grid) or PhotoLab can
+    # change a colour/rating in this day's sidecars while this viewer is open.
+    # Day scope only: there fpr IS the day, so the files are few and the rows
+    # are the ones that day's CSVs hold. Trip / Trip+Master stay read-on-open.
+    def enable_external_refresh(self) -> None:
+        """Called by the host for a trip's Day scope. Takes the baseline mtimes
+        that refresh() compares against."""
+        if self._day_objects is not None:
+            return
+        self.supports_external_refresh = True
+        self._label_mtimes = {}
+        for _key, p in self._label_files():
+            try:
+                self._label_mtimes[str(p)] = os.stat(p).st_mtime_ns
+            except OSError:
+                pass
+
+    def _label_files(self) -> list:
+        """(upn_key, file holding its colour/rating) for every trip picture of
+        the day: its .xmp, else — a HEIC/PNG-only picture — the file itself."""
+        out = []
+        for key in self.fpr.upn.UniquePictureName_dict:
+            p = None
+            for fname in self._files(key):
+                frow = self.fpr.fi.files_dict.get(fname) or {}
+                if frow.get("WindowsExtension", "").lower() == "xmp":
+                    cand = Path(frow.get("WindowsFileName", ""))
+                    if cand.exists():
+                        p = cand
+                        break
+            if p is None:
+                p = self.self_describing_path(key)
+            if p is not None:
+                out.append((key, p))
+        return out
+
+    def sidecar_paths(self) -> list:
+        if not self.supports_external_refresh:
+            return []
+        return [str(p) for _k, p in self._label_files()]
+
+    def refresh(self) -> set:
+        """Re-read XMP:Label / XMP:Rating from the label files whose mtime moved
+        since the last look, carry them into the rows, recompute the Rate, and
+        persist the day's CSVs. Returns the keys whose values changed. Our own
+        writes trip this too; they re-read to the same values and change nothing."""
+        if not self.supports_external_refresh:
+            return set()
+        to_read = []
+        for key, p in self._label_files():
+            try:
+                mt = os.stat(p).st_mtime_ns
+            except OSError:
+                continue
+            if self._label_mtimes.get(str(p)) != mt:
+                to_read.append((key, p, mt))
+        if not to_read:
+            return set()
+        from engine.exif_writer import run_exiftool_files
+        try:
+            out = run_exiftool_files(["-j", "-q", "-XMP:Label", "-XMP:Rating"],
+                                     [str(p) for _k, p, _m in to_read], timeout=60).stdout
+            rows = json.loads(out) if out.strip() else []
+        except Exception as e:
+            logger.warning(f"Trip Species Viewer refresh: exiftool failed: {e}")
+            return set()
+        norm = lambda s: os.path.normcase(os.path.normpath(str(s)))
+        by_src = {norm(r.get("SourceFile", "")): r for r in rows}
+        changed = set()
+        for key, p, mt in to_read:
+            self._label_mtimes[str(p)] = mt
+            r = by_src.get(norm(p))
+            upn_row = self.fpr.upn.UniquePictureName_dict.get(key)
+            if r is None or upn_row is None:
+                continue
+            diff = False
+            new_label = str(r.get("Label", "") or "")
+            was_label = str(upn_row.get("Label", "") or "")
+            # An ABSENT label never clears a colour we hold — a flattened sidecar
+            # looks exactly like that (same guardrail as PreviewCollection.refresh).
+            if new_label and new_label != was_label:
+                upn_row["Label"] = new_label
+                diff = True
+            new_rating = r.get("Rating", None)
+            if (new_rating not in (None, "")
+                    and str(new_rating) != str(upn_row.get("Rating", "") or "")):
+                upn_row["Rating"] = str(new_rating)
+                diff = True
+            if not diff:
+                continue
+            for fname in self._files(key):
+                frow = self.fpr.fi.files_dict.get(fname)
+                if frow and norm(frow.get("WindowsFileName", "")) == norm(p):
+                    frow["XMP:Label"] = upn_row.get("Label", "")
+                    if new_rating not in (None, ""):
+                        frow["XMP:Rating"] = str(new_rating)
+            upn_row["Rate"] = str(_compute_rate(upn_row, self.fpr.fi.files_dict))
+            logger.info(f"[colour] Trip Species Viewer follows disk  {key:34} "
+                        f"label {was_label!r} -> {upn_row.get('Label', '')!r}, "
+                        f"rating {upn_row.get('Rating', '')}")
+            changed.add(key)
+        if changed:
+            try:
+                self.fpr.fi.write_project_files()
+                self.fpr.upn.write_project_summary()
+            except Exception as e:
+                logger.warning(f"Trip Species Viewer refresh: could not persist: {e}")
+        return changed
 
     def _persist_upn(self, upn_key: str, wrote_file: bool) -> None:
         if self._day_objects is None:
