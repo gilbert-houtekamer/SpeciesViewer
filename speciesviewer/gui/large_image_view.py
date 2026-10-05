@@ -2444,6 +2444,13 @@ class LargeImageView(QDialog):
             self._cull_set_color_quick("Blue")
             event.accept()
             return
+        if (k == Qt.Key.Key_A and not text_input_focused()
+                and event.modifiers() & Qt.KeyboardModifier.ControlModifier):
+            # Select all — the same Ctrl+A as the grids.
+            self._selected_keys = set(self._keys)
+            self._update_selection_display()
+            event.accept()
+            return
         if (k == Qt.Key.Key_D and not desc_focused
                 and event.modifiers() & Qt.KeyboardModifier.ControlModifier
                 and self._selected_keys):
@@ -3049,7 +3056,9 @@ class LargeImageView(QDialog):
     def _resort_from_host(self):
         self._time_desc = None
         self._update_time_btn()
-        self._apply_host_order("sort")
+        # Land on the top picture — the best of the new order — not on the one
+        # you were at, which after a cull is often a Blue down in the tail.
+        self._apply_host_order("sort", from_start=True)
 
     def _toggle_time_order(self):
         self._time_desc = self._time_desc is False   # None → old→new → new→old → …
@@ -3061,8 +3070,8 @@ class LargeImageView(QDialog):
 
     def _apply_host_order(self, mode: str, from_start: bool = False):
         """Ask the host grid for these same pictures in `mode` order and show
-        them so — staying on the picture you are looking at (a re-sort mid-cull),
-        or jumping to the first one (`from_start`, a time order)."""
+        them so — staying on the picture you are looking at, or jumping to the
+        first one (`from_start`: Re-sort and time order both do)."""
         fn = getattr(self.parent(), "editor_resort_keys", None)
         if not callable(fn) or not self._keys:
             return
