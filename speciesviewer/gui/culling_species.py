@@ -49,12 +49,31 @@ def species_prefill_for_keys(keys, species_of, is_landscape=None):
         return ((species_of(keys[0]) or "").strip(), "", 0)
     named = [s for s in ((species_of(k) or "").strip() for k in keys) if s]
     distinct = sorted(set(named))
+    # Same species, different sex / age / plumage ("woodpecker" next to
+    # "woodpecker, male") is ONE species — compare on the name without its
+    # qualifiers, and report the qualifiers separately.
+    split = [split_species_qualifiers(s) for s in named]
+    bases = sorted({b for b, _q in split if b})
     current, summary = "", ""
     if len(distinct) == 1:
         current = distinct[0]
         if len(named) < len(keys):
             summary = (f"★ {distinct[0]} — set on {len(named)} of {len(keys)}; "
                        f"the rest are blank")
+    elif len(bases) == 1:
+        # Prefill the bare name: Commit writes ONE subject to every picture, so
+        # the summary says plainly that the qualifiers will be made uniform.
+        current = bases[0]
+        counts: dict[str, int] = {}
+        for _b, quals in split:
+            for canon in quals.values():
+                counts[canon] = counts.get(canon, 0) + 1
+        marked = ", ".join(f"{n} marked as {canon}" for canon, n in counts.items())
+        blank = (f"; {len(keys) - len(named)} blank" if len(named) < len(keys)
+                 else "")
+        summary = (f"★ {bases[0]} — {marked} (of {len(keys)}){blank}. "
+                   f"Commit gives all {len(keys)} the sex / age / plumage "
+                   f"chosen below")
     elif len(distinct) > 1:
         summary = ("Mixed — " + ", ".join(distinct)
                    + f"  ({len(named)} of {len(keys)} named)")
