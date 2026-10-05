@@ -91,6 +91,14 @@ reads <em>No current work planned</em>.</p>
 </ul>
 <h3>Done</h3>
 <ul>
+  <li><strong>Google's official Translate service, with your own key</strong>
+    <span class="tag-shipped">SHIPPED</span> (2026-10-05) — the free Google page was being refused
+    on this connection, so MyMemory did the work with weaker translations. SpeciesViewer now asks
+    Google's official Cloud Translation API first whenever this computer's
+    <code>sv_config_&lt;host&gt;.ini</code> has <code>[translate] google_api_key</code> (a key
+    restricted to the Cloud Translation API, in project "My First Project"). Without a key nothing
+    changes. A refused key is reported once and the free services take over for that session.
+    The key lives only in that machine file (gitignored), so smallboy needs the same entry.</li>
   <li><strong>A movie's capture time comes from the movie</strong>
     <span class="tag-shipped">SHIPPED</span> (2026-09-23) — one rule for photos and movies alike,
     <code>engine.capture_time</code>, used by both the card read's day bucketing and
@@ -493,13 +501,6 @@ reads <em>No current work planned</em>.</p>
     appears nowhere in the extension table or the code, so such a file is not even offered as a
     card. Adding it to <code>HEIC</code> widens what gets ingested, so it is a deliberate change
     rather than a typo fix.</li>
-  <li><span class="tag-open">OPEN</span> <span class="tag-new">NEW 2 Oct</span> <strong>Google's
-    official Translate service, with your own key</strong> (after the Pantanal website) — the free
-    Google page SpeciesViewer uses now gets refused on some internet connections (VPN, shared
-    networks), and MyMemory takes over with weaker translations. Since 2 Oct SpeciesViewer stops
-    asking Google for 30 minutes after a refusal and says so once. The official service is not
-    blocked and the volume fits in its free monthly allowance; it needs a Google Cloud project and a
-    key, kept out of the repo.</li>
 </ul>
 <h3>Done</h3>
 <ul>

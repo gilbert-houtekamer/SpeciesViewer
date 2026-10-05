@@ -162,12 +162,61 @@ class CachedTranslate:
     _MYMEM_REGION = {'nl': 'nl-NL', 'en': 'en-GB'}
     _MYMEM_LIMIT = 480
 
-    def _live_translate(self, text, from_lang, to_lang):
-        """One live translation. Google first (best quality); if its unofficial
-        endpoint is down — which it is, periodically, by design — fall back to
-        MyMemory, a real documented API. Returns '' when both fail, with the
-        reason in self.last_error; '' is never cached, so it retries next run."""
+    # Google's OFFICIAL Cloud Translation API (basic, v2), used first when this
+    # machine's config has [translate] google_api_key. Unlike the free web page
+    # below it is not refused on VPNs or shared networks. The key lives only in
+    # sv_config_<host>.ini (gitignored, never copied between machines).
+    _OFFICIAL_URL = "https://translation.googleapis.com/language/translate/v2"
+    _official_off_reason = None     # set once the key is refused: stop asking
+
+    @staticmethod
+    def _official_key():
+        try:
+            from utils.config import get_setting
+            return (get_setting("translate", "google_api_key", fallback="") or "").strip()
+        except Exception:
+            return ""
+
+    def _official_translate(self, text, from_lang, to_lang):
+        """Translate via the Cloud Translation API. Returns '' when there is no
+        key or the call fails (reason in self.last_error)."""
         cls = CachedTranslate
+        key = self._official_key()
+        if not key or cls._official_off_reason:
+            return ""
+        import requests
+        try:
+            r = requests.post(cls._OFFICIAL_URL, params={"key": key},
+                              data={"q": text, "source": from_lang, "target": to_lang,
+                                    "format": "text"}, timeout=15)
+            if r.status_code == 200:
+                return r.json()["data"]["translations"][0]["translatedText"]
+            try:
+                msg = r.json()["error"]["message"]
+            except Exception:
+                msg = r.text[:200]
+            self.last_error = f"Google Cloud Translation: HTTP {r.status_code}: {msg}"
+            if r.status_code in (400, 401, 403):
+                # A key problem (wrong key, API not enabled, key restricted) —
+                # it will not fix itself mid-session, so say so ONCE and stop.
+                cls._official_off_reason = self.last_error
+                logger.warning(f"Translation: {self.last_error} — check [translate] "
+                               f"google_api_key; using the free services this session.")
+        except Exception as e:
+            self.last_error = f"Google Cloud Translation: {e}"
+        return ""
+
+    def _live_translate(self, text, from_lang, to_lang):
+        """One live translation. Google's official API first when a key is
+        configured; then Google's free web page (best quality, but refused on
+        some connections); then MyMemory, a real documented API. Returns '' when
+        all fail, with the reason in self.last_error; '' is never cached, so it
+        retries next run."""
+        cls = CachedTranslate
+        out = self._official_translate(text, from_lang, to_lang)
+        if out:
+            self.last_error = None
+            return out
         if time.time() < cls._google_blocked_until:
             self.last_error = cls._GOOGLE_BLOCKED_MSG
         else:

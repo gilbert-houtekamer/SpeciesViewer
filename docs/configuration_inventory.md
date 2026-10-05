@@ -96,7 +96,7 @@ text. The work-backup written to a camera card therefore copies
 
 | File | Format | Holds | Copy? | Lose it? |
 |---|---|---|---|---|
-| `sv_config_<hostname>.ini` | ini | **The** machine config: every repository path, `[websettings] Sftppwd` + `base_url`, window geometry, RAW-decode knobs, cache overrides, per-machine EXIF worker count. Created as a `[Global]` stub on first run. | 🔴 **never** — password | 🟡 re-enter every path and the SFTP password |
+| `sv_config_<hostname>.ini` | ini | **The** machine config: every repository path, `[websettings] Sftppwd` + `base_url`, `[translate] google_api_key`, window geometry, RAW-decode knobs, cache overrides, per-machine EXIF worker count. Created as a `[Global]` stub on first run. | 🔴 **never** — password | 🟡 re-enter every path and the SFTP password |
 | `sv_config.ini` | ini | Legacy fallback, same schema, used when no hostname file exists. | 🔴 never | 🟡 |
 | `photolab_denoise.ini` | ini | DxO PhotoLab denoise codes per installed PL version, seeded from built-in defaults. Written only on the crop path. | ✅ | 🟢 reseeded |
 | `days_<hostname>.json` | json | The "Days" lane: ad-hoc `YYYY-MM-DD` folders being reviewed and their status. Real state lives in the XMP sidecars; this is only the list. | ✅ | 🟡 re-add the folders |
@@ -113,6 +113,7 @@ text. The work-backup written to a camera card therefore copies
 | `[VirtTrip]` | `virttripbiotadatabase`, `virttripbiotawebroot` | Active album |
 | `[project]` | `picturedirectory` | The day folder currently being worked on |
 | `[websettings]` | `Sftppwd`, `base_url` | **The credential.** Why this file never leaves the machine |
+| `[translate]` | `google_api_key` | **A second credential.** Google Cloud Translation API key (restricted to that API). When set, translation asks Google's official service first; without it the free Google page and MyMemory are used. Hand-edit with the app closed; each machine needs its own entry |
 | `[fullres]` | `algorithm`, `fbdd`, `bright`, `denoise`, `scale` | RAW decode quality for the 100% view |
 | `[preview]` | `max_long_edge` (3200), `quality` (90) | Size the embedded camera previews are normalised to. `0` = keep whatever the camera embedded |
 | `[createjpg]` | `resize_above` (3200), `max_long_edge` (2000) | Create JPG resamples only when the longest edge (after any crop) exceeds `resize_above`, and then down to `max_long_edge`. The GAP is the point: nothing between them is touched, so an OM-1's 3200 px preview and a phone screenshot are kept as-is while an iPhone frame (5712) and a 45 MP body are reduced. No per-format exception. `resize_above = 0` never resamples. Set in **Look & Feel ▸ Make JPG — resize** |
