@@ -894,6 +894,11 @@ class SidecarCollection(MasterCardOpsMixin, PictureCollection):
         raw = self._groups.get(key, {}).get("raw")
         return raw if raw and Path(raw).exists() else None
 
+    def photolab_path(self, key: str):
+        # "raw" here is any source file — a HEIC, but also a PNG PhotoLab is no use for.
+        raw = self.raw_path(key)
+        return raw if raw is not None and Path(raw).suffix.lower() in RAW_OR_HEIC else None
+
     def gps_source(self, key: str):
         return self._groups.get(key, {}).get("meta") or self._source_file(key)
 

@@ -38,6 +38,7 @@ from gui import theme
 from gui.image_loader import AsyncImageLoader
 from gui.window_state import restore_window, save_window, clamp_to_visible_screen
 from utils.open_path import open_path, reveal_group, launch_app_with_file
+from utils.raw_extensions import is_heic
 from utils.config import get_setting, set_setting, get_window_state
 
 logger = logging.getLogger("speciesviewer")
@@ -2581,10 +2582,12 @@ class LargeImageView(QDialog):
         self._file_key_lbl.setToolTip(_full)
         self._refresh_crop_row(item)
         self._explorer_btn.setEnabled(bool(dir_path))
-        raw = self._collection.raw_path(key)
-        self._dxo_btn.setEnabled(raw is not None)
-        self._dxo_btn.setToolTip("Open the RAW file in the associated viewer" if raw
-                                 else "No RAW file for this picture")
+        pl_src = self._collection.photolab_path(key)
+        self._dxo_btn.setEnabled(pl_src is not None)
+        self._dxo_btn.setToolTip(
+            "No RAW or HEIC file for this picture" if pl_src is None else
+            "Open the HEIC in DxO PhotoLab" if is_heic(pl_src) else
+            "Open the RAW file in the associated viewer")
         self._crop_btn.setEnabled(getattr(item, "can_set_crop", False))
 
         # EXIF
@@ -3843,7 +3846,7 @@ class LargeImageView(QDialog):
         # key FIRST: applying the crop refreshes the view, which rebinds self._item.
         key = self._item.key
         self._apply_pending_crop()
-        raw = self._collection.raw_path(key)
+        raw = self._collection.photolab_path(key)
         if not raw:
             return
         # Tell the host we're about to render here — its focus-in scan will check
@@ -3851,7 +3854,8 @@ class LargeImageView(QDialog):
         self.dxo_launched.emit(str(raw))
         # Hand over the crop/exposure edits held back while PhotoLab ran.
         handover_around_launch(raw, name_for=self._species_for_raw)
-        if sys.platform.startswith("win"):
+        # A HEIC's default app is Photos, not PhotoLab — always use the configured path.
+        if sys.platform.startswith("win") and not is_heic(raw):
             if open_path(raw):
                 return
             # fall through to configured-path attempt if startfile failed

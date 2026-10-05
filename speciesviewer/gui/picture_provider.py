@@ -625,6 +625,12 @@ class PictureCollection(ABC):
         external RAW editor like DxO PhotoLab), or None if there is no RAW."""
         return None
 
+    def photolab_path(self, key: str):
+        """The file the PL button hands to DxO PhotoLab: the RAW, else a HEIC
+        (PhotoLab 9 opens one like a JPG — e.g. to straighten a horizon), else
+        None. Collections that keep a HEIC apart from raw_path() override this."""
+        return self.raw_path(key)
+
     def gps(self, key: str):
         """Signed decimal (lat, lon) for the picture, or None if it has no GPS."""
         return None

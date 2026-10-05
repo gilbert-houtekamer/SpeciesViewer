@@ -32,7 +32,7 @@ from engine.sidecarlib import push_metadata_to_dop
 from utils.sidecar_policy import (
     color_rating_to_xmp_enabled, color_rating_to_dop_enabled,
 )
-from utils.raw_extensions import RAW, DXO_RAW, bare, is_video, SELF_DESCRIBING
+from utils.raw_extensions import RAW, DXO_RAW, bare, is_video, SELF_DESCRIBING, HEIC
 
 _DXO_RAW_EXTS = bare(DXO_RAW)  # canonical table — see utils/raw_extensions.py
 
@@ -1130,6 +1130,13 @@ class RatingEditorCollection(PictureCollection):
             if p.exists():
                 return p
         return None
+
+    def photolab_path(self, upn_key: str) -> Path | None:
+        raw = self.raw_path(upn_key)
+        if raw is not None:
+            return raw
+        own = self.self_describing_path(upn_key)
+        return own if own is not None and own.suffix.lower() in HEIC else None
 
     def _self_thumb_path(self, upn_key: str) -> Path | None:
         """Cached JPEG for the UPN's HEIC/PNG — the same cached_jpg_for() the

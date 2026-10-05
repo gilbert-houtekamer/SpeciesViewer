@@ -842,6 +842,9 @@ class PreviewCollection(PictureCollection):
                     return p
         return None
 
+    def photolab_path(self, upn_key: str) -> Path | None:
+        return self.raw_path(upn_key) or self._heic_path(upn_key)
+
     def _heic_path(self, upn_key: str) -> Path | None:
         for fname in self._files(upn_key):
             frow = self.fpr.fi.files_dict.get(fname)
