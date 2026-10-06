@@ -1305,7 +1305,16 @@ class PictureCard(QFrame):
             self._stars.set_rating(self._item.rating)
             self._color_sel.set_color(self._item.color)
             self.update_rate_display(self._item.rate)
-            self._refresh_framed_status()
+            # The corner text badges (place, date, format …) too — set only in
+            # _apply_framed_item before, so a place typed with Edit location
+            # stayed missing from the corner until the grid was rebuilt.
+            from gui.card_layout import render_datum
+            for _pos, (badge, datum) in getattr(self, "_text_badges", {}).items():
+                txt = render_datum(datum, self._item)
+                badge.setText(txt or "")
+                badge.adjustSize()
+                badge.setVisible(bool(txt))
+            self._refresh_framed_status()       # also repositions the badges
             return
         # Include the sex/age/plumage suffix, exactly as the constructor does —
         # else committing "pair" repaints the card WITHOUT the ♂♀ it just gained.
