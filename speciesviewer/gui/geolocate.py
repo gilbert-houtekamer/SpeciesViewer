@@ -837,12 +837,16 @@ def run_geolocate_batch(parent, targets, *, lang=None, zoom=None, min_move_m=100
             # per remaining place (e.g. hotel wifi drops mid-batch).
             consecutive_conn_fail = 0
             network_down = False
+            no_gps = []                                     # labels skipped: no GPS in their source file
             for i, (label, gps_source, files) in enumerate(targets, 1):
                 if self._cancel or network_down:
                     break
                 self.progress.emit(i, label)
                 latlon = gps_map.get(os.path.normcase(os.path.normpath(gps_source))) if gps_source else None
                 if not latlon or not files:
+                    # Say so: a silent skip read as "wrote 0/1" with no reason, which
+                    # hid a GPS read from a metadata-less baked JPG.
+                    no_gps.append(f"{label} ({os.path.basename(str(gps_source or ''))})")
                     continue
                 idx = next((j for j, (pt, _f, _a) in enumerate(cache)
                             if haversine_m(pt, latlon) < min_move_m), None)
@@ -883,6 +887,10 @@ def run_geolocate_batch(parent, targets, *, lang=None, zoom=None, min_move_m=100
                 self.progress.emit(len(targets), "Writing location names…")
                 for idx, files in place_files.items():
                     written += write_location_batch(files, cache[idx][1], overwrite=overwrite)
+            if no_gps:
+                logger.info(f"Get location: skipped {len(no_gps)} picture(s) — no GPS in "
+                            f"the file read: {', '.join(no_gps[:10])}"
+                            f"{' …' if len(no_gps) > 10 else ''}")
             csv_path = _write_compare_csv(compare_rows) if (dry_run and compare_rows) else ""
             self.finished.emit(queried, written, len(targets), csv_path, network_down)
 
