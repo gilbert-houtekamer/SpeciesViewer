@@ -937,6 +937,67 @@ class RatingEditorCollection(PictureCollection):
                         return ll
         return None
 
+    # ── Get location (reverse-geocode) ────────────────────────────────────
+    # Without these two the base class answered "no source / nowhere to write",
+    # so Get location in the Trip Species Viewer always said "no GPS / writable
+    # files in the selection" — the menu offered something that could never work.
+
+    def _live_trip_files(self, upn_key: str) -> list[tuple[str, Path, dict]]:
+        """(ext, path, row) for the UPN's trip files that exist on disk."""
+        out = []
+        for fname in self._files(upn_key):
+            frow = self.fpr.fi.files_dict.get(fname)
+            if not frow or not frow.get("WindowsFileName"):
+                continue
+            p = Path(frow["WindowsFileName"])
+            if p.exists():
+                out.append((frow.get("WindowsExtension", "").lower(), p, frow))
+        return out
+
+    def gps_source(self, upn_key: str):
+        """The trip file to read GPS FROM: .xmp → RAW → HEIC/PNG → video → other,
+        first whose row carries a position. Never "the first file": a baked blog
+        JPG has no GPS on purpose (same rule as PreviewCollection.gps_source).
+        None for a master reference card — its files are not ours to geotag."""
+        if upn_key in self._master_keys:
+            return None
+        from utils.raw_extensions import SELF_DESCRIBING, VIDEO
+
+        def rank(ext):
+            e = "." + ext
+            if e == ".xmp":
+                return 0
+            if e in _RAW_EXTS:
+                return 1
+            if e in SELF_DESCRIBING:
+                return 2
+            if e in VIDEO:
+                return 3
+            return 4
+        cands = sorted(self._live_trip_files(upn_key), key=lambda c: rank(c[0]))
+        for _e, p, frow in cands:
+            if frow.get("Composite:GPSPosition"):
+                return p
+        return cands[0][1] if cands else None
+
+    def location_targets(self, upn_key: str):
+        """Where the place name is written: the trip picture's .xmp and JPG(s),
+        plus a HEIC/PNG itself (its annotations live inside it). Empty for a
+        master reference card and in a view-only (Album) viewer."""
+        if self._view_read_only or upn_key in self._master_keys:
+            return []
+        from utils.raw_extensions import SELF_DESCRIBING
+        return [str(p) for e, p, _r in self._live_trip_files(upn_key)
+                if e in ("xmp", "jpg", "jpeg") or ("." + e) in SELF_DESCRIBING]
+
+    def read_location(self, upn_key: str) -> dict:
+        """Place text for the Editor's LOCATION panel, from the in-memory picture
+        row (trip or master) — no file read. Missing before, so the panel showed
+        only the coordinates even when the row had City/State/Country."""
+        row = self._upn_row(upn_key)
+        return {k: str(row.get(k, "") or "")
+                for k in ("Location", "City", "Municipality", "State", "Country")}
+
     def cancel_pending_loads(self) -> None:
         self._loader.cancel_all()
 
