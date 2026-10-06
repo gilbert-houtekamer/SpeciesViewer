@@ -3083,6 +3083,12 @@ class TripMapView(QDialog):
             try:
                 item = self._coll.item_for_key(k)
                 place = self._place_for(item, ll)
+                # Height after the place — "Areal (1014 m)" — like the Editor and
+                # the website. In-memory row read, no file access.
+                from gui.picture_provider import altitude_text
+                alt = altitude_text(item.exif.altitude)
+                if alt:
+                    place = f"{place} ({alt})"
                 date = getattr(item, "date", "") or ""
             except (ValueError, KeyError, IndexError):
                 place, date = f"{ll[0]:.4f}, {ll[1]:.4f}", ""
