@@ -29,6 +29,20 @@ def _one(m: "re.Match") -> float:
     return val
 
 
+def altitude_text(raw: str) -> str:
+    """'1456 m' (whole metres) for a stored GPSAltitude — '156.3505028 m',
+    '154.8 m Above Sea Level', '-3 m', '2 m Below Sea Level' — or '' when there
+    is no number in it."""
+    s = str(raw or "").strip()
+    m = re.search(r"-?\d+(?:\.\d+)?", s)
+    if not m:
+        return ""
+    v = float(m.group())
+    if "below" in s.lower() and v > 0:
+        v = -v
+    return f"{round(v)} m"
+
+
 def parse_gps_dms(s: str):
     """Parse a stored GPSPosition into signed decimal ``(lat, lon)`` or None.
 

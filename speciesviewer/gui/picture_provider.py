@@ -292,18 +292,9 @@ class ExifSummary:
     altitude: str = ""          # GPSAltitude as stored, e.g. "156.3505028 m"
 
 
-def altitude_text(raw: str) -> str:
-    """'1456 m' (whole metres) for a stored GPSAltitude — '156.3505028 m',
-    '154.8 m Above Sea Level', '-3 m', '2 m Below Sea Level' — or '' when there
-    is no number in it."""
-    s = str(raw or "").strip()
-    m = re.search(r"-?\d+(?:\.\d+)?", s)
-    if not m:
-        return ""
-    v = float(m.group())
-    if "below" in s.lower() and v > 0:
-        v = -v
-    return f"{round(v)} m"
+# altitude_text moved to engine/geo.py so the website can share it (engine never
+# imports gui); re-exported here for the existing GUI callers.
+from engine.geo import altitude_text  # noqa: E402,F401
 
 
 def exif_from_rows(upn_row: dict, file_row: dict) -> ExifSummary:

@@ -2642,7 +2642,7 @@ class LargeImageView(QDialog):
         # (the camera rarely writes it; the tracklog geotag does).
         from gui.picture_provider import altitude_text
         alt = altitude_text(exif.altitude)
-        gps_t = f"{exif.gps}   ({alt})" if exif.gps and alt else (exif.gps or "")
+        gps_t = f"{exif.gps} ({alt})" if exif.gps and alt else (exif.gps or "")
         self._gps_lbl.setText(gps_t)
         self._gps_lbl.setVisible(bool(gps_t))
 
