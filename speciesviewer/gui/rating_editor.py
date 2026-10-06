@@ -3718,6 +3718,12 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
         if hasattr(self._collection, "create_blog_jpg") and not self._album_mode:
             act_create_jpg = menu.addAction(f"Create JPG (embedded + crop)  ({lbl})")
         act_geo = menu.addAction(f"Get location  ({lbl})")
+        # Hand-typed place, for spots the address service can't name — the day
+        # viewer always had it; this grid (and so its Editor, which shows this
+        # very menu) did not. Not in a view-only (Album) viewer: nothing to write.
+        act_editloc = None
+        if not self._view_read_only:
+            act_editloc = menu.addAction(f"Edit location…  ({lbl})")
 
         # 3 — what is written about it. Headline / Description is normally about
         # the ONE picture it titles; the editor offers the whole selection
@@ -3766,6 +3772,8 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
             self._create_blog_jpg(keys_for_action)
         elif chosen == act_geo:
             self._cull_geolocate(keys_for_action)
+        elif act_editloc is not None and chosen == act_editloc:
+            self._edit_location(keys_for_action)
         elif act_hd is not None and chosen == act_hd:
             self._edit_headline_description(upn_key, keys_for_action)
         elif chosen == act_addfiles:
@@ -4382,7 +4390,71 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
             logger.info("Get location: no GPS / writable files in the selection.")
             return
         from gui.geolocate import run_geolocate_batch
-        run_geolocate_batch(self, targets)
+        run_geolocate_batch(self, targets,
+                            on_done=lambda: self._refresh_location_after_geocode(
+                                [k for k in ordered if k in keys]))
+
+    def _refresh_location_after_geocode(self, keys):
+        """After Get location wrote place text into the files, read it back from
+        the first written file of each picture (ONE batched read) and carry it
+        into the trip data at once — no Read & Summarize needed to see it. Twin
+        of image_viewer.py's, which reads from the gps source; here the written
+        target is read, since a RAW gps source carries no place text."""
+        import os
+        from gui.geolocate import read_location_fields_batch
+        src = {}
+        for k in keys:
+            t = self._collection.location_targets(k)
+            if t:
+                src[k] = t[0]
+        if not src:
+            return
+        read = read_location_fields_batch(list(src.values()))
+        for k, path in src.items():
+            fields = read.get(os.path.normcase(os.path.normpath(str(path))), {})
+            if fields:
+                self._collection.note_location_written(k, fields)
+            card = self._bound.get(k)
+            if card:
+                card.refresh()
+        self._notify_large_view(set(src))
+
+    def _edit_location(self, keys):
+        """Type a Location (and City/State/Country) by hand for the selected
+        pictures — twin of image_viewer.py's. Writes only the fields that
+        changed; note_location_written carries them into the trip data at once."""
+        keys = [k for k in keys if k]
+        if not keys:
+            return
+        try:
+            current = self._collection.read_location(keys[0]) or {}
+        except Exception:
+            current = {}
+        from gui.location_edit import edit_location_dialog
+        edited = edit_location_dialog(self, current, len(keys))
+        if edited is None:
+            return
+        changed = {k: v for k, v in edited.items() if v and v != (current.get(k) or "")}
+        if not changed:
+            logger.info("Edit location: nothing changed.")
+            return
+        files = []
+        for k in keys:
+            files.extend(self._collection.location_targets(k))
+        if not files:
+            logger.info("Edit location: no writable files in the selection.")
+            return
+        from gui.geolocate import write_location_batch
+        n = write_location_batch(files, changed, overwrite=True)
+        for k in keys:
+            self._collection.note_location_written(k, changed)
+            card = self._bound.get(k)
+            if card:
+                card.refresh()
+        self._notify_large_view(set(keys))
+        place = changed.get("Location") or changed.get("City") or ""
+        logger.info(f"Edit location: wrote {place!r} to {n} file(s) "
+                    f"across {len(keys)} picture(s).")
 
     def _open_quick_view(self):
         """'z' — a zoomable look at the camera JPEG only (no RAW decode, no

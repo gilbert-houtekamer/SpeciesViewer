@@ -836,6 +836,31 @@ class PreviewCollection(PictureCollection):
                 if field in protect and (frow.get(xmp_key) or "").strip():
                     continue
                 frow[xmp_key] = value
+        # And the PICTURE row + the day's CSVs, at once — as the Trip Species
+        # Viewer does (RatingEditorCollection.note_location_written). A place name
+        # then reaches the cards, the Editor and the next Write Blog without a
+        # Read & Summarize. Only real columns: the CSV writer refuses unknown keys.
+        # Never for a read-only view (an Album over the master's files, even with
+        # allow_geotag): those rows are not a trip day's CSVs to rewrite.
+        if self.read_only:
+            return
+        from engine.csv_columns import PICTURE_FIELDS
+        row = self.fpr.upn.UniquePictureName_dict.get(upn_key)
+        if not row:
+            return
+        changed = False
+        for field in self._LOC_XMP_KEYS:
+            value = (fields or {}).get(field) or ""
+            if not value or field not in PICTURE_FIELDS:
+                continue
+            if field in protect and (row.get(field) or "").strip():
+                continue
+            if row.get(field) != value:
+                row[field] = value
+                changed = True
+        if changed:
+            self._csv_dirty_summary = self._csv_dirty_files = True
+            self.flush_csv()
 
     # ── helpers shared with items ─────────────────────────────────────────
     def _files(self, upn_key: str) -> list[str]:

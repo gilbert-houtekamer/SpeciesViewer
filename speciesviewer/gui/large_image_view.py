@@ -2219,8 +2219,12 @@ class LargeImageView(QDialog):
         is row-served, so re-read this one file once (its mtime just changed) and
         push it into the cached row before showing it."""
         from gui.geolocate import read_location_fields
-        if src:
-            self._collection.note_location_written(key, read_location_fields(src))
+        # Read back from a file that was WRITTEN: the GPS source can be a RAW,
+        # which never carries the place text.
+        targets = self._collection.location_targets(key)
+        back = targets[0] if targets else src
+        if back:
+            self._collection.note_location_written(key, read_location_fields(back))
         self._show_location(key)
         # Tell the host, the way a rating or a crop here already does: it is the
         # grid that owns the day and offers the Read & Summarize on close, and

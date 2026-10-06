@@ -998,6 +998,42 @@ class RatingEditorCollection(PictureCollection):
         return {k: str(row.get(k, "") or "")
                 for k in ("Location", "City", "Municipality", "State", "Country")}
 
+    _LOC_FIELDS = ("Location", "City", "Municipality", "State", "Country")
+
+    def note_location_written(self, upn_key: str, fields: dict, protect=()) -> None:
+        """A Get/Edit-location write just put these place fields into the trip
+        picture's files: carry them into the trip data NOW (picture row + file
+        rows, then the day's CSVs), the way a Description edit already is — so
+        the cards, the Editor and the next Write Blog see the name without a
+        Read & Summarize. `protect` = fields whose existing value must be kept
+        (a hand-typed Location survives a coarse reverse-geocode). Master
+        reference cards are never written (location_targets is empty for them)."""
+        if upn_key in self._master_keys:
+            return
+        from engine.csv_columns import PICTURE_FIELDS, DATA_FILE_FIELDS
+        protect = set(protect)
+        row = self.fpr.upn.UniquePictureName_dict.get(upn_key)
+        if not row:
+            return
+        changed = False
+        for f in self._LOC_FIELDS:
+            v = (fields or {}).get(f) or ""
+            if not v or f not in PICTURE_FIELDS:
+                continue
+            if f in protect and (row.get(f) or "").strip():
+                continue
+            if row.get(f) != v:
+                row[f] = v
+                changed = True
+            xkey = f"XMP:{f}"
+            if xkey in DATA_FILE_FIELDS:
+                for fname in self._files(upn_key):
+                    frow = self.fpr.fi.files_dict.get(fname)
+                    if frow is not None and not (f in protect and (frow.get(xkey) or "").strip()):
+                        frow[xkey] = v
+        if changed:
+            self._persist_upn(upn_key, True)
+
     def cancel_pending_loads(self) -> None:
         self._loader.cancel_all()
 
