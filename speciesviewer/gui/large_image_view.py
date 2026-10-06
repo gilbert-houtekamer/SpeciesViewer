@@ -324,6 +324,18 @@ def _cropped_size_text(item) -> str:
     return f"{cw}x{ch}" if cw > 0 and ch > 0 else ""
 
 
+class _FocusOutTextEdit(QTextEdit):
+    """QTextEdit that says when it loses focus — unlike QLineEdit it has no
+    editingFinished, and the Description must save the moment you leave it,
+    not only when the Editor happens to step/close (text was lost on a colour
+    key that moved on without saving)."""
+    focus_lost = pyqtSignal()
+
+    def focusOutEvent(self, event):
+        super().focusOutEvent(event)
+        self.focus_lost.emit()
+
+
 class _CollapsibleSection(QWidget):
     """A metadata-panel section with a clickable mono header that collapses its
     body. The picture drives the window height; when the panel is short the user
@@ -1459,7 +1471,8 @@ class LargeImageView(QDialog):
 
         sec_desc = _CollapsibleSection("DESCRIPTION", setting_key="description")
         sec_desc.add_widget(_small_lbl("Story for the website (optional)"))
-        self._desc_edit = QTextEdit()
+        self._desc_edit = _FocusOutTextEdit()
+        self._desc_edit.focus_lost.connect(self._save_description)
         fm = self._desc_edit.fontMetrics()
         self._desc_edit.setMinimumHeight(int(fm.lineSpacing() * 3) + 8)
         self._desc_edit.setMaximumHeight(int(fm.lineSpacing() * 8) + 8)
@@ -2165,6 +2178,11 @@ class LargeImageView(QDialog):
 
     def _cull_set_cursor(self, key):
         if key in self._keys:
+            # The shared cull keys (1-5 colour, then auto-advance) land here: save
+            # the typed Headline/Description first, as _go does — this step used
+            # to skip it, and a colour key wiped text that was never written.
+            self._save_description()
+            self._save_headline()
             self._index = self._keys.index(key)
             self._load_current()
 
@@ -2516,6 +2534,14 @@ class LargeImageView(QDialog):
         if not self._keys:
             return
         key = self._keys[self._index]
+        # A RELOAD of the picture on screen (Make JPG, leaving Crop, an external
+        # PhotoLab write) refills Headline/Description from the item below, which
+        # wiped text typed but not yet saved — saving only happened on step/close/
+        # Ctrl+S. Save first. Same key only: on navigation the caller already
+        # saved, and saving here then would be harmless but is not our job.
+        if self._item is not None and self._item.key == key:
+            self._save_description()
+            self._save_headline()
         try:
             item = self._collection.item_for_key(key)
         except (ValueError, KeyError):
