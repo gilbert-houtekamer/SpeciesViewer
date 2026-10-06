@@ -663,6 +663,44 @@ class PreviewCollection(PictureCollection):
         return None
 
     def gps_source(self, upn_key: str):
+        """The file to read GPS FROM — never just "the first file of the UPN".
+
+        That used to be rep_full_path, i.e. whichever file the Read listed first.
+        For an iPhone picture with a baked <stem>.jpg (Create JPG / HEIC crop) the
+        JPG sorts first, and the bake writes bare pixels with NO metadata — so
+        Get location read no GPS, skipped the picture silently ("wrote 0/1"), and
+        every landscape (the pictures that get a blog JPG) never got a place name.
+        The CSV row of that JPG does show GPS, but only because sv2 backfills it
+        from the HEIC; the file itself has none.
+
+        Preference: .xmp (where pasted/tracklog GPS lands) → RAW → HEIC/PNG →
+        video → anything else; the first whose row carries a position wins, and
+        with no row GPS at all the best-ranked file is still returned."""
+        def rank(ext):
+            ext = "." + ext
+            if ext == ".xmp":
+                return 0
+            if ext in _RAW_EXTS:
+                return 1
+            if ext in SELF_DESCRIBING:
+                return 2
+            if ext in _VIDEO_EXTS:
+                return 3
+            return 4
+        cands = []
+        for fname in self._files(upn_key):
+            frow = self.fpr.fi.files_dict.get(fname)
+            if not frow or not frow.get("WindowsFileName"):
+                continue
+            ext = frow.get("WindowsExtension", "").lower()
+            cands.append((rank(ext), Path(frow["WindowsFileName"]), frow))
+        cands.sort(key=lambda c: c[0])                  # stable: keeps Read order within a rank
+        for _r, p, frow in cands:
+            if frow.get("Composite:GPSPosition") and p.exists():
+                return p
+        for _r, p, _f in cands:
+            if p.exists():
+                return p
         return self.rep_full_path(upn_key)
 
     def gps(self, upn_key: str):
