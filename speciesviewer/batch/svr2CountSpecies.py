@@ -273,7 +273,8 @@ def print_headers(sc, report):
     print(f'Summary:         Days = days the species was seen', file=report)
     print(f'                 Pics = pictures kept over all days (Good + Unrated, i.e. not Blue/Purple)', file=report)
     print(f'                 Best = overall best rating (j = JPG exists but unrated)', file=report)
-    print(f'                 No JPG = new species with no JPG at all yet, only RAW or HEIC\n', file=report)
+    print(f'                 No JPG = new species with no JPG at all yet, only RAW or HEIC', file=report)
+    print(f'                 (blank) = not a new species, but no JPG yet for this trip\n', file=report)
     counter = 0
     print(column_header(), file=report)
 
