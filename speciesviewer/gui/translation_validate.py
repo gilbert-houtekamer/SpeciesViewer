@@ -46,7 +46,7 @@ def prompt_translation_locked(parent, err) -> str:
 class _Card:
     """One validatable text: a picture's Headline or Description."""
     def __init__(self, upn_name, files, kind, raw, src_lang,
-                 source_edit, trans_edit, verified_chk):
+                 source_edit, trans_edit, verified_chk, translation="", verified=False):
         self.upn_name = upn_name
         self.files = files          # the UPN's filenames (for XMP write-back)
         self.kind = kind            # 'Headline' | 'Description'
@@ -55,6 +55,10 @@ class _Card:
         self.source_edit = source_edit
         self.trans_edit = trans_edit
         self.verified_chk = verified_chk
+        # As shown when the dialog opened — Save compares against these, so only a
+        # real change to what the blog publishes marks it for a re-run.
+        self.original_trans = (translation or "").strip()
+        self.was_verified = bool(verified)
 
 
 class TranslationValidateDialog(QDialog):
@@ -198,12 +202,14 @@ class TranslationValidateDialog(QDialog):
         v.addLayout(row)
 
         verified_chk = QCheckBox("Verified")
-        verified_chk.setChecked(self.translator.is_verified(cache_text))
+        was_verified = self.translator.is_verified(cache_text)
+        verified_chk.setChecked(was_verified)
         v.addWidget(verified_chk)
 
         self._vbox.addWidget(frame)
         self._cards.append(_Card(upn_name, files, kind, raw, src_lang,
-                                 source_edit, trans_edit, verified_chk))
+                                 source_edit, trans_edit, verified_chk,
+                                 translation=translation, verified=was_verified))
 
     def _write_master_description(self, upn, files, new_desc):
         """Album source-text fix: write the corrected Description to the master's
@@ -235,7 +241,11 @@ class TranslationValidateDialog(QDialog):
             self.logger.warning(f"master DB description write failed for {upn}: {e}")
 
     def _on_save(self):
-        verified_count = 0
+        # What the blog publishes changes only with a source fix or an edited
+        # translation. A tick alone locks the SAME text the blog already shows, so
+        # it updates the cache but leaves Write Blog alone.
+        newly_verified = 0
+        trans_fixes = 0
         source_fixes = 0
         for c in self._cards:
             new_raw = c.source_edit.toPlainText().strip()
@@ -269,15 +279,20 @@ class TranslationValidateDialog(QDialog):
                 c.original_raw = new_raw
             # 2) verify (and persist any translation correction)
             if c.verified_chk.isChecked():
+                if new_trans != c.original_trans:
+                    trans_fixes += 1
+                elif not c.was_verified:
+                    newly_verified += 1
                 self.translator.mark_verified(_cache_text(c.kind, new_raw),
                                               corrected=new_trans, source_lang=c.src_lang)
-                verified_count += 1
+                c.original_trans, c.was_verified = new_trans, True
 
-        self.translator.writeTranslationCache(
-            on_locked=lambda e: prompt_translation_locked(self, e))
-        self.logger.info(
-            f"Translation validation ({self.day_str}): {verified_count} verified, "
-            f"{source_fixes} source text(s) corrected.")
+        if newly_verified or trans_fixes or source_fixes:
+            self.translator.writeTranslationCache(
+                on_locked=lambda e: prompt_translation_locked(self, e))
+        summary = (f"{newly_verified} newly verified, {trans_fixes} translation(s) "
+                   f"corrected, {source_fixes} source text(s) corrected")
+        self.logger.info(f"Translation validation ({self.day_str}): {summary}.")
 
         # Rebuild the overview so the Translations sphere updates live.
         parent = self.parent()
@@ -290,9 +305,7 @@ class TranslationValidateDialog(QDialog):
                 self.on_saved()
             except Exception as e:
                 self.logger.warning(f"overview refresh after validation failed: {e}")
-            QMessageBox.information(
-                self, "Translation Validation",
-                f"Saved: {verified_count} verified, {source_fixes} source correction(s).")
+            QMessageBox.information(self, "Translation Validation", f"Saved: {summary}.")
             return
 
         # Trip mode. populate_trip_overview is a module-level function (not a bound
@@ -310,14 +323,16 @@ class TranslationValidateDialog(QDialog):
         # bandwidth, and the local data (CSVs + translation cache) is already
         # current. Instead mark those steps stale so the user re-publishes
         # deliberately when convenient.
-        changed = (verified_count > 0 or source_fixes > 0)
+        changed = (trans_fixes > 0 or source_fixes > 0)
         invalidated = []
         if changed and parent is not None and hasattr(parent, "invalidate_render_day"):
             invalidated = parent.invalidate_render_day(
                 self.day_str, reason="translation/source text changed")
-        msg = f"Saved: {verified_count} verified, {source_fixes} source correction(s)."
+        msg = f"Saved: {summary}."
         if invalidated:
             joined = " and ".join(invalidated)
             msg += (f"\n\n{joined} for {self.day_str} marked for re-run — "
                     f"re-publish when you have bandwidth.")
+        elif not changed:
+            msg += "\n\nNo published text changed — the blog is up to date."
         QMessageBox.information(self, "Translation Validation", msg)
