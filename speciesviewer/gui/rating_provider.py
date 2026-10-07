@@ -1948,8 +1948,9 @@ class RatingEditorCollection(PictureCollection):
 
         Returns (total_matching, protected_count, deleted_count).
         Skips master keys and JPG-bearing UPNs (HARD INVARIANT).
-        trash_root should be <trip_root>/.trash; files land at
-        trash_root/<day>/<key>/<file> with day from _upn_day_map or day_hint.
+        Files land beside the pictures, <pictures folder>/.trash/<day>/<key>/;
+        trash_root (<trip_root>/.trash) is only the fallback when a picture's
+        files can't be located.
         """
         matching, _ = self.color_matches(color)
         return self.delete_trip_keys(matching, trash_root, day_hint, progress_cb)
@@ -2023,7 +2024,18 @@ class RatingEditorCollection(PictureCollection):
             if not isinstance(files, list):
                 files = []
             day = self._upn_day_map.get(key) or day_hint or "unknown"
-            upn_dir = trash_root / day / key
+            # Beside the pictures, on their own disk (engine/trip_trash.py) — the
+            # trip repository trash_root is only the fallback for a picture whose
+            # files can't be located.
+            src_dir = next((Path(self.fpr.fi.files_dict[f]["WindowsFileName"]).parent
+                            for f in files
+                            if (self.fpr.fi.files_dict.get(f) or {}).get("WindowsFileName")),
+                           None)
+            if src_dir is not None:
+                from engine.trip_trash import day_trash_dir
+                upn_dir = day_trash_dir(src_dir) / key
+            else:
+                upn_dir = trash_root / day / key
             upn_dir.mkdir(parents=True, exist_ok=True)
             raw_src = None
             moved_here = []

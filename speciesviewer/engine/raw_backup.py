@@ -34,8 +34,9 @@ TRASH_SUBDIR = "_trash"
 # culled (see gui.image_viewer._color_delete_trash_root): a day culled before
 # it belonged to a full trip gets .trash INSIDE the day folder itself; once
 # it's part of a trip (the normal case here), deletes go to
-# <trip_root>/.trash/<day> instead. A day can carry either — or, if it was
-# culled in stages, both — so scan BOTH rather than guessing one.
+# <pictures folder>/.trash/<day> (engine/trip_trash.py) — before 2026-10-07 they
+# went to <trip_root>/.trash/<day>. A day can carry any of these, so scan ALL
+# rather than guessing one.
 
 
 def raw_backup_dest(dest_root, trip_name: str, day_name: str) -> Path:
@@ -122,9 +123,10 @@ def scan_day_for_raw_backup(day_dir, *, include_trash: bool = False,
 
     out: list[tuple[Path, Path]] = [(p, Path(p.name)) for p in main_entries]
     if include_trash:
-        trash_dirs = [day_dir / TRASH_DIRNAME]
+        from engine.trip_trash import day_trash_dir, legacy_day_trash_dir
+        trash_dirs = [day_dir / TRASH_DIRNAME, day_trash_dir(day_dir)]
         if trip_root:
-            trash_dirs.append(Path(trip_root) / TRASH_DIRNAME / day_dir.name)
+            trash_dirs.append(legacy_day_trash_dir(trip_root, day_dir.name))
         seen_upns: set[str] = set()
         for trash_day in trash_dirs:
             if not trash_day.is_dir():

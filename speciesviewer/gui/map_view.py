@@ -2754,14 +2754,17 @@ class TripMapView(QDialog):
             QMessageBox.warning(self, "Delete",
                                 "Could not determine this picture's day folder.")
             return
+        # Beside the pictures, on their own disk — never the trip repository.
+        from engine.trip_trash import day_trash_dir
+        trash_dir = day_trash_dir(Path(self._coll.rep_full_path(key)).parent)
         if QMessageBox.question(
                 self, "Delete picture",
                 f"Move this picture to the trash?\n\n{self._cell_info(key)}\n\n"
-                f"→ {self._trip_root / '.trash' / day / key}",
+                f"→ {trash_dir / key}",
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel
         ) != QMessageBox.StandardButton.Yes:
             return
-        moved = self._coll.trash_upn(key, self._trip_root / ".trash" / day)
+        moved = self._coll.trash_upn(key, trash_dir)
         if moved is None:
             QMessageBox.information(
                 self, "Protected",

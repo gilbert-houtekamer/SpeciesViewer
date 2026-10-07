@@ -3099,7 +3099,9 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
     # ── Batch delete by colour ───────────────────────────────────────────────
     def _color_delete_trash_root(self):
         """Where blue/purple deletes are trashed. Culling mode: beside the source
-        folder; fpr mode: trip .trash/<day>. Subclasses (the Add-to-Master review
+        folder; fpr mode (a trip day): <pictures folder>/.trash/<day>, on the same
+        disk as the pictures — never the trip repository (engine/trip_trash.py).
+        Subclasses (the Add-to-Master review
         window, whose trip_root is a throwaway scratch) override this so deletes
         go to a persistent, recoverable location instead.
 
@@ -3109,6 +3111,10 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
         whatever the process working directory happened to be — for a dev run,
         the source repo. Fall back to the folder the pictures actually live in."""
         if self.fpr is not None and self.trip_root_dir:
+            if self.image_dir and Path(self.trip_root_dir) != Path(self.image_dir):
+                from engine.trip_trash import day_trash_dir
+                return day_trash_dir(self.image_dir)          # a real trip day
+            # Days / Unfiled lanes pass the day folder as its own root: unchanged.
             return Path(self.trip_root_dir) / ".trash" / Path(self.image_dir).name
         base = self.image_dir or self._pictures_folder()
         return Path(base) / ".trash"
