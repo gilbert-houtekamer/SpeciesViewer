@@ -243,6 +243,87 @@ def AppendChangedFileData(MyProject, firstNewFile):
     logger.info(f'{written} file records written to {datafilename} (current-schema header).')
     return
 
+_COLLECTION_COUNTERS = ("iSpeciesCollectionCount", "iPictureCollectionCount",
+                        "iPicturesWithJPGsCollection")
+
+def _int(value):
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return 0
+
+def _species_with_jpgs(species_dict):
+    """Species leaves that get a card on the all-species page."""
+    return sum(1 for s in species_dict.values()
+               if s['Level'] in (Level.SPECIES, 'Level.SPECIES')
+               and _int(s['iPicturesWithJPGsCollection']) + _int(s['iPicturesWithJPGsThisRun']) > 0)
+
+def mergeCurrentTripTotals(MyProject):
+    """Add this day to the trip totals as they are NOW, not as they were when
+    the day was summarized.
+
+    review/<day>/species.csv is a snapshot: Write Pictures copies active/species.csv
+    and adds this day's counts. Freeze used to write that snapshot back as the new
+    active/species.csv, so a day summarized BEFORE other days were published wiped
+    their species from the trip (Brazil 2026: publishing 09-19, summarized on
+    10-03, erased 63 birds from 09-15..09-18). Here the collection counters come
+    from active/ for every node, nodes only in active/ are added, and this day's
+    ThisRun counters stay as they are. INVARIANT: a publish never lowers the
+    number of species with a picture on the website — checked, and the freeze
+    aborts if it would."""
+    active_csv = os.path.join(MyProject.getMetaDir(), "active", "species.csv")
+    if not os.path.isfile(active_csv):
+        return
+    active = engine.specieslib.Species(None)
+    active.readSpeciesInfo(active_csv, False)
+    day = MyProject.sp.species_dict
+
+    added = corrected = 0
+    for name, a in active.species_dict.items():
+        d = day.get(name)
+        if d is None:
+            day[name] = a                       # committed node, ThisRun is 0
+            added += 1
+            continue
+        for col in _COLLECTION_COUNTERS:
+            if _int(d[col]) != _int(a[col]):
+                corrected += 1
+                break
+        for col in _COLLECTION_COUNTERS:
+            d[col] = _int(a[col])
+        for jpg in a['JPGmap']:
+            if jpg not in d['JPGmap']:
+                d['JPGmap'].append(jpg)
+        if a['BestJPG'] and (not d['BestJPG']
+                             or _int(a['currentHighestRating']) > _int(d['currentHighestRating'])):
+            for col in ('BestJPG', 'BestUPN', 'BestJPGPathName'):
+                d[col] = a[col]
+            d['currentHighestRating'] = _int(a['currentHighestRating'])
+        if not d['TargetPath']:
+            d['TargetPath'] = a['TargetPath']
+    # A node in the snapshot but no longer in active/ (trip reset since the
+    # summary) has no committed pictures: its collection is 0.
+    for name, d in day.items():
+        if name not in active.species_dict:
+            for col in _COLLECTION_COUNTERS:
+                d[col] = 0
+    # Re-link Leaves for the nodes that came from active/.
+    for name, d in day.items():
+        up = d['Up']
+        if up and up in day and name not in day[up]['Leaves']:
+            day[up]['Leaves'].append(name)
+
+    before = _species_with_jpgs(active.species_dict)
+    after = _species_with_jpgs(day)
+    if added or corrected:
+        logger.warning(f"This day's species list was older than the trip data: took "
+                       f"{added} species/groups from the current trip and updated the totals of {corrected} more.")
+    logger.info(f"Species with a picture on the trip website: {before} before this day, {after} after.")
+    if after < before:
+        raise SVException(
+            f"Publishing this day would drop the trip website from {before} to {after} "
+            f"species with a picture. Nothing was published; please report this.")
+
 def AppendChangedPictureData(MyProject, firstNewPicture):
     # Rewrite the frozen data_pictures.csv from scratch with the current-schema
     # header (see AppendChangedFileData for the rationale and the master
@@ -306,7 +387,8 @@ def main(args, config):
     logger.info(f"sv6Freeze: Freeze data for project {MyProject.ProjectName()} on local copy on Windows")
 
     RepositoryFileCount, RepositoryPictureCount, from_time, last_time = MyProject.readProject()
-  
+    mergeCurrentTripTotals(MyProject)
+
     logger.info(f'Now writing consolidated data to a frozen directory for manual review as desired')
     # change and append
     AppendChangedFileData(MyProject, RepositoryFileCount)
