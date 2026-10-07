@@ -41,6 +41,34 @@ jpgneeded = 0
 legacy_days = []         # days summarized before the #Keep column existed
 reference_names = set()  # lowercase ScientificNames that are already in the master collection
 table_rows = []          # the species table as data, one dict per row -> Species overview.csv
+colour_counts = {}       # lowercase ScientificName -> {colour column: pictures}, CSV/XLSX only
+
+# One column per culling colour, for the spreadsheet only (not the text report):
+# how a species' pictures are spread over the colours, to see before merging
+# into the master which species are over-photographed. Blue counts only the
+# pictures still waiting to be deleted — a deleted one is gone from the day data.
+COLOUR_COLUMNS = ["Red", "Yellow", "Green", "Blue", "Purple", "No colour"]
+
+def count_colours(review_dir):
+    """{lowercase scientific name: {colour column: n}} over every day's
+    data_pictures.csv. A label outside the five colours counts as 'No colour'."""
+    counts = {}
+    if not os.path.isdir(review_dir):
+        return counts
+    for name in sorted(os.listdir(review_dir)):
+        path = os.path.join(review_dir, name, "data_pictures.csv")
+        if not os.path.isfile(path):
+            continue
+        with open(path, "r", encoding="utf-8", newline="") as f:
+            for row in csv.DictReader(f, delimiter=";"):
+                sci = (row.get("WetSoortNaam") or "").strip().lower()
+                if not sci:
+                    continue
+                label = (row.get("Label") or "").strip().capitalize()
+                col = label if label in COLOUR_COLUMNS else "No colour"
+                per = counts.setdefault(sci, dict.fromkeys(COLOUR_COLUMNS, 0))
+                per[col] += 1
+    return counts
 
 # read parameters, but will be overwritten probably
 def readConfig():
@@ -250,6 +278,9 @@ def scanSpecies(sc, speciesname, report):
                 row.update({"Days": seen, "Pics": pics,
                             "Best": best_rating if best_rating > 0 else ("j" if has_jpg else ""),
                             "JPG": "yes" if has_jpg else "no"})
+                colours = colour_counts.get(scientific, dict.fromkeys(COLOUR_COLUMNS, 0))
+                row.update(colours)
+                row["Total"] = sum(colours.values())
                 table_rows.append(row)
         else:
             scanSpecies(sc, leaf, report)
@@ -286,9 +317,10 @@ def print_headers(sc, report):
 def main(args, config):
     global starttime, SpeciesDebug, reference_names
     global result_dict, headers, counter, newcounter, jpgneeded
-    global total_species, total_new, topics_skipped, legacy_days, table_rows
+    global total_species, total_new, topics_skipped, legacy_days, table_rows, colour_counts
     legacy_days = []
     table_rows = []
+    colour_counts = {}
     result_dict = {}
     headers = []
     counter = 1
@@ -405,6 +437,7 @@ def main(args, config):
         directory_to_scan = os.path.join(MyProject.getMetaDir(), 'review')
         search_string = 'Species specified in this dir:'
         days_total, days_missing = scan_files(directory_to_scan, search_string, report, sc)
+        colour_counts = count_colours(directory_to_scan)
 
         # A day that was never summarized contributes no species at all. Say so
         # here rather than letting the report look complete.
@@ -435,7 +468,7 @@ def main(args, config):
     # The species table as a CSV next to the text report, for the dialog's
     # "Save Species Table (Excel / CSV)" button. utf-8-sig so Excel reads the accents right.
     columns = (["Nr", "Group", "English", "Dutch", "Scientific", "New"]
-               + headers + ["Days", "Pics", "Best", "JPG"])
+               + headers + ["Days", "Pics", "Best", "JPG"] + COLOUR_COLUMNS + ["Total"])
     with open(reports_dir / "Species overview.csv", "w", encoding="utf-8-sig",
               newline="") as f:
         writer = csv.DictWriter(f, fieldnames=columns)

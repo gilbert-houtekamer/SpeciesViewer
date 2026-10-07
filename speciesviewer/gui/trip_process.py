@@ -4198,9 +4198,19 @@ class CountSpeciesDialog(BaseTripModuleDialog):
                 widths = {"Nr": 5, "Group": 8, "English": 32, "Dutch": 32,
                           "Scientific": 30, "New": 6, "Days": 6, "Pics": 6,
                           "Best": 6, "JPG": 6}
+                from openpyxl.styles import Alignment
                 from openpyxl.utils import get_column_letter
+                import re as _re
                 for i, name in enumerate(rows[0], start=1):
-                    ws.column_dimensions[get_column_letter(i)].width = widths.get(name, 11)
+                    is_day = bool(_re.fullmatch(r"\d{4}-\d{2}-\d{2}", name))
+                    # Day headers stand upright in narrow columns (one mark each),
+                    # so a whole trip fits on the screen next to the colour counts.
+                    ws.column_dimensions[get_column_letter(i)].width = (
+                        3.5 if is_day else widths.get(name, 9))
+                    if is_day:
+                        ws.cell(row=1, column=i).alignment = Alignment(
+                            text_rotation=90, horizontal="center")
+                ws.row_dimensions[1].height = 62
                 wb.save(filename)
         except OSError as e:
             QMessageBox.warning(self, "Save Species Table",
