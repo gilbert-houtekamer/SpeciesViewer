@@ -164,6 +164,23 @@ def _dbg(where, key, path, extra=""):
     logger.info(f"[colour] {where:22} {key:34} disk={_label_on_disk(path)!r:10} {extra}")
 
 
+def next_free_jpg(src) -> Path:
+    """<stem>-HEIC-2.jpg, -3, … beside `src`: a second JPG that still belongs to the
+    same picture (deriveUniquePictureName cuts at "-heic", PhotoLab's own suffix
+    for a JPG exported from a HEIC)."""
+    src = Path(src)
+    n = 2
+    while (src.with_name(f"{src.stem}-HEIC-{n}.jpg")).exists():
+        n += 1
+    return src.with_name(f"{src.stem}-HEIC-{n}.jpg")
+
+
+def _same_path(a, b) -> bool:
+    """Same file, ignoring case and slash style (Windows: IMG_6706.JPG == img_6706.jpg)."""
+    import os
+    return os.path.normcase(os.path.normpath(str(a))) == os.path.normcase(os.path.normpath(str(b)))
+
+
 class PreviewItem(PictureItem):
     can_edit_species = False      # species edits go through SpeciesInfoDialog
 
@@ -1363,7 +1380,15 @@ class PreviewCollection(PictureCollection):
     def _display_source(self, upn_key: str) -> Path | None:
         """Best display source. A render found on disk (DxO _DxO.jpg — already
         cropped + processed) wins, so the viewer matches what PhotoLab shows;
-        else the tracked JPG > RAW > HEIC."""
+        else the tracked JPG > RAW > HEIC.
+
+        Except a HEIC/PNG that records a crop: it is shown WITH that crop, even
+        when an older <stem>.jpg sits beside it — what you see is the active crop,
+        which is what Make JPG will write."""
+        if self.raw_path(upn_key) is None:
+            own = self._self_describing_source(upn_key)
+            if own is not None and crop_for(own) is not None:
+                return own
         extra = self._extra_jpgs.get(upn_key)
         if extra and extra.exists():
             return extra
@@ -1396,6 +1421,8 @@ class PreviewCollection(PictureCollection):
                 crop = crop_for(src, self._xmp_for(upn_key))
             elif ext in (".jpg", ".jpeg"):
                 crop = crop_for(src)   # <jpg>.dop, written by suggest_crop
+            elif ext in SELF_DESCRIBING:
+                crop = crop_for(src)   # the crop inside the HEIC/PNG itself
         disk_dir = preview_cache_dir_for(src.parent) if src is not None else None
         stem = src.stem if src is not None else None
         # A disk-cached thumb skips produce(), so the verdict for a stale render
@@ -1494,8 +1521,19 @@ class PreviewCollection(PictureCollection):
         raw = self._crop_source(upn_key)
         if not raw:
             return None
-        if raw.suffix.lower() in (".heic", ".heif"):
-            return self._bake_heic_crop(upn_key, raw, crop)
+        if raw.suffix.lower() in SELF_DESCRIBING:
+            # A HEIC/PNG keeps its crop in its OWN XMP — where Lightroom reads it
+            # too — like a RAW keeps it in a sidecar. Make JPG bakes from it; no JPG
+            # is written here (that used to be the crop's only trace, so Make JPG
+            # could not find it again and offered the full frame).
+            from engine.sidecarlib import write_xmp_edits
+            ok = write_xmp_edits(str(raw), crop=crop)
+            self._img_sigs[upn_key] = self._img_sig(upn_key)
+            self._drop_thumb_caches(upn_key)
+            res = {"xmp": ok, "in_file": True}
+            from gui.picture_provider import verify_crop_written
+            verify_crop_written(raw, crop, res, who="PreviewCollection")
+            return res
         from engine.sidecarlib import suggest_crop
         res = suggest_crop(str(raw), crop)
         self._img_sigs[upn_key] = self._img_sig(upn_key)
@@ -1531,17 +1569,21 @@ class PreviewCollection(PictureCollection):
         from engine.sidecarlib import suggest_exposure
         return suggest_exposure(str(raw), exposure)
 
-    def create_blog_jpg(self, upn_key: str) -> dict:
+    def create_blog_jpg(self, upn_key: str, overwrite: bool = False,
+                        new_name: bool = False) -> dict:
         """Bake a website-ready JPG beside the RAW from the camera's embedded
         preview + the sidecar crop (NO scaling) — a quick trip-blog picture
         without the full DxO render. `<stem>.jpg` folds onto the UPN
         (deriveUniquePictureName), so it becomes the picture's usable image on
         the next Read & Summarize.
 
-        Returns {'status': 'created'|'skipped'|'no_raw'|'failed', ...}. Skips a
-        picture that already has a tracked JPG (a camera JPEG or a DxO render) so
-        nothing is clobbered; our own bake is not tracked, so a re-run overwrites
-        it (e.g. after re-cropping)."""
+        Returns {'status': 'created'|'exists'|'skipped'|'no_raw'|'failed', ...}.
+        Skips a picture that already has a tracked JPG (a camera JPEG or a DxO
+        render) so nothing is clobbered. For a HEIC/PNG the JPG is always the
+        picture WITH its active crop (read from the HEIC itself); when its
+        <stem>.jpg already exists the answer is 'exists' and the caller asks:
+        overwrite=True replaces it, new_name=True writes <stem>-HEIC-2.jpg (-3, …),
+        a name that still folds onto the same picture."""
         # A HEIC or PNG is just as valid a source as a RAW — it simply has no
         # embedded preview, which the shared bake handles by opening it directly.
         # Without this fallback Create JPG reported "no_raw" for every phone
@@ -1556,9 +1598,17 @@ class PreviewCollection(PictureCollection):
             if j is not None:
                 return {"status": "already_jpg", "jpg": str(j)}
             return {"status": "no_raw"}
-        if self.jpg_path(upn_key) is not None:
-            return {"status": "skipped", "jpg": str(self.jpg_path(upn_key))}
         out = raw.with_suffix(".jpg")   # <stem>.jpg folds onto the same UPN
+        own = raw.suffix.lower() in SELF_DESCRIBING and out.exists()
+        tracked = self.jpg_path(upn_key)
+        if tracked is not None and not (own and _same_path(tracked, out)):
+            # Another JPG (camera JPEG, DxO render): never clobbered.
+            return {"status": "skipped", "jpg": str(tracked)}
+        if own and new_name:
+            out = next_free_jpg(raw)
+        elif own and not overwrite:
+            # Never replace a JPG silently — the caller asks Replace / New name.
+            return {"status": "exists", "jpg": str(out)}
         from gui.preview_extract import bake_blog_jpg
         crop = crop_for(raw, self._xmp_for(upn_key))   # same reader request_image uses
         try:
@@ -1566,7 +1616,7 @@ class PreviewCollection(PictureCollection):
         except Exception as e:
             logger.warning(f"Create JPG failed for {raw.name}: {e}")
             return {"status": "failed", "reason": str(e)}
-        # Reflect it at once (mirrors _bake_heic_crop): show the new JPG as this
+        # Reflect it at once: show the new JPG as this
         # UPN's display source and bump the signature so the card re-decodes.
         self._extra_jpgs[upn_key] = out
         if getattr(self, "_pic_folders", None) is not None:
@@ -1578,37 +1628,6 @@ class PreviewCollection(PictureCollection):
                     f"{'cropped' if crop else 'full frame'}).")
         return {"status": "created", "jpg": str(out), "size": baked_size,
                 "cropped": bool(crop)}
-
-    def _bake_heic_crop(self, upn_key: str, heic: Path, crop: dict):
-        """Crop a HEIC by baking the rectangle into a JPG beside it — a HEIC has no
-        RAW-style develop step, so the crop is applied directly (the user's 'crop by
-        writing a JPG, just like RAWs'). The JPG shares the HEIC's stem, so it folds
-        onto the same picture and becomes its usable image; a re-crop re-bakes from
-        the HEIC (never from this JPG — see _crop_source). Size follows the shared
-        HEIC cap, the same as Create JPG, since both write this one file."""
-        out = heic.with_suffix(".jpg")   # <stem>.jpg — same stem folds onto the UPN
-        # Through the SHARED bake, not a second copy of it. Both this and Create
-        # JPG write the very same <stem>.jpg for the very same picture, so if only
-        # one of them honoured the HEIC size cap that file's resolution would
-        # depend on which button had last been pressed. It decodes the HEIC at full
-        # resolution, crops, and resamples the RESULT only if it is oversized
-        # (see create_jpg_resize_rule).
-        from gui.preview_extract import bake_blog_jpg
-        try:
-            baked_size = bake_blog_jpg(heic, out, crop)
-        except Exception as e:
-            logger.warning(f"HEIC crop bake failed for {heic.name}: {e}")
-            return None
-        # Show the crop at once: fold the new JPG in as this UPN's display source and
-        # bump the image signature so refresh_external re-decodes to the cropped JPG.
-        self._extra_jpgs[upn_key] = out
-        if getattr(self, "_pic_folders", None) is not None:
-            self._pic_folders.add(out.parent)
-        self._img_sigs[upn_key] = self._img_sig(upn_key)
-        self._drop_thumb_caches(upn_key)   # a crop can land in the .xmp, which the sig doesn't see
-        logger.info(f"HEIC crop baked → {out.name} "
-                    f"({baked_size[0]}×{baked_size[1]}).")
-        return {"jpg_created": True, "baked_jpg": True, "jpg": str(out)}
 
     def delete_keys(self, keys, trash_root: Path,
                     allow_jpg_keys: frozenset = frozenset(),

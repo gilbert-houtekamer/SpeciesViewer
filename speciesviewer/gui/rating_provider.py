@@ -1452,7 +1452,8 @@ class RatingEditorCollection(PictureCollection):
         upn = self._upn_row(upn_key)
         return exif_from_rows(upn, self._rep_file_row(upn_key))
 
-    def create_blog_jpg(self, upn_key: str) -> dict:
+    def create_blog_jpg(self, upn_key: str, overwrite: bool = False,
+                        new_name: bool = False) -> dict:
         """Bake a website-ready JPG beside the RAW from the camera's embedded
         preview + the sidecar crop (NO scaling) — the quick trip-blog picture,
         same as the culling viewer's Create JPG. `<stem>.jpg` folds onto the UPN
@@ -1476,9 +1477,20 @@ class RatingEditorCollection(PictureCollection):
             if j is not None:
                 return {"status": "already_jpg", "jpg": str(j)}
             return {"status": "no_raw"}
-        if self.jpg_path(upn_key) is not None and upn_key not in self._blog_jpgs:
-            return {"status": "skipped", "jpg": str(self.jpg_path(upn_key))}
         out = raw.with_suffix(".jpg")
+        from utils.raw_extensions import SELF_DESCRIBING
+        from gui.preview_provider import _same_path
+        own = raw.suffix.lower() in SELF_DESCRIBING and out.exists()
+        tracked = self.jpg_path(upn_key)
+        if (tracked is not None and upn_key not in self._blog_jpgs
+                and not (own and _same_path(tracked, out))):
+            return {"status": "skipped", "jpg": str(tracked)}
+        if own and new_name:
+            from gui.preview_provider import next_free_jpg
+            out = next_free_jpg(raw)
+        elif own and not overwrite:
+            # Never replace a JPG silently — the caller asks Replace / New name.
+            return {"status": "exists", "jpg": str(out)}
         from gui.preview_extract import bake_blog_jpg
         from gui.picture_provider import crop_for
         xmp = raw.with_suffix(".xmp")

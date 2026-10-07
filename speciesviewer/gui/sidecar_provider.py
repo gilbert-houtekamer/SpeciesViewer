@@ -1245,7 +1245,8 @@ class SidecarCollection(MasterCardOpsMixin, PictureCollection):
         self._crop_cache[stem] = crop
         return crop
 
-    def create_blog_jpg(self, key: str) -> dict:
+    def create_blog_jpg(self, key: str, overwrite: bool = False,
+                        new_name: bool = False) -> dict:
         """Write a website-ready JPG next to the RAW from the camera's embedded
         preview + the sidecar crop (NO scaling) — a quick trip-blog picture
         without the full DxO render. `<stem>.jpg` folds onto the RAW's UPN

@@ -109,10 +109,50 @@ def read_xmp_edits(xmp_path):
     grid showed a stale cached thumbnail while the large view opened uncropped.
     Search EVERY rdf:Description, and accept the value as an attribute OR a child
     element (PhotoLab writes elements, our own writer writes attributes)."""
-    result = {"exposure": None, "crop": None, "angle": None, "mtime": os.path.getmtime(xmp_path)}
-
     tree = ET.parse(xmp_path)
-    descs = tree.findall('.//rdf:Description', NS)
+    return _xmp_edits_from(tree.findall('.//rdf:Description', NS),
+                           os.path.getmtime(xmp_path))
+
+
+_IN_FILE_EDITS = {}   # (path, mtime_ns, size) -> edits; a file changes -> new key
+
+
+def read_xmp_edits_in_file(path):
+    """crop / exposure / angle from the XMP packet INSIDE a file — a HEIC or PNG,
+    whose metadata lives in the file itself, not in a .xmp beside it (a .xmp next
+    to a HEIC is a stray from an early ingest and is never the truth).
+
+    Reads the packet straight out of the bytes rather than spawning exiftool:
+    a grid asks for every HEIC card, and one exiftool run per card is seconds.
+    Cached per file version, so repaints are free. Nothing readable -> no edits."""
+    empty = {"exposure": None, "crop": None, "angle": None, "mtime": None}
+    try:
+        st = os.stat(path)
+    except OSError:
+        return empty
+    key = (str(path), st.st_mtime_ns, st.st_size)
+    hit = _IN_FILE_EDITS.get(key)
+    if hit is not None:
+        return hit
+    result = empty
+    try:
+        with open(path, "rb") as f:
+            data = f.read()
+        s = data.find(b"<x:xmpmeta")
+        e = data.find(b"</x:xmpmeta>", s) if s >= 0 else -1
+        if s >= 0 and e > s:
+            root = ET.fromstring(data[s:e + len(b"</x:xmpmeta>")])
+            result = _xmp_edits_from(root.findall('.//rdf:Description', NS),
+                                     st.st_mtime)
+    except (OSError, ET.ParseError) as ex:
+        logger.debug(f"read_xmp_edits_in_file: {path}: {ex}")
+    _IN_FILE_EDITS[key] = result
+    return result
+
+
+def _xmp_edits_from(descs, mtime):
+    """The crs: crop/exposure/angle from a list of rdf:Description blocks."""
+    result = {"exposure": None, "crop": None, "angle": None, "mtime": mtime}
     if not descs:
         return result
 

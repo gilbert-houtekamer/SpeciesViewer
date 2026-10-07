@@ -2087,8 +2087,12 @@ class LargeImageView(QDialog):
         """Any crop already in the sidecars, so a re-crop starts from it. Usually
         None in our flow (the tool targets uncropped shots)."""
         try:
+            key = self._keys[self._index]
+            rect = getattr(self._collection, "crop_rect", None)
+            if rect is not None:
+                return rect(key)          # RAW, camera JPG or HEIC alike
             from gui.picture_provider import crop_for
-            raw = self._collection.raw_path(self._keys[self._index])
+            raw = self._collection.raw_path(key)
             return crop_for(raw) if raw else None
         except Exception:
             return None
@@ -2123,8 +2127,8 @@ class LargeImageView(QDialog):
         self.refresh_external(key, reload_image=True)
         self.picture_changed.emit(key)
         self.picture_image_changed.emit(key)   # the grid card must re-decode too
-        if res and res.get("baked_jpg"):
-            logger.info("Crop baked into a full-res JPG (a HEIC has no develop step).")
+        if res and res.get("in_file"):
+            logger.info("Crop stored in the picture itself (HEIC/PNG) — Make JPG uses it.")
         elif res:
             created = [k.upper() for k in ("dop", "xmp") if res.get(f"{k}_created")]
             extra = f"  (created {', '.join(created)})" if created else ""
@@ -2148,6 +2152,17 @@ class LargeImageView(QDialog):
         finally:
             QApplication.restoreOverrideCursor()
         st = res.get("status")
+        if st == "exists":
+            # The JPG is this picture with its ACTIVE crop; one already exists.
+            choice = self._ask_replace_jpg(res["jpg"])
+            if choice is None:
+                return                                   # Cancel
+            QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+            try:
+                res = self._collection.create_blog_jpg(key, **{choice: True})
+            finally:
+                QApplication.restoreOverrideCursor()
+            st = res.get("status")
         created = [res["jpg"]] if st == "created" else []
         from gui.create_jpg_result import show_create_jpg_result
         show_create_jpg_result(
@@ -2161,6 +2176,25 @@ class LargeImageView(QDialog):
             self.refresh_external(key, reload_image=True)
             self.picture_changed.emit(key)
             self.picture_image_changed.emit(key)
+
+    def _ask_replace_jpg(self, jpg) -> str | None:
+        """Replace / New file name / Cancel for an existing JPG -> "overwrite",
+        "new_name" or None."""
+        from PyQt6.QtGui import QImageReader
+        from PyQt6.QtWidgets import QMessageBox
+        size = QImageReader(str(jpg)).size()
+        dims = f" ({size.width()}×{size.height()})" if size.isValid() else ""
+        box = QMessageBox(QMessageBox.Icon.Question, "Make JPG",
+                          f"{Path(str(jpg)).name} already exists{dims}.", parent=self)
+        replace = box.addButton("Replace", QMessageBox.ButtonRole.AcceptRole)
+        new = box.addButton("New file name", QMessageBox.ButtonRole.AcceptRole)
+        box.addButton(QMessageBox.StandardButton.Cancel)
+        box.exec()
+        if box.clickedButton() is replace:
+            return "overwrite"
+        if box.clickedButton() is new:
+            return "new_name"
+        return None
 
     def _exit_crop_mode(self, reload: bool = True):
         if not self._crop_mode and self._crop_overlay is None:

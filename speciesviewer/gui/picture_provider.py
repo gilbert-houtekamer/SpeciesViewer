@@ -90,6 +90,22 @@ def _sidecar_edit(raw_path, xmp_path, field):
     to default to None, which silently made the read .dop-only — that bit both
     crop_for and exposure_for on 2026-09-25. The default belongs here."""
     from pathlib import Path
+    from utils.raw_extensions import SELF_DESCRIBING
+    if raw_path and Path(str(raw_path)).suffix.lower() in SELF_DESCRIBING:
+        # A HEIC/PNG holds its edits in its OWN XMP (a .xmp beside it is a stray
+        # and never the truth), so read the file itself; a PhotoLab .dop, if
+        # PhotoLab made one, is the fallback.
+        from engine.sidecarlib import read_xmp_edits_in_file
+        value = read_xmp_edits_in_file(str(raw_path)).get(field)
+        if value is None:
+            dop = Path(str(raw_path) + ".dop")
+            if dop.exists():
+                try:
+                    from engine.sidecarlib import read_dop_overrides
+                    value = read_dop_overrides(str(dop)).get(field)
+                except Exception:
+                    value = None
+        return value
     if xmp_path is None and raw_path:
         for cand in (Path(str(raw_path)).with_suffix(".xmp"),
                      Path(str(raw_path)).with_suffix(".XMP")):

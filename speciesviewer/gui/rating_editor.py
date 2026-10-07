@@ -4356,8 +4356,8 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
                 if st == "created":
                     created_paths.append(res.get("jpg"))
                     made.append(k)
-                elif st == "skipped":
-                    skipped += 1
+                elif st in ("skipped", "exists"):   # "exists": a HEIC's crop JPG,
+                    skipped += 1                      # never overwritten in bulk
                 elif st == "no_raw":
                     no_raw += 1
                 elif st == "already_jpg":
