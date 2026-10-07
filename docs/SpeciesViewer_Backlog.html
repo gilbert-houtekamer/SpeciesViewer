@@ -2661,6 +2661,24 @@ shipped (the field fixes, working with PhotoLab open, the Editor) is written up 
       principle 2026-09-25) &mdash; with half a dozen windows open the titles are inconsistent and
       the Editor sits on top of the grid it came from. To settle first: the date part is a day, a
       range, or nothing, depending on the window.</li>
+  <li><span class="tag-new">NEW</span> <strong>Put back a picture deleted on a trip day</strong>
+      (raised 2026-10-07) &mdash; a blue/purple delete on a trip day moves the picture's files to
+      the trip's <code>.trash/&lt;day&gt;/&lt;picture&gt;/</code>, but only the master has a screen
+      to put deletes back (<em>Restore images</em>, ch.&nbsp;18). On a trip day it means moving the
+      files by hand and re-running Read &amp; Summarize. Wanted: the same picker for trip days &mdash;
+      thumbnail, date, file count, tick and restore &mdash; landing the files back in the day folder
+      and refreshing the day. Only for a day that is not yet published (a published day is locked
+      until Reset Trip).</li>
+  <li><span class="tag-new">NEW</span> <strong>Where deleted pictures go &mdash; make it
+      configurable</strong> (raised 2026-10-07) &mdash; today a trip-day delete moves the files from
+      the local <code>D:\CurrentPictures</code> into the trip repository in Dropbox
+      (<code>&lt;trip&gt;\.trash</code>). Deleting therefore <em>adds</em> to Dropbox storage and
+      upload traffic instead of freeing anything, and it is slow, because a move between two disks
+      is a full copy. Measured 2026-10-07: <strong>212&nbsp;GB</strong> in
+      <code>brazil2026db\.trash</code> (greecedb 240&nbsp;MB, master 874&nbsp;MB; the Unfiled
+      lane's trash, 18&nbsp;GB, already sits beside the pictures on <code>D:</code>). To discuss: where the trash should live (beside the pictures on the same disk,
+      or a folder chosen per machine), whether it empties itself after a while, and showing its size
+      next to an <em>Empty trash</em> button, as the master's Database panel already does.</li>
   <li><span class="tag-parked">PARKED</span> <strong>Canon <code>.HIF</code></strong> &mdash; needs one sample file; not pursued in 2026. See ch.&nbsp;7 and ch.&nbsp;21.</li>
 </ul>
 
