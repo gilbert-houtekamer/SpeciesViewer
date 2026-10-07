@@ -4419,10 +4419,10 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
         if not src:
             return
         read = read_location_fields_batch(list(src.values()))
-        for k, path in src.items():
-            fields = read.get(os.path.normcase(os.path.normpath(str(path))), {})
-            if fields:
-                self._collection.note_location_written(k, fields)
+        by_key = {k: read.get(os.path.normcase(os.path.normpath(str(path))), {})
+                  for k, path in src.items()}
+        self._collection.note_locations_written({k: f for k, f in by_key.items() if f})
+        for k in src:
             card = self._bound.get(k)
             if card:
                 card.refresh()
@@ -4455,8 +4455,8 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
             return
         from gui.geolocate import write_location_batch
         n = write_location_batch(files, changed, overwrite=True)
+        self._collection.note_locations_written({k: changed for k in keys})
         for k in keys:
-            self._collection.note_location_written(k, changed)
             card = self._bound.get(k)
             if card:
                 card.refresh()

@@ -814,7 +814,13 @@ class PreviewCollection(PictureCollection):
                     return d
         return {}
 
-    def note_location_written(self, upn_key: str, fields: dict, protect=()) -> None:
+    def note_locations_written(self, fields_by_key: dict, protect=()) -> None:
+        for key, fields in fields_by_key.items():
+            self.note_location_written(key, fields, protect, persist=False)
+        self.flush_csv()       # once, and a no-op when nothing changed
+
+    def note_location_written(self, upn_key: str, fields: dict, protect=(),
+                              persist=True) -> None:
         """An Edit/Get-location write just put these place fields into the
         UPN's XMP — patch the in-memory file rows so read_location() (which
         reads from here now, not a fresh exiftool spawn) reflects the write
@@ -860,7 +866,8 @@ class PreviewCollection(PictureCollection):
                 changed = True
         if changed:
             self._csv_dirty_summary = self._csv_dirty_files = True
-            self.flush_csv()
+            if persist:
+                self.flush_csv()
 
     # ── helpers shared with items ─────────────────────────────────────────
     def _files(self, upn_key: str) -> list[str]:

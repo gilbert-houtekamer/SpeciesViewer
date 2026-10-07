@@ -170,9 +170,9 @@ def paste_gps_into(collection, keys, refresh_key=None) -> tuple:
 
     # Bookkeeping is in-memory and cheap, so it stays per picture: each one has
     # its own cached row to update and its own card to repaint.
+    if has_place:
+        collection.note_locations_written({k: fields for k in targets})
     for k in targets:
-        if has_place:
-            collection.note_location_written(k, fields)
         collection.note_gps_written(k, _gps["lat"], _gps["lon"])
         if refresh_key is not None:
             refresh_key(k)

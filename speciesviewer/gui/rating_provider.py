@@ -1000,7 +1000,14 @@ class RatingEditorCollection(PictureCollection):
 
     _LOC_FIELDS = ("Location", "City", "Municipality", "State", "Country")
 
-    def note_location_written(self, upn_key: str, fields: dict, protect=()) -> None:
+    def note_locations_written(self, fields_by_key: dict, protect=()) -> None:
+        changed = [k for k, f in fields_by_key.items()
+                   if self.note_location_written(k, f, protect, persist=False)]
+        if changed:
+            self.persist_after_species_change(changed)   # each affected day once
+
+    def note_location_written(self, upn_key: str, fields: dict, protect=(),
+                              persist=True) -> bool:
         """A Get/Edit-location write just put these place fields into the trip
         picture's files: carry them into the trip data NOW (picture row + file
         rows, then the day's CSVs), the way a Description edit already is — so
@@ -1009,12 +1016,12 @@ class RatingEditorCollection(PictureCollection):
         (a hand-typed Location survives a coarse reverse-geocode). Master
         reference cards are never written (location_targets is empty for them)."""
         if upn_key in self._master_keys:
-            return
+            return False
         from engine.csv_columns import PICTURE_FIELDS, DATA_FILE_FIELDS
         protect = set(protect)
         row = self.fpr.upn.UniquePictureName_dict.get(upn_key)
         if not row:
-            return
+            return False
         changed = False
         for f in self._LOC_FIELDS:
             v = (fields or {}).get(f) or ""
@@ -1031,8 +1038,9 @@ class RatingEditorCollection(PictureCollection):
                     frow = self.fpr.fi.files_dict.get(fname)
                     if frow is not None and not (f in protect and (frow.get(xkey) or "").strip()):
                         frow[xkey] = v
-        if changed:
+        if changed and persist:
             self._persist_upn(upn_key, True)
+        return changed
 
     def cancel_pending_loads(self) -> None:
         self._loader.cancel_all()

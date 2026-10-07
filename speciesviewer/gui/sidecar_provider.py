@@ -1174,7 +1174,17 @@ class SidecarCollection(MasterCardOpsMixin, PictureCollection):
                     out.append(str(dop))
         return out
 
-    def note_location_written(self, key: str, fields: dict, protect=()) -> None:
+    def note_locations_written(self, fields_by_key: dict, protect=()) -> None:
+        folders = set()
+        for key, fields in fields_by_key.items():
+            folder = self.note_location_written(key, fields, protect, persist=False)
+            if folder is not None:
+                folders.add(folder)
+        for folder in folders:
+            self._caches[folder].save()        # once per folder, not per picture
+
+    def note_location_written(self, key: str, fields: dict, protect=(),
+                              persist=True):
         """An Edit/Get-location write just put these place fields into the key's
         XMP — patch the in-memory row + the on-disk cache so the card's location
         line updates with no re-read (the write already changed the file).
@@ -1194,7 +1204,7 @@ class SidecarCollection(MasterCardOpsMixin, PictureCollection):
                     merged[k] = v
             if merged:
                 self._place_by_stem[key] = merged
-            return
+            return None
         xmp = Path(xmp)
         row = self._rows.setdefault(_norm(xmp), {"SourceFile": str(xmp)})
         folder = xmp.parent
@@ -1208,7 +1218,9 @@ class SidecarCollection(MasterCardOpsMixin, PictureCollection):
                 continue          # file kept its existing value → so does the cache
             row[k] = v
             self._caches[folder].put_field(xmp, k, v)
-        self._caches[folder].save()
+        if persist:
+            self._caches[folder].save()
+        return folder
 
     # ── image + write helpers ───────────────────────────────────────────────
     def _source_file(self, stem: str):

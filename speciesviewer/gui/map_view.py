@@ -2959,9 +2959,10 @@ class TripMapView(QDialog):
             # is also what makes a MOVE stick: the collection used to keep the
             # pre-move value, so a moved picture snapped back to its old spot the
             # moment the map was re-opened.
+            if has_place:
+                self._coll.note_locations_written({k: fields for k in written},
+                                                  protect=("Location",))
             for k in written:
-                if has_place:
-                    self._coll.note_location_written(k, fields, protect=("Location",))
                 self._coll.note_gps_written(k, lat, lon)
         finally:
             QApplication.restoreOverrideCursor()

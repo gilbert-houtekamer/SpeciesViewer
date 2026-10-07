@@ -682,6 +682,13 @@ class PictureCollection(ABC):
         them either. No-op by default; overridden where rows are cached."""
         return None
 
+    def note_locations_written(self, fields_by_key: dict, protect=()) -> None:
+        """Bulk twin of note_location_written: {key: fields} for MANY pictures,
+        persisted ONCE. Collections that save per picture override this — one save
+        per picture rewrote the whole day CSVs 643 times for one Edit location."""
+        for key, fields in fields_by_key.items():
+            self.note_location_written(key, fields, protect)
+
     # ── external-edit refresh ─────────────────────────────────────────────────
     # True → the host offers a Refresh action + auto-refreshes on window focus, so
     # colour/rating/etc. changed by another tool (PhotoLab, Lightroom) writing the
