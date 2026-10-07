@@ -2669,16 +2669,13 @@ shipped (the field fixes, working with PhotoLab open, the Editor) is written up 
       thumbnail, date, file count, tick and restore &mdash; landing the files back in the day folder
       and refreshing the day. Only for a day that is not yet published (a published day is locked
       until Reset Trip).</li>
-  <li><span class="tag-new">NEW</span> <strong>Where deleted pictures go &mdash; make it
-      configurable</strong> (raised 2026-10-07) &mdash; today a trip-day delete moves the files from
-      the local <code>D:\CurrentPictures</code> into the trip repository in Dropbox
-      (<code>&lt;trip&gt;\.trash</code>). Deleting therefore <em>adds</em> to Dropbox storage and
-      upload traffic instead of freeing anything, and it is slow, because a move between two disks
-      is a full copy. Measured 2026-10-07: <strong>212&nbsp;GB</strong> in
-      <code>brazil2026db\.trash</code> (greecedb 240&nbsp;MB, master 874&nbsp;MB; the Unfiled
-      lane's trash, 18&nbsp;GB, already sits beside the pictures on <code>D:</code>). To discuss: where the trash should live (beside the pictures on the same disk,
-      or a folder chosen per machine), whether it empties itself after a while, and showing its size
-      next to an <em>Empty trash</em> button, as the master's Database panel already does.</li>
+  <li><span class="tag-new">NEW</span> <strong>Trip trash: show its size, empty it</strong>
+      (raised 2026-10-07) &mdash; deleted trip pictures now stay beside the pictures (see
+      <em>Capabilities</em>, ch.&nbsp;23), but nothing shows how big that trash has grown or offers to
+      empty it: Brazil's held 212&nbsp;GB. Wanted: its size next to an <em>Empty trash</em> button, as
+      the master's Database panel already has, and possibly emptying deletes older than a set number
+      of days. The old <code>&lt;trip&gt;\.trash</code> folders in Dropbox of other trips (greecedb
+      240&nbsp;MB, zwindb 19&nbsp;MB) were left where they are.</li>
   <li><span class="tag-parked">PARKED</span> <strong>Canon <code>.HIF</code></strong> &mdash; needs one sample file; not pursued in 2026. See ch.&nbsp;7 and ch.&nbsp;21.</li>
 </ul>
 

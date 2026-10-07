@@ -1710,6 +1710,21 @@ shows only what the current mode needs.</p>
       <span class="note">Plan: <code>docs/plans/edit_window_parity.md</code>. Commits
       <code>2c03738</code>, <code>85a7c1b</code>, <code>a61b775</code>, <code>887d2bf</code>,
       <code>078e346</code>, <code>5e2cf4b</code>, <code>972e26b</code>.</span></li>
+
+  <li><strong>Deleted pictures stay on the pictures' own disk</strong>
+      <span class="tag-shipped">SHIPPED</span> (2026-10-07) &mdash; a blue or purple delete on a
+      trip day used to move the files from <code>D:\CurrentPictures</code> into the trip
+      repository in Dropbox. Deleting a picture therefore <em>added</em> it to Dropbox, and each
+      delete was a slow copy between two disks: by early October 212&nbsp;GB of deleted Brazil
+      pictures sat there, with <code>E:</code> down to 4% free. Deletes now go to
+      <code>&lt;pictures folder&gt;\.trash\&lt;day&gt;\</code> &mdash; for Brazil
+      <code>D:\CurrentPictures\2026\2026 Brazil\.trash\2026-09-05\</code> &mdash; so a delete is
+      an instant rename that never reaches Dropbox. The same rule applies in the culling grid, the
+      Trip Species Viewer and the map. The RAW backup's <em>Include already-deleted pictures</em>
+      and <em>Empty a card</em> both find deletes in the new place, as well as in the old one.
+      The existing 212&nbsp;GB were moved across in two minutes; <code>E:</code> went back to
+      374&nbsp;GB free.
+      <span class="note">Commit <code>988d48f</code>; <code>engine/trip_trash.py</code>.</span></li>
 </ul>
 
 <!-- ============================================================ -->
