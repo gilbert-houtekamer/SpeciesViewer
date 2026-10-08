@@ -718,8 +718,29 @@ class FilmstripWidget(QWidget):
         cell = self._materialize(key)
         if isinstance(cell, _StripItem):
             cell.set_current(True)
-            QTimer.singleShot(0, lambda: self._sa.ensureWidgetVisible(cell))
+            QTimer.singleShot(0, lambda: self._scroll_into_view(cell))
         self._pos_lbl.setText(f"{index + 1} of {total}")
+
+    def _scroll_into_view(self, cell, neighbours: int = 2):
+        """Scroll so `cell` AND `neighbours` cells on either side are visible —
+        the next two going forward, the previous two going back — moving the
+        strip as little as possible. A cull then sees what is coming, instead of
+        Qt's "only just in view". (ensureWidgetVisible can't do this: it ignores
+        its margin while the cell itself is still visible.) A viewport too small
+        for that span centres the cell."""
+        vert = self._orientation == Qt.Orientation.Vertical
+        bar = self._sa.verticalScrollBar() if vert else self._sa.horizontalScrollBar()
+        view = self._sa.viewport().height() if vert else self._sa.viewport().width()
+        start = cell.y() if vert else cell.x()
+        size = cell.height() if vert else cell.width()
+        ahead = neighbours * (size + _ITEM_GAP)
+        lo, hi = start - ahead, start + size + ahead
+        if hi - lo > view:
+            bar.setValue(start + size // 2 - view // 2)
+        elif lo < bar.value():
+            bar.setValue(lo)
+        elif hi > bar.value() + view:
+            bar.setValue(hi - view)
 
     def refresh_item(self, key: str, reload_image: bool = False):
         """Repaint a cell's stars + colour border after an edit; reload_image=True
