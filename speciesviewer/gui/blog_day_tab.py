@@ -21,6 +21,7 @@ from PyQt6.QtWidgets import (
     QCheckBox, QHBoxLayout, QLabel, QLineEdit,
     QMessageBox, QPushButton, QSpinBox, QTextEdit, QVBoxLayout, QWidget,
 )
+from gui.link_insert import add_link_editing
 from utils.ini_io import read_ini
 
 logger = logging.getLogger("speciesviewer")
@@ -142,6 +143,7 @@ class _DayTab(QWidget):
         # and is preserved untouched.
         self.message_nl.setAcceptRichText(False)
         self.message_nl.setPlainText(self._data["message_nl"])
+        add_link_editing(self.message_nl)   # Ctrl+K / right-click → <a href>
         # A minimum, not a fixed height: pinned at 90 these two boxes could not
         # give up a pixel, so once the banner + button row pushed the content past
         # the window height the layout had nothing left to shrink and the widgets
@@ -177,6 +179,7 @@ class _DayTab(QWidget):
         self.message_en = QTextEdit()
         self.message_en.setAcceptRichText(False)   # plain-text paste (see message_nl)
         self.message_en.setPlainText(self._data["message_en"])
+        add_link_editing(self.message_en)
         self.message_en.setMinimumHeight(70)
         layout.addWidget(self.message_en, stretch=1)
 

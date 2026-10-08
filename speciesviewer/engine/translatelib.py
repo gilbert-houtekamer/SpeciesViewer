@@ -1,4 +1,5 @@
 import csv
+import re
 import os
 import time
 from collections import namedtuple
@@ -19,6 +20,49 @@ DetectorFactory.seed = 0  # make langdetect deterministic across runs
 # googletrans.detect() returned an object with a .lang attribute; keep that shape
 # so existing callers (detected.lang) don't change.
 _Detected = namedtuple("_Detected", "lang")
+
+# An opening link tag as written (<a href="…" target="_blank">), and the same
+# thing after a translator has been at it: spaces inserted anywhere, "< a",
+# "a href = ' … '" — anything from "<", optional spaces, "a" to the next ">".
+_OPEN_TAG = re.compile(r'<a\b[^>]*>', re.IGNORECASE)
+_OPEN_TAG_MANGLED = re.compile(r'<\s*a\s[^>]*>', re.IGNORECASE)
+_CLOSE_TAG_MANGLED = re.compile(r'<\s*/\s*a\s*>', re.IGNORECASE)
+
+
+# A full stop glued to the next sentence: "nacht.De" — a capital (any accent)
+# right after it. Not "a.m.", "e.g.", "3.5" or "hotelmt.com" (no capital).
+_GLUED_SENTENCE = re.compile(r'\.(?=[A-ZÀ-ÖØ-Þ])')
+_TAG = re.compile(r'(<[^>]*>)')
+
+
+def space_after_sentences(text: str) -> str:
+    """Put a space between sentences a translator glued together ("nacht.De").
+    Replaces the old blanket '.' → '. ', which also split abbreviations
+    ("a.m." → "a. m. ,") and link addresses. HTML tags are left untouched."""
+    parts = _TAG.split(text)          # odd indexes are the tags themselves
+    return "".join(p if i % 2 else _GLUED_SENTENCE.sub(". ", p)
+                   for i, p in enumerate(parts))
+
+
+def restore_links(source: str, translated: str) -> str:
+    """Put the source's <a …> opening tags back into its translation, in order.
+
+    Only a link's WORDS should be translated; its address and attributes must
+    come through byte-for-byte, and they don't: our '. ' sentence spacing and
+    the translators themselves insert spaces ("hotelmt. com. br" → %20 in the
+    browser). When the counts don't match the translator dropped or merged a
+    link — leave the text alone and say so rather than guess."""
+    tags = _OPEN_TAG.findall(source)
+    if not tags:
+        return translated
+    found = _OPEN_TAG_MANGLED.findall(translated)
+    if len(found) != len(tags):
+        logger.warning(f"Translation: {len(tags)} link(s) in the source but {len(found)} "
+                       f"in the translation — links left as translated; check the text.")
+        return translated
+    it = iter(tags)
+    out = _OPEN_TAG_MANGLED.sub(lambda _m: next(it), translated)
+    return _CLOSE_TAG_MANGLED.sub("</a>", out)
 
 class CachedTranslate:
     # crc32(source_text) -> {'translation': str, 'source_lang': 'nl'|'en'|'', 'verified': bool}
@@ -127,7 +171,9 @@ class CachedTranslate:
         # result is always the other one. Stores source_lang + verified=False.
         crctext = self.getCRC32(text)
         if crctext in self.translation_cache:
-            return self.translation_cache[crctext]['translation']
+            # Repair on read too: entries cached before the link fix hold
+            # mangled hrefs, and this mends them without re-translating.
+            return restore_links(text, self.translation_cache[crctext]['translation'])
         if language == "":
             detected_language = self.detectLanguage(text)
             if detected_language is None:
@@ -141,7 +187,10 @@ class CachedTranslate:
         if not translated:
             logger.warning(f"Translation failed, returning original text: {self.last_error}")
             return text
-        translatedText = translated.replace('.', '. ').replace('.  ', '. ')
+        translatedText = space_after_sentences(translated)
+        # That '. ' spacing (and the translator itself) breaks the address inside
+        # a link: "hotelmt.com.br" → "hotelmt. com. br". Put the original tags back.
+        translatedText = restore_links(text, translatedText)
         self.translation_cache[int(crctext)] = {
             'translation': translatedText, 'source_lang': from_lang, 'verified': False}
         self._dirty = True

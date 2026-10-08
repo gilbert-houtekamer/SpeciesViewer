@@ -20,6 +20,7 @@ from widgets.trip_widgets import (LabeledTextFieldQt, DateRangeFieldQt, Director
 from engine.translatelib import CachedTranslate
 from utils.gui_config import update_cache_gui_section, get_cache_gui_section
 from gui.trip_overview import populate_trip_overview
+from gui.link_insert import add_link_editing
 from utils.raw_extensions import RAW, DXO_RAW, PICTURE, SELF_DESCRIBING
 
 def generate_trip_ini(
@@ -3785,8 +3786,13 @@ class CreateBlogDialog(QDialog):
             "</p>"
         )
         self.title_nl = QLineEdit(self.parser.get("blog_text", "titel_nl", fallback=""))
-        self.message_nl = QTextEdit(self.parser.get("blog_text", "message_nl", fallback=""))
+        # setPlainText, never QTextEdit(text): given text in the constructor Qt
+        # GUESSES rich text, so a saved <a href> came back as a rendered link
+        # and toPlainText() then saved it without the tag (link lost).
+        self.message_nl = QTextEdit()
+        self.message_nl.setPlainText(self.parser.get("blog_text", "message_nl", fallback=""))
         self.message_nl.setAcceptRichText(False)  # plain text — stored in blog.ini
+        add_link_editing(self.message_nl)   # Ctrl+K / right-click → <a href>
 
         form.addRow("", self.translate_button)
         form.addRow("", self.info_html)
@@ -3803,8 +3809,10 @@ class CreateBlogDialog(QDialog):
         self.translate_button = QPushButton("Translate to Dutch")  # "Translate to Dutch"
         self.translate_button.clicked.connect(self.translate_dutch_to_english)        
         self.title_en = QLineEdit(self.parser.get("blog_text", "titel_en", fallback=""))
-        self.message_en = QTextEdit(self.parser.get("blog_text", "message_en", fallback=""))
+        self.message_en = QTextEdit()
+        self.message_en.setPlainText(self.parser.get("blog_text", "message_en", fallback=""))
         self.message_en.setAcceptRichText(False)  # plain text — stored in blog.ini
+        add_link_editing(self.message_en)
 
         form.addRow("", self.translate_button)
         form.addRow("Title (EN):", self.title_en)

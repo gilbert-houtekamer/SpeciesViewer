@@ -1498,6 +1498,8 @@ class LargeImageView(QDialog):
         self._desc_edit.setMinimumHeight(int(fm.lineSpacing() * 3) + 8)
         self._desc_edit.setMaximumHeight(int(fm.lineSpacing() * 8) + 8)
         self._desc_edit.setAcceptRichText(False)
+        from gui.link_insert import add_link_editing
+        add_link_editing(self._desc_edit)   # Ctrl+K / right-click → <a href>
         sec_desc.add_widget(self._desc_edit)
         pl.addWidget(sec_desc)
         pl.addStretch(1)

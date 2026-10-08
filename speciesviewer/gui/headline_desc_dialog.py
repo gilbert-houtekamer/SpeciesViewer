@@ -56,6 +56,8 @@ def edit_headline_description(parent, *, title: str = "", headline: str = "",
     de = QTextEdit()
     de.setPlainText(description)
     de.setAcceptRichText(False)
+    from gui.link_insert import add_link_editing
+    add_link_editing(de)   # Ctrl+K / right-click → <a href>
     de.setReadOnly(not can_edit_description)
     de.setMinimumHeight(120)
     lay.addWidget(de)
