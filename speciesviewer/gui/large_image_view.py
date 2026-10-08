@@ -1542,6 +1542,9 @@ class LargeImageView(QDialog):
         QShortcut(QKeySequence("Ctrl+S"), self).activated.connect(self._save_headline)
 
         self._apply_default_or_remembered_geometry()
+        # Loaded BEFORE show(), on purpose: deferring it to after show() put an
+        # empty white window on screen for the whole load (tried 2026-10-08).
+        # The host's wait cursor is the feedback while this runs.
         self._load_current()
         if self._selected_keys:
             self._update_selection_display()

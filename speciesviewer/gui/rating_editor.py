@@ -9,6 +9,7 @@ import os
 import re
 import logging
 import subprocess
+import time
 from pathlib import Path
 
 _ASSETS = Path(__file__).resolve().parent.parent / "assets"
@@ -3486,10 +3487,27 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
         from gui.large_image_view import LargeImageView
         if not self.fpr or self._collection is None:
             return
+        # Re-entrancy guard: building the Editor runs processEvents() ("Loading…"
+        # paint), which delivers an impatient second double-click HERE before
+        # self._large_view is assigned — the close-the-old check below missed it
+        # and two Editors opened on the same picture. Ignore clicks mid-open.
+        if getattr(self, "_large_view_opening", False):
+            return
         # Single instance: close any open large view first so a fast double-
-        # click (or clicking another card) never stacks multiple viewers.
+        # click (or clicking another card) never stacks multiple viewers. The
+        # same picture already open → just bring that Editor to the front.
         existing = getattr(self, "_large_view", None)
         if existing is not None:
+            try:
+                # The key it is ON (index), not _item: _item is still None for
+                # the moment between the window appearing and its first load.
+                ek, ei = getattr(existing, "_keys", []), getattr(existing, "_index", -1)
+                if existing.isVisible() and 0 <= ei < len(ek) and ek[ei] == upn_key:
+                    existing.raise_()
+                    existing.activateWindow()
+                    return
+            except RuntimeError:
+                pass
             try:
                 existing.close()
             except RuntimeError:
@@ -3500,17 +3518,26 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
         keys = list(self._order)
         if upn_key not in keys:
             return
-        dlg = LargeImageView(self, self._collection, keys, keys.index(upn_key),
-                             settings_key=self._geo_key, auto_advance=True,
-                             initial_selection=set(self._selected_keys),
-                             initial_brackets=(self._bracket_left, self._bracket_right))
-        dlg.picture_changed.connect(self._on_large_view_changed)
-        dlg.picture_image_changed.connect(self._on_large_view_image_changed)
-        dlg.picture_navigated.connect(self._on_large_view_navigated)
-        dlg.selection_changed.connect(self._on_large_view_selection_changed)
-        self._large_view = dlg
-        dlg.finished.connect(self._on_large_view_finished)
-        dlg.show()
+        self._large_view_opening = True
+        # Instant feedback on the double-click: building the Editor is synchronous.
+        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+        t0 = time.perf_counter()
+        try:
+            dlg = LargeImageView(self, self._collection, keys, keys.index(upn_key),
+                                 settings_key=self._geo_key, auto_advance=True,
+                                 initial_selection=set(self._selected_keys),
+                                 initial_brackets=(self._bracket_left, self._bracket_right))
+            dlg.picture_changed.connect(self._on_large_view_changed)
+            dlg.picture_image_changed.connect(self._on_large_view_image_changed)
+            dlg.picture_navigated.connect(self._on_large_view_navigated)
+            dlg.selection_changed.connect(self._on_large_view_selection_changed)
+            self._large_view = dlg
+            dlg.finished.connect(self._on_large_view_finished)
+            dlg.show()
+        finally:
+            self._large_view_opening = False
+            QApplication.restoreOverrideCursor()
+            logger.info(f"Editor window up in {time.perf_counter() - t0:.2f}s ({upn_key})")
 
     def _sync_all_cards(self):
         """Repaint every ON-SCREEN card from live data — cheap (text/widgets
