@@ -1848,6 +1848,10 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
             comp.setCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
             comp.setFilterMode(Qt.MatchFlag.MatchContains)
             comp.setCompletionMode(QCompleter.CompletionMode.PopupCompletion)
+        else:
+            # 300+ trip species: a typed letter puts its first name at the top.
+            from gui.widgets import type_ahead_to_top
+            type_ahead_to_top(self._species_combo)
         self._species_combo.currentIndexChanged.connect(self._on_species_changed)
         top.addWidget(self._species_combo)
         top.addSpacing(12)
