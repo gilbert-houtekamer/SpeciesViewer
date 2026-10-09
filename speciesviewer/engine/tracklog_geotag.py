@@ -282,7 +282,7 @@ def apply_entries(files_by_key: dict, rows: list[dict], *, progress_cb=None) -> 
            "altitude_files": result["altitude_files"]}
 
 
-def find_day_tracklogs(day: str, root: str) -> list[str]:
+def _find_day_tracklogs_by_name(day: str, root: str) -> list[str]:
     """Every tracklog for `day` in `<root>/<year>/` — OM-1 `.log` and phone
     `.gpx` files whose name STARTS WITH the day's `yyyymmdd` stem.
 
@@ -310,6 +310,38 @@ def find_day_tracklogs(day: str, root: str) -> list[str]:
         if p.name[len(stem):len(stem) + 1].isdigit():
             continue
         out.append(str(p))
+    return sorted(out, key=lambda s: (Path(s).suffix.lower() != ".log", Path(s).name))
+
+
+def find_day_tracklogs(day: str, root: str) -> list[str]:
+    """Every tracklog that covers `day`: first by filename (see
+    `_find_day_tracklogs_by_name`), then — only when that finds nothing — by
+    checking whether a log named for the day BEFORE or AFTER actually runs
+    into `day`. A tracklog recorder left running past midnight is named for
+    the day it started, so its own filename never matches the second day; the
+    only way to know it covers `day` is to parse it and look at its real
+    timestamps (`track_date_range`). Each neighbour file is parsed on its own,
+    so only the file(s) whose content actually spans `day` are included —
+    not every file the neighbour day's filename match returns. Bounded to the
+    two adjacent days, never a folder-wide scan. `day` is 'YYYY-MM-DD'."""
+    matches = _find_day_tracklogs_by_name(day, root)
+    if matches:
+        return matches
+    from datetime import date, timedelta
+    try:
+        d = date.fromisoformat(day)
+    except ValueError:
+        return []
+    out: list[str] = []
+    for neighbor in (d - timedelta(days=1), d + timedelta(days=1)):
+        for p in _find_day_tracklogs_by_name(neighbor.isoformat(), root):
+            try:
+                points = load_track([p])
+            except ValueError:
+                continue
+            lo, hi = track_date_range(points)
+            if lo is not None and lo <= day <= hi:
+                out.append(p)
     return sorted(out, key=lambda s: (Path(s).suffix.lower() != ".log", Path(s).name))
 
 
