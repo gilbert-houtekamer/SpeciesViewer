@@ -41,8 +41,14 @@ class _LoaderSignals(QObject):
 
 
 class _LoadTask(QRunnable):
-    def __init__(self, producer, target_w, on_ready, gen, signals, on_cache=None):
+    def __init__(self, producer, target_w, on_ready, gen, signals, on_cache=None,
+                 is_current=None):
         super().__init__()
+        # Asked just before the work starts: a load cancelled while it waited in
+        # the pool skips the work instead of doing it and having the result
+        # dropped. Scrolling fast through a big day queued every card passed on
+        # the way, and the cards you stopped at waited behind all of them.
+        self._is_current = is_current
         self._producer = producer
         self._target_w = target_w
         self._on_ready = on_ready
@@ -51,6 +57,8 @@ class _LoadTask(QRunnable):
         self._on_cache = on_cache
 
     def run(self):
+        if self._is_current is not None and not self._is_current():
+            return                       # cancelled before it started: nothing to do
         try:
             img = self._producer()
         except Exception:
@@ -82,7 +90,9 @@ class AsyncImageLoader(QObject):
         QPixmap BEFORE the target-widget-alive check — so the result is stored
         in a shared cache even if the widget that asked for it is already gone.
         It must not touch a widget (capture the collection / cache, not a card)."""
-        task = _LoadTask(producer, target_w, on_ready, self._gen, self._signals, on_cache)
+        gen = self._gen
+        task = _LoadTask(producer, target_w, on_ready, gen, self._signals, on_cache,
+                         is_current=lambda: self._gen == gen)
         self._pool.start(task)
 
     def _deliver(self, on_ready, qimage, gen, on_cache=None):

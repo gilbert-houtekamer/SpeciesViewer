@@ -529,6 +529,33 @@ def build_menu_spec(main_window):
 
     count_species.callback = _show_count_species
 
+    def _show_trip_trash():
+        # The pictures deleted on this trip's days: look, restore, discard.
+        # Independent window like Count Species; main_window keeps the reference.
+        from pathlib import Path
+        from gui.trip_trash_dialog import TripTrashDialog
+        from utils.trip_identity import resolve_trip_picture_root
+        trip_db = _cfg("trip", "tripbiotadatabase")
+        pictures_root = resolve_trip_picture_root(trip_db, kind="trip")
+        if not pictures_root:
+            QMessageBox.information(main_window, "Trash",
+                                    "This trip's picture folder could not be found.")
+            return
+        name = ((read_trip_ini(trip_db) or {}).get("trip_name") or Path(trip_db).name)
+        dlg = TripTrashDialog(main_window, trip_db, pictures_root, name)
+        main_window._trip_trash_dialog = dlg
+        dlg.show()
+        dlg.raise_()
+        dlg.activateWindow()
+
+    trip_trash = MenuSpec(
+        callback=_show_trip_trash,
+        title="Trash (deleted pictures)…",
+        enabled=has_active_trip,
+        showsubdirectory=False,
+        tooltip="Pictures deleted on this trip's days: restore some, or empty the trash",
+    )
+
     manage_blogs = MenuSpec(
         callback=lambda: BlogAdminDialog(main_window).exec(),
         title="Manage Blogs",
@@ -1847,6 +1874,7 @@ def build_menu_spec(main_window):
             "Edit Species List": edit_trip_species,            # same list as under Master
             "Publish Species Names": merge_trip_species,       # also under To Master
             "Count Species": count_species,
+            "Trash (deleted pictures)…": trip_trash,
             f"{MenuSpec.separator()}_advanced": None,
             # Advanced: rare maintenance + the individual pipeline steps for a
             # read-only CSV refresh / the freeze-only edge case.
