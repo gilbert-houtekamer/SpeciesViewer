@@ -57,7 +57,7 @@ reads <em>No current work planned</em>.</p>
 <div class="next">
   <strong>Active shortlist — week of 29 September 2026: closing out the Brazil trip.</strong>
   <ul>
-    <li><strong>Brazil leftovers</strong> <span class="tag-shipped">SHIPPED</span> — the window-title scheme (ch. 23) shipped 9 Oct. Canon <code>.HIF</code> is parked for 2026. Two new trip-day ideas remain in ch. 23 (put back a deleted picture, show and empty the trip trash).</li>
+    <li><strong>Brazil leftovers</strong> <span class="tag-shipped">SHIPPED</span> — the window-title scheme (ch. 23) shipped 9 Oct. Canon <code>.HIF</code> is parked for 2026. The trip trash window (restore, discard a day) shipped too.</li>
     <li><strong>Documentation</strong> <span class="tag-progress">IN PROGRESS</span> —
       <em>Capabilities Added</em> now has ch. 23, but still no write-up for ch. 17–22 (capture time,
       trip readiness, refactors, installable v1, modern RAW bodies, emptying a card). Those chapters'
@@ -2677,21 +2677,14 @@ shipped (the field fixes, working with PhotoLab open, the Editor) is written up 
       selector. The Editor shows all three names; <em>Species Image Preview</em> is now
       <em>Image Viewer</em>. The Editor stays a child of its grid (your choice). See
       <code>docs/plans/window_titles.md</code>.</li>
-  <li><span class="tag-new">NEW</span> <strong>Put back a picture deleted on a trip day</strong>
-      (raised 2026-10-07) &mdash; a blue/purple delete on a trip day moves the picture's files to
-      the trip's <code>.trash/&lt;day&gt;/&lt;picture&gt;/</code>, but only the master has a screen
-      to put deletes back (<em>Restore images</em>, ch.&nbsp;18). On a trip day it means moving the
-      files by hand and re-running Read &amp; Summarize. Wanted: the same picker for trip days &mdash;
-      thumbnail, date, file count, tick and restore &mdash; landing the files back in the day folder
-      and refreshing the day. Only for a day that is not yet published (a published day is locked
-      until Reset Trip).</li>
-  <li><span class="tag-new">NEW</span> <strong>Trip trash: show its size, empty it</strong>
-      (raised 2026-10-07) &mdash; deleted trip pictures now stay beside the pictures (see
-      <em>Capabilities</em>, ch.&nbsp;23), but nothing shows how big that trash has grown or offers to
-      empty it: Brazil's held 212&nbsp;GB. Wanted: its size next to an <em>Empty trash</em> button, as
-      the master's Database panel already has, and possibly emptying deletes older than a set number
-      of days. The old <code>&lt;trip&gt;\.trash</code> folders in Dropbox of other trips (greecedb
-      240&nbsp;MB, zwindb 19&nbsp;MB) were left where they are.</li>
+  <li><span class="tag-shipped">SHIPPED</span> <strong>Trip trash window</strong> (9 Oct) &mdash;
+      <em>Trip &#9656; Trash (deleted pictures)&hellip;</em> shows a trip's deleted pictures one day
+      at a time, with the whole trash's size. <em>Restore selected</em> puts pictures back in their
+      day (all or nothing, never overwriting) and resets that day's Read &amp; Summarize; locked on a
+      published day. <em>Discard this day</em> deletes a day's trash for good. Right-click adds a
+      picture to the selection &mdash; and the regular grid got the same as a menu item,
+      <em>Add to selection</em>, so a pick of 3 out of 100 needs no Ctrl. Scrolling a big day loads
+      only what is on screen (the shared image loader now skips cancelled work).</li>
   <li><span class="tag-parked">PARKED</span> <strong>Canon <code>.HIF</code></strong> &mdash; needs one sample file; not pursued in 2026. See ch.&nbsp;7 and ch.&nbsp;21.</li>
 </ul>
 
