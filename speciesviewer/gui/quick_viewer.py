@@ -76,6 +76,7 @@ from PyQt6.QtWidgets import (QApplication, QDialog, QLabel, QStackedWidget,
                              QVBoxLayout, QWidget)
 
 from gui.image_loader import AsyncImageLoader
+from gui.window_title import window_title
 from gui.large_image_view import BADGE_CSS, _FullResView, color_to_css
 from gui.preview_extract import extract_preview_bytes
 from utils.name_profile import all_names_ordered
@@ -175,7 +176,7 @@ class QuickViewer(QDialog):
     # ── picture loading ──────────────────────────────────────────────────────
     def _load(self):
         if not self._keys:
-            self.setWindowTitle("Quick view")
+            self.setWindowTitle(window_title("Quick View"))
             self._stack.setCurrentWidget(self._view)
             self._view.set_message("Nothing to show.")
             return
@@ -295,12 +296,15 @@ class QuickViewer(QDialog):
         write you don't trust."""
         key = self._cur_key
         if not key:
-            self.setWindowTitle("Quick view")
+            self.setWindowTitle(window_title("Quick View"))
             return
         names = self._species_line(key)
-        who = f"{key}  —  {names}" if names else key
-        what = "Quick view (peek)" if self._read_only else "Quick view"
-        self.setWindowTitle(f"{what} — {who}  ({self._index + 1} of {len(self._keys)})")
+        kind = "Quick View (peek)" if self._read_only else "Quick View"
+        # docs/plans/window_titles.md: the picture leads, its file follows.
+        # All three names stay: this view has no panel to show them otherwise.
+        self.setWindowTitle(window_title(
+            kind, names or key, [key] if names else [],
+            pos=(self._index, len(self._keys))))
 
     def refresh_current(self):
         """Re-read the picture on screen after the CALLER changed it (a species

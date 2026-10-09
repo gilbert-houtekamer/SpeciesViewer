@@ -31,6 +31,7 @@ from PyQt6.QtGui import (QPixmap, QPainter, QColor, QBrush, QPen, QFont,
                          QShortcut, QKeySequence, QDesktopServices)
 from PyQt6.QtCore import Qt, QPointF, QUrl, QTimer, pyqtSignal, QMimeData, QEvent
 from PyQt6.QtNetwork import QNetworkAccessManager, QNetworkRequest, QNetworkReply
+from gui.window_title import window_title
 
 from gui import theme
 from gui.widgets import wrapped
@@ -1219,8 +1220,7 @@ class MapView(QDialog):
         self._species_colls: dict[str, object] = {}   # sci.casefold() -> collection
         self._strip = None                             # current FilmstripWidget
         self._strip_coll = None                        # its collection (for large view)
-        self.setWindowTitle("Species distribution map" if highlight_upns is not None
-                            else "Master species distribution map")
+        self._refresh_title()
         # Own taskbar button — a minimised map must be findable. ORing
         # Qt.WindowType.Window onto a QDialog's existing flags does nothing
         # (Qt.WindowType.Dialog is defined as 0x2 | Window, so the bit is
@@ -1478,7 +1478,15 @@ class MapView(QDialog):
             self._map.remove_layer(m["lid"])
             self._rebuild_legend()
 
+    def _refresh_title(self):
+        """Map — <the species shown> (docs/plans/window_titles.md). The map can
+        overlay several species, so the title follows the legend."""
+        shown = [m["display"] for m in self._used.values() if m.get("display")]
+        self.setWindowTitle(window_title(
+            "Map", " · ".join(shown) or "species distribution"))
+
     def _rebuild_legend(self):
+        self._refresh_title()
         while self._legend.count():
             item = self._legend.takeAt(0)
             w = item.widget()

@@ -9,6 +9,7 @@ from PyQt6.QtCore import Qt, QTimer
 
 from utils.config import _config, persist_config
 from gui.window_state import restore_window, save_window
+from gui.window_title import window_title
 from gui.menu import create_menubar
 from gui.menuspec import build_menu_spec
 from gui.trip_overview import populate_trip_overview
@@ -85,7 +86,7 @@ class MainWindow(QMainWindow):
         self.virttrip_table = None
         self.state_keys = None
         self.state_labels = None
-        self.setWindowTitle("Species Viewer 0.2")
+        self.setWindowTitle("Species Viewer 0.3")
         # Create and attach status bar
         self.status_bar = QStatusBar()
         self.setStatusBar(self.status_bar)        
@@ -2211,7 +2212,7 @@ class MainWindow(QMainWindow):
                          or trip_root).name
         # Strong ref on the main window so the dialog isn't GC'd.
         self._trip_map_dlg = TripMapView(
-            self, coll, keys, title=f"Map — {trip_name} (whole trip)",
+            self, coll, keys, title=window_title("Map", trip_name),
             loader=loader, default_path=True, trip_root=trip_root)
         self._trip_map_dlg.pictures_geotagged.connect(
             lambda _keys: self.refresh_gps_counts("trip"))
@@ -2286,11 +2287,11 @@ class MainWindow(QMainWindow):
             return
         info = read_virttrip_ini(root) or {}
         name = info.get("trip_name") or Path(root).name
-        scope = day_dirs[0].name if one_day else "whole trip"
-        suffix = "" if geotag else ", view only"
+        scope = day_dirs[0].name if one_day else ""
+        view_only = "" if geotag else "view only"
         # Strong ref on the main window so the dialog isn't GC'd.
         self._virttrip_map_dlg = TripMapView(
-            self, coll, keys, title=f"Map — {name} ({scope}{suffix})",
+            self, coll, keys, title=window_title("Map", name, [scope, view_only]),
             loader=loader, default_path=not one_day, read_only=True,
             allow_geotag=geotag,
             read_only_note="An album shares the master's pictures instead of "

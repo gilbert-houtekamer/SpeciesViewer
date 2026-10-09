@@ -9,6 +9,7 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt, QTimer
 from widgets.trip_widgets import DirectoryFieldQt
 from engine.filepicture import FilePicture
+from gui.window_title import window_title
 from gui.species_editor import SpeciesInfoDialog
 from gui.window_state import restore_window, save_window
 from gui.image_loader import AsyncImageLoader
@@ -169,10 +170,13 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
         if collection is not None:
             self._viewer_label = source_label or "Culling"
         elif self._file_list is not None:
-            self._viewer_label = f"{len(self._file_list)} files"
+            # The album day viewer passes its day folder: the day is what the
+            # title should name, not the file count (the filter part says that).
+            self._viewer_label = (Path(source_label).name if source_label
+                                  else f"{len(self._file_list)} files")
         else:
             self._viewer_label = Path(image_dir).name
-        self.setWindowTitle(f"Species Image Preview ({self._viewer_label})")
+        self.setWindowTitle(window_title("Image Viewer", self._viewer_label))
 
         self.image_dir = image_dir
         # Set True when a species name is committed (SpeciesInfoDialog) so
@@ -941,7 +945,6 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
             QMessageBox.information(self, "Map", "No pictures are shown to map.")
             return
         from gui.map_view import TripMapView
-        base = self.windowTitle().split(" — ")[0]
         # A read-only viewer stays read-only on the map for rating / colour / files:
         # the virtual-trip day viewer shows the MASTER's own pictures (a virtual trip
         # shares them rather than copying them).
@@ -953,7 +956,7 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
         # it. allow_move then still refuses any bubble holding a camera's own fix.
         read_only = getattr(self._collection, "read_only", False)
         geotag = getattr(self._collection, "allow_geotag", False)
-        suffix = " (view only)" if (read_only and not geotag) else ""
+        view_only = "view only" if (read_only and not geotag) else ""
         # One map per viewer. Opening a second over the same day gave two windows
         # plotting the same pictures, each with its own stale copy of the points —
         # place something on one and the other silently disagreed.
@@ -972,7 +975,7 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
                          if trip_root_dir and (Path(trip_root_dir) / "trip.ini").is_file()
                          else "")
         dlg = TripMapView(self, self._collection, keys,
-                          title=f"Map — {base}{suffix}",
+                          title=window_title("Map", self._viewer_label, [view_only]),
                           loader=self._loader, trip_root=map_trip_root,
                           read_only=read_only, allow_geotag=geotag,
                           read_only_note="These pictures live in the master database — "
@@ -1102,7 +1105,13 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
         if self._jpg_only:
             parts.append("JPG only")
         if self._color_filter:
-            parts.append("colour " + "/".join(sorted(self._color_filter)))
+            # Label order (red, yellow, green, blue, purple, then grey), not
+            # alphabetical: it is the order the eye reads the colour bar in.
+            from gui.label_colors import COLORS
+            order = COLORS + ["Grey"]
+            parts.append("colour " + "/".join(sorted(
+                self._color_filter,
+                key=lambda c: order.index(c) if c in order else len(order))))
         if self._find_query:
             parts.append(f"find '{self._find_query}'")
         elif self._findfile_query:
@@ -1110,7 +1119,9 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
         return parts
 
     def _update_title_for_filter(self):
-        base = f"Species Image Preview ({self._viewer_label})"
+        def _set(radio):
+            self.setWindowTitle(window_title(
+                "Image Viewer", self._viewer_label, [radio] + overlays))
         total = len(self._base_keys())
         shown = len(self._visible_keys())
         overlays = self._overlay_title_parts()
@@ -1122,8 +1133,7 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
                 radio = f"{self._no_species_count()} with no species yet"
             elif self._active_filter == "all":
                 radio = self._all_pictures_suffix(total, shown)
-            suffix = " · ".join(p for p in ([radio] + overlays) if p)
-            self.setWindowTitle(f"{base} — {suffix}" if suffix else base)
+            _set(radio)
             return
         if self._active_filter == "warnings":
             n = self._warnings_count()
@@ -1143,8 +1153,7 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
             radio = f"{shown} of {total} pictures"
         else:
             radio = f"clean day — click All to view {total} pictures"
-        suffix = " · ".join(p for p in ([radio] + overlays) if p)
-        self.setWindowTitle(f"{base} — {suffix}" if suffix else base)
+        _set(radio)
 
     # ── Grid build (batched so a big day stays responsive) ──────────────────
     # Card width snaps to this grid so a small window resize between sessions

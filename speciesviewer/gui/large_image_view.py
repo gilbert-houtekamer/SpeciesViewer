@@ -37,6 +37,7 @@ from gui.rating_editor import (StarWidget, ColorSelector, COLOR_HEX, _FramedPhot
 from gui import theme
 from gui.image_loader import AsyncImageLoader
 from gui.window_state import restore_window, save_window, clamp_to_visible_screen
+from gui.window_title import window_title
 from utils.open_path import open_path, reveal_group, launch_app_with_file
 from utils.raw_extensions import is_heic
 from utils.config import get_setting, set_setting, get_window_state
@@ -2560,17 +2561,13 @@ class LargeImageView(QDialog):
         follows the "Genus species" convention, so its leading genus letter is
         capitalised (the resolver returns it lower-case). The sex/age/plumage
         suffix rides the primary line."""
-        pos = f"  ({self._index + 1} of {len(self._keys)})"
         name = item.display_name or key
         # "Editor", not "Large Image View": the old name described the widget,
         # the new one the job, and it matches the app's existing vocabulary —
         # Viewer, Editor, never "... Window".
         # this one describes the job — species, rating, colour, crop, exposure,
         # headline, description, Make JPG, hand-off to PhotoLab. UI only; the class
-        # stays LargeImageView (see docs/plans/edit_window_parity.md, D4). The
-        # picture keeps the front of the title, where it identifies the window in
-        # the taskbar better than any generic name would.
-        self.setWindowTitle(f"{name}{pos} — Editor")
+        # stays LargeImageView (see docs/plans/edit_window_parity.md, D4).
         # Title bar (mockup): "name · file", so the picture on screen is named
         # right above it as well as in the OS titlebar.
         self._titlebar_lbl.setText(f"{name}  ·  {key}")
@@ -2587,6 +2584,27 @@ class LargeImageView(QDialog):
             return (text[0].upper() + text[1:]) if (is_sci and text) else text
 
         _suffix = getattr(item, "qualifier_suffix", "") or ""
+
+        # Kind first, then the picture (docs/plans/window_titles.md), with ALL
+        # its names in profile order — inside the Editor the other language is
+        # sometimes the one you recognise:
+        # "Editor — Rufous hornero · Roodbruine ovenvogel · Furnarius rufus
+        # (3 of 22) · 2026-09-15". Without a species the day leads:
+        # "Editor — 2026-09-15 (1 of 935) · <file>". A landscape keeps its
+        # headline (its "names" are a topic leaf, not a taxon).
+        day = (getattr(item, "date", "") or "")[:10].replace(":", "-")
+        at = (self._index, len(self._keys))
+        if (getattr(item, "species", "") or "").strip() or not day:
+            if getattr(item, "is_blog_extra", False):
+                names = name
+            else:
+                names = " · ".join(
+                    _fmt(t, sci) + (_suffix if i == 0 else "")
+                    for i, (t, sci) in enumerate(lines) if t)
+            self.setWindowTitle(window_title("Editor", names or name, [day], pos=at))
+        else:
+            self.setWindowTitle(window_title("Editor", day, [name], pos=at))
+
         self._panel_name.setText(_fmt(*lines[0]) + _suffix)
         _sec = " · ".join(_fmt(t, s) for t, s in lines[1:])
         self._panel_sci.setText(_sec)

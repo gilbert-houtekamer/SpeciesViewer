@@ -29,6 +29,7 @@ from engine.speciesclassification import SpeciesClassification
 from engine.filecsv import Files
 from engine.picturecsv import Pictures
 from engine.exif_writer import exiftool_write
+from gui.window_title import window_title
 from gui.window_state import restore_window, save_window
 from gui import theme
 from gui.image_loader import AsyncImageLoader
@@ -1695,8 +1696,8 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
         # machine's master write policy — an album's pictures being the master's
         # own is the reason editing WORKS here, not a reason to forbid it.
         self._view_read_only = self._album_mode   # until a load says otherwise
-        self.setWindowTitle(f"{self._scope_label} Species Viewer"
-                            if self._album_mode else "Trip Species Viewer")
+        self._album_source_note = ""     # where an album's pictures came from
+        self.setWindowTitle(window_title(f"{self._scope_label} Species Viewer"))
         # Own taskbar button — a minimised rating editor must be findable.
         # ORing Qt.WindowType.Window onto a QDialog's existing flags does
         # nothing (Qt.WindowType.Dialog is defined as 0x2 | Window, so the
@@ -2381,6 +2382,7 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
         self._day_combo.blockSignals(False)
         self._day_combo.setVisible(self._day_radio.isChecked())
         self._load_data()
+        self._refresh_window_title()
 
     def _current_day(self) -> str | None:
         return self._day_combo.currentText() or None
@@ -2770,12 +2772,46 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
         picture count. Where an album's data comes from is not a transient
         message — it decides whether the numbers can be trusted — so it belongs
         somewhere that stays put."""
+        self._album_source_note = source_note
+        self._refresh_window_title()
+
+    def _trip_title_name(self) -> str:
+        """The trip's short name for the title ("brazil2026"), from trip.ini —
+        the same kind of name an album shows ("tanzania")."""
+        if self._album_mode:
+            return self._album_name
+        if not hasattr(self, "_trip_name_cache"):
+            from utils.trip_config import read_trip_ini
+            ini = (read_trip_ini(str(self._trip_root))
+                   if self._trip_root is not None else None) or {}
+            self._trip_name_cache = ((ini.get("trip_name") or "").strip()
+                                     or (self._trip_root.name
+                                         if self._trip_root is not None else ""))
+        return self._trip_name_cache
+
+    def _refresh_window_title(self) -> None:
+        """<Kind> — <scope shown right now> · <species> (docs/plans/window_titles.md).
+        Called on every scope / day / species change, so two viewers on two
+        days never look the same on the taskbar."""
+        kind = f"{self._scope_label} Species Viewer"
+        species = self._species_combo.currentData()
+        what = [species or ""]
         if self._master_only:
-            self.setWindowTitle("Master Species Viewer")
+            self.setWindowTitle(window_title(kind, "", what))
             return
-        name = f" · {self._album_name}" if self._album_name else ""
-        self.setWindowTitle(
-            f"{self._scope_label} Species Viewer{name} · {source_note}")
+        name = self._trip_title_name()
+        if self._day_radio.isChecked():
+            day = self._current_day() or ""
+            # An album names itself first: its days alone don't say which album.
+            where = " · ".join(p for p in (
+                (name, day) if self._album_mode else (day,)) if p)
+        elif self._tm_radio.isChecked():
+            where = "master" if self._album_mode else f"{name} + master"
+        else:
+            where = name
+        if self._album_source_note:
+            what.append(self._album_source_note)
+        self.setWindowTitle(window_title(kind, where, what))
 
     def _species_name(self, upn_row: dict) -> str:
         from utils.name_profile import name_for
@@ -3331,10 +3367,12 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
             return
         self._day_combo.setVisible(self._day_radio.isChecked())
         self._load_data()
+        self._refresh_window_title()
 
     def _on_day_changed(self):
         if self._day_radio.isChecked():
             self._load_data()
+            self._refresh_window_title()
 
     def _close_large_view(self):
         """Close any open large view. Its key list is a fixed snapshot of the
@@ -3356,6 +3394,7 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
         # The open large view belongs to the previous species — close it before
         # switching (its snapshot would otherwise edit/navigate a stale set).
         self._close_large_view()
+        self._refresh_window_title()
         # Refresh the camera list to this species' bodies before rebuilding
         # (blockSignals inside keeps this from re-triggering a rebuild).
         self._populate_camera_combo()
@@ -3422,7 +3461,7 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
         from gui.map_view import TripMapView
         dlg = TripMapView(
             self, self._collection, keys,
-            title=f"Map — {name}", loader=self._collection._loader,
+            title=window_title("Map", name), loader=self._collection._loader,
             read_only=True,
             read_only_note="Showing where this species was photographed. "
                            "Geotagging a picture from the map is coming separately.")
