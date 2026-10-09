@@ -3922,6 +3922,8 @@ class BaseTripModuleDialog(QDialog):
 
         btn_layout = QHBoxLayout()
         btn_layout.addStretch()
+        # Kept so a subclass can put a result line left of the buttons.
+        self.btn_layout = btn_layout
 
         self.write_btn = QPushButton("Run Step")
         self.close_btn = QPushButton("Close")
@@ -4085,6 +4087,16 @@ class CountSpeciesDialog(BaseTripModuleDialog):
             QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding
         )
 
+        # The one check that decides whether the website will be complete: a
+        # species with no JPG gets no picture on the species page, yet still
+        # counts in its totals. Shown left of Run Step so it is seen without
+        # reading the report.
+        self.jpg_check_label = QLabel("")
+        self.jpg_check_label.setWordWrap(True)
+        self.jpg_check_label.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextSelectableByMouse)
+        self.btn_layout.insertWidget(0, self.jpg_check_label, 1)
+
         # Add widgets to layout
         self.layout().addWidget(QLabel("Species Overview Report"))
         self.layout().addWidget(self.report_viewer)
@@ -4144,13 +4156,41 @@ class CountSpeciesDialog(BaseTripModuleDialog):
                         content = f.read()
                         self.report_viewer.setPlainText(content)
                         self._fit_to_report(content)
+                    self._show_jpg_check(reports_dir / "Species overview.csv")
                 else:
                     self.report_viewer.setPlainText("⚠️ Report file not found.")
             except Exception as e:
                 self.report_viewer.setPlainText(f"❌ Error loading report: {e}")
 
+        self.jpg_check_label.setText("")
         runner = BatchModuleRunner(self, self.passed_parent)
         runner.run(self.menu_spec, on_success=load_report)
+
+    def _show_jpg_check(self, table_path: Path):
+        """Orange when a species has no JPG anywhere in the trip (it will be
+        counted on the website but have no picture there), plain when every
+        species has one. Read from the step's own species table, the same
+        rows as the report."""
+        import csv
+        try:
+            with open(table_path, "r", encoding="utf-8-sig", newline="") as f:
+                rows = list(csv.DictReader(f))
+        except OSError:
+            self.jpg_check_label.setText("")
+            return
+        missing = [r.get("English") or r.get("Scientific", "")
+                   for r in rows if r.get("JPG") == "no"]
+        if missing:
+            n = len(missing)
+            self.jpg_check_label.setStyleSheet("color: #B45309; font-weight: bold;")
+            self.jpg_check_label.setText(
+                f"⚠ {n} species {'has' if n == 1 else 'have'} no JPG — "
+                f"no picture on the website, but still counted: "
+                + ", ".join(missing))
+        else:
+            self.jpg_check_label.setStyleSheet("")
+            self.jpg_check_label.setText(
+                f"✅ All {len(rows)} species have a JPG.")
 
     def save_report(self):
         pic_dir = _config.get("project", "picturedirectory", fallback="").strip()
