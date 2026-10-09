@@ -434,8 +434,11 @@ def build_menu_spec(main_window):
         # Publish Day = Freeze (sv6) + Write Commit (sv7). Freeze now builds the
         # complete website (incl. the all-species index → frozen/allspecies.csv
         # that sv7 reads), so the retired "Build Website" step is not needed here.
-        batch.sv6Freeze.main(args, _config)
+        species_msg = batch.sv6Freeze.main(args, _config)
         batch.sv7WriteCommit.main(args, _config)
+        # Replaces the plain "✅ Day published." so the species count is the
+        # last line of the day's publish, not one line among hundreds.
+        return f"✅ Day published — {species_msg}." if species_msg else None
 
     publish_day = MenuSpec(
         callback=None,

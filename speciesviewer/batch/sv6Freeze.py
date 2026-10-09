@@ -312,6 +312,7 @@ def mergeCurrentTripTotals(MyProject):
         up = d['Up']
         if up and up in day and name not in day[up]['Leaves']:
             day[up]['Leaves'].append(name)
+    species_count = _recountSpeciesTotals(day)
 
     before = _species_with_jpgs(active.species_dict)
     after = _species_with_jpgs(day)
@@ -323,6 +324,48 @@ def mergeCurrentTripTotals(MyProject):
         raise SVException(
             f"Publishing this day would drop the trip website from {before} to {after} "
             f"species with a picture. Nothing was published; please report this.")
+    return species_count
+
+def _recountSpeciesTotals(day):
+    """Species counters are COUNTED from the tree, never added up.
+
+    A species is 1 in the trip collection when the trip already holds a picture
+    of it, else 1 "this run" when this day brings its first pictures; every
+    group above is the sum of its species. The day's own "new this run" mark
+    was set at Read & Summarize, against the trip as it was THEN: summarizing
+    every day before publishing any made each day count each of its species as
+    new, and adding those marks up put Brazil 2026 at 705 species instead of
+    328 (2026-10-09). Counted here, at publish time, the order of the steps no
+    longer matters. Picture counters are real per-day sums and are untouched."""
+    def walk(name, seen):
+        node = day[name]
+        if node['Level'] in (Level.SPECIES, 'Level.SPECIES'):
+            if _int(node['iPictureCollectionCount']) > 0:
+                coll, new = 1, 0
+            elif _int(node['iPictureThisRunCount']) > 0:
+                coll, new = 0, 1
+            else:
+                coll, new = 0, 0
+        else:
+            coll = new = 0
+            for leaf in node['Leaves']:
+                if leaf in day and leaf not in seen:
+                    seen.add(leaf)
+                    c, n = walk(leaf, seen)
+                    coll += c
+                    new += n
+        node['iSpeciesCollectionCount'] = coll
+        node['iSpeciesThisRunCount'] = new
+        return coll, new
+
+    for name, node in day.items():
+        if not node['Up'] or node['Up'] not in day:     # a root: biota, topics
+            walk(name, {name})
+    if 'biota' not in day:
+        return None
+    b = day['biota']
+    return (_int(b['iSpeciesCollectionCount']) + _int(b['iSpeciesThisRunCount']),
+            _int(b['iSpeciesThisRunCount']))
 
 def AppendChangedPictureData(MyProject, firstNewPicture):
     # Rewrite the frozen data_pictures.csv from scratch with the current-schema
@@ -387,7 +430,7 @@ def main(args, config):
     logger.info(f"sv6Freeze: Freeze data for project {MyProject.ProjectName()} on local copy on Windows")
 
     RepositoryFileCount, RepositoryPictureCount, from_time, last_time = MyProject.readProject()
-    mergeCurrentTripTotals(MyProject)
+    species_count = mergeCurrentTripTotals(MyProject)
 
     logger.info(f'Now writing consolidated data to a frozen directory for manual review as desired')
     # change and append
@@ -467,6 +510,12 @@ def main(args, config):
 
     totaltime = time.time() - starttime      
     logger.info(f'Total time for all other work {totaltime:.1f} seconds.')
+    # The one number to check after a publish: it ends up as the step's own
+    # result line ("✅ Day published — …") instead of drowning in the log.
+    if species_count:
+        total, new = species_count
+        return f"trip website now has {total} species ({new} new this day)"
+    return None
 
 if __name__ == "__main__":
     # get commandline parameters

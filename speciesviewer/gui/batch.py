@@ -259,6 +259,9 @@ class ChainedBatchRunner:
         self._on_complete = on_complete
         self._logger = logging.getLogger("speciesviewer")
         self._before_count = self._logger.warning_counter.count
+        # What the steps reported back (e.g. Publish Day's species count),
+        # repeated on the closing line so it is not buried mid-log.
+        self._results = []
 
         # Build shared spinner
         self._spinner = QDialog(parent)
@@ -319,6 +322,8 @@ class ChainedBatchRunner:
                 self._on_complete()
             else:
                 self._logger.info(result_msg if result_msg else amsg)
+                if result_msg and not is_nothing_to_do(result_msg):
+                    self._results.append(result_msg)
                 post = _csv_fingerprint(self._sm.Directory, sname)
                 state_msg, symbol, cell_msg = _completion(result_msg)
                 self._sm.updateState(sname, True, state_msg,
@@ -336,10 +341,13 @@ class ChainedBatchRunner:
         self._sm.writeState()
         self._main_window.refresh_trip_row(self._sm, self._directory_name)
         self._spinner.close()
+        done = "All steps complete"
+        if self._results:
+            done += " — " + "; ".join(self._results)
         if new_warnings > 0:
-            self._logger.info(f"All steps complete. Please review the {new_warnings} warning{'s' if new_warnings > 1 else ''}.")
+            self._logger.info(f"{done}. Please review the {new_warnings} warning{'s' if new_warnings > 1 else ''}.")
         else:
-            self._logger.info("All steps complete.")
+            self._logger.info(f"{done}.")
         self._main_window.rebuild_menu()
         self._main_window.green_log_box.verticalScrollBar().setValue(
             self._main_window.green_log_box.verticalScrollBar().maximum()
