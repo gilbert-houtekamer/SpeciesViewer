@@ -38,6 +38,11 @@ shows a static frame grab (see gui/preview_extract.extract_video_frame_bytes),
 since decoding video for every visible card would be the exact cost the grid's
 viewport virtualization was built to avoid.
 
+A still with no RAW (an iPhone HEIC, a JPG- or PNG-only picture), or a RAW whose
+embedded preview can't be read, falls back to whatever image the picture has,
+through the provider's generic request_full_pixmap (the Editor's own loader).
+The overlay then says "picture" instead of "camera JPEG".
+
 Deliberately NOT the Large Image View: that one is powerful but pays a startup
 cost this view exists to skip. It reuses `_FullResView` (the zoom/pan viewport)
 and `handle_cull_key` (the shared culling key handler) from elsewhere.
@@ -79,6 +84,9 @@ from gui.image_loader import AsyncImageLoader
 from gui.window_title import window_title
 from gui.large_image_view import BADGE_CSS, _FullResView, color_to_css
 from gui.preview_extract import extract_preview_bytes
+
+# The colour-label border. 4 px was too subtle on a large screen.
+_FRAME_PX = 8
 from utils.name_profile import all_names_ordered
 
 
@@ -131,7 +139,8 @@ class QuickViewer(QDialog):
         self._frame = QWidget()
         self._frame.setObjectName("qvFrame")
         frame_lay = QVBoxLayout(self._frame)
-        frame_lay.setContentsMargins(4, 4, 4, 4)
+        # Room for the whole border, so the picture never covers part of it.
+        frame_lay.setContentsMargins(_FRAME_PX, _FRAME_PX, _FRAME_PX, _FRAME_PX)
 
         # A movie has no embedded JPEG to pixel-peep — it plays instead, in the
         # same popup. One stacked page each, so switching between a still and a
@@ -217,8 +226,10 @@ class QuickViewer(QDialog):
             if video is not None:
                 self._show_video(video)
                 return
+            # No RAW (an iPhone HEIC, a JPG-only or PNG picture): show what the
+            # picture DOES have, through the same generic loader the Editor uses.
             self._stack.setCurrentWidget(self._view)
-            self._view.set_message("No RAW file for this picture.")
+            self._load_any(key)
             return
 
         self._stack.setCurrentWidget(self._view)
@@ -240,15 +251,34 @@ class QuickViewer(QDialog):
         self._player.setSource(QUrl.fromLocalFile(str(path)))
         self._player.play()
 
-    def _show(self, px, key):
+    def _load_any(self, key):
+        """The fallback when there is no camera JPEG to read: whatever image
+        the picture has (its JPG, HEIC, PNG, ...), via the provider's own
+        request_full_pixmap — generic, so any source without a RAW works."""
+        self._view.set_message("Reading the picture…")
+        try:
+            item = self._collection.item_for_key(key)
+        except (ValueError, KeyError):
+            self._view.set_message("Nothing to show for this picture.")
+            return
+        item.request_full_pixmap(
+            lambda px, k=key: self._show(px, k, fallback=True))
+
+    def _show(self, px, key, fallback=False):
         if key != self._cur_key:
             return                       # a later step superseded this one
         if px is None or px.isNull():
-            self._view.set_message("This RAW carries no embedded JPEG.")
+            if not fallback:
+                # A RAW without a usable embedded JPEG (some bodies embed HEVC):
+                # fall back to whatever image the picture has.
+                self._load_any(key)
+            else:
+                self._view.set_message("Nothing to show for this picture.")
             return
         from gui.exposure_render import apply_exposure_to_pixmap
         px = apply_exposure_to_pixmap(px, self._cur_ev)
-        overlay = f"camera JPEG {px.width()}×{px.height()}"
+        what = "picture" if fallback else "camera JPEG"
+        overlay = f"{what} {px.width()}×{px.height()}"
         if self._cur_ev:
             from gui.exposure_widget import format_ev
             overlay += f"  ·  {format_ev(round(self._cur_ev * 3))} suggested"
@@ -261,7 +291,7 @@ class QuickViewer(QDialog):
         css = color_to_css(color)
         if css:
             self._frame.setStyleSheet(
-                f"QWidget#qvFrame {{ border: 4px solid {css}; border-radius: 6px; }}")
+                f"QWidget#qvFrame {{ border: {_FRAME_PX}px solid {css}; border-radius: 6px; }}")
         else:
             self._frame.setStyleSheet("")
 
