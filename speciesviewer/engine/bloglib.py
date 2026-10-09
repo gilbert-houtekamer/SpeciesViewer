@@ -394,7 +394,12 @@ class Blog:
                 f"makeRunSummaryPost: no '{speciesname}' in the species tree for "
                 f"{self.getBlogDay()} (JPG/landscape-only day) — rendering a "
                 f"species-less blog post.")
-            species_node = {"ScientificName": speciesname, "Leaves": []}
+            # A COMPLETE empty root record: every token reads ['Level'] first,
+            # and a two-field stand-in failed them all — the landscape-only
+            # day 2026-09-14 (Brazil) published an empty page.
+            from engine.specieslib import Level
+            species_node = MyProject.sp.createSpeciesRecord(
+                Level.BIOTA, speciesname, "", "", "")
         with open((biotablog + self.getBlogDay() + '-' + language + '.html'), "w", encoding='UTF-8') as fileSummaryPost:
             for templateline in speciesoftheday:
                 line = getTemplateOutputString(MyProject, species_node, '', '', templateline.rstrip('\n'))
