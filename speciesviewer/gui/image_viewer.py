@@ -1863,9 +1863,16 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
         # master live, so the render shows on refresh.)
         # Delete straight to .trash (recoverable) — the intuitive per-picture cull,
         # beside the batch blue/purple-delete. Same JPG protection as blue-delete.
+        menu.addSeparator()
+        # Build a selection of separate pictures without holding Ctrl: each
+        # right-click adds (or takes out) THIS picture, and the first one starts
+        # the selection. [ ] marks only one range; a pick of 3 out of 100 is not
+        # a range. The selected pictures then go to the actions above together.
+        in_sel = key in self._selected_keys
+        act_select = menu.addAction("Remove from selection" if in_sel
+                                    else "Add to selection")
         act_delete = None
         if hasattr(self._collection, "delete_keys"):
-            menu.addSeparator()
             act_delete = menu.addAction(f"🗑 Delete  ({lbl})")
         # The full master card menu (qualifiers / pin best-JPG / delete-JPG / move /
         # add / delete), on the right-clicked master picture. The album's pictures ARE
@@ -1881,6 +1888,13 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
                 menu, key, ops={"add", "pin", "delete_jpg", "move", "delete", "delete_file"})
         chosen = menu.exec(QCursor.pos())
         if chosen is None:
+            return set()
+        if chosen == act_select:
+            if in_sel:
+                self._selected_keys.discard(key)
+            else:
+                self._selected_keys.add(key)
+            self._update_selection_display()
             return set()
         if chosen in master_handlers:
             master_handlers[chosen]()
