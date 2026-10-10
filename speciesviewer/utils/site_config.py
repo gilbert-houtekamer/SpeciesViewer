@@ -36,6 +36,23 @@ _FALLBACK = {
 }
 
 
+def fill_missing_from_fallback() -> list:
+    """Step 2 of 3, run once at start-up: write the fallback into the machine
+    config for every key that is not there yet, so the values live in the ini
+    (and in Global Settings) rather than in the code. Returns the keys written.
+    Goes away with _FALLBACK in step 3."""
+    from utils.config import persist_config
+    if not _config.has_section(_SECTION):
+        _config.add_section(_SECTION)
+    written = [k for k in _FALLBACK
+               if not _config.get(_SECTION, k, fallback="").strip()]
+    for k in written:
+        _config.set(_SECTION, k, _FALLBACK[k])
+    if written:
+        persist_config()
+    return written
+
+
 def _get(key: str) -> str:
     value = _config.get(_SECTION, key, fallback="").strip()
     return value or _FALLBACK[key]

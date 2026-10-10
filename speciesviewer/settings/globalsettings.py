@@ -1,7 +1,8 @@
 from PyQt6.QtWidgets import (
-    QDialog, QVBoxLayout, QLabel, QLineEdit, QCheckBox, QComboBox,
-    QPushButton, QMessageBox
+    QDialog, QVBoxLayout, QFormLayout, QGroupBox, QLabel, QLineEdit, QCheckBox,
+    QComboBox, QPushButton, QMessageBox
 )
+from gui.widgets import wrapped
 from utils.config import _config, persist_config
 from utils.name_profile import (profile_keys, profile_label, global_profile,
                                 set_global_profile)
@@ -11,7 +12,8 @@ class GlobalSettingsDialog(QDialog):
     def __init__(self, parent):
         super().__init__(parent)
         self.setWindowTitle("Global Settings")
-        self.setFixedSize(400, 380)
+        # No fixed size: the layout decides, so adding a field can never clip one.
+        self.setMinimumWidth(460)
 
         layout = QVBoxLayout(self)
 
@@ -44,8 +46,35 @@ class GlobalSettingsDialog(QDialog):
             "Dutch. The window size is not set here: the app remembers it.")
         layout.addWidget(self.names_combo)
 
-        self.webpassword_field = self._labeled_field(layout, "Website password", _config.get("websettings", "sftppwd", fallback="? still needed"), password=True)
-        self.base_url_field = self._labeled_field(layout, "Base URL for web address", _config.get("websettings", "base_url", fallback=""))
+        # Where this installation publishes — read by utils/site_config.py.
+        web = QGroupBox("Website and publishing")
+        web_lay = QVBoxLayout(web)
+        web_lay.addWidget(wrapped(
+            "Where your website is viewed and where SpeciesViewer uploads it. "
+            "Your web host gives you the server, account and folder."))
+        form = QFormLayout()
+        web_lay.addLayout(form)
+
+        def field(label, key, placeholder="", password=False, fallback=""):
+            f = QLineEdit(_config.get("websettings", key, fallback=fallback))
+            f.setPlaceholderText(placeholder)
+            if password:
+                f.setEchoMode(QLineEdit.EchoMode.Password)
+            form.addRow(label, f)
+            return f
+
+        self.base_url_field = field("Website address", "base_url", "https://example.org")
+        self.sftp_host_field = field("Upload server", "sftp_host", "ssh.example.org")
+        self.sftp_user_field = field("Upload account", "sftp_user")
+        self.webpassword_field = field("Upload password", "sftppwd", password=True,
+                                       fallback="? still needed")
+        self.sftp_root_field = field("Website folder on the server", "sftp_remote_root",
+                                     "/var/www/example")
+        self.contact_field = field("Contact e-mail", "contact_email", "you@example.org")
+        self.contact_field.setToolTip(
+            "Sent with every map and place-name request, as OpenStreetMap's usage "
+            "policy asks — so they can reach you, not somebody else.")
+        layout.addWidget(web)
         # The DxO PhotoLab path moved to File ▸ Settings ▸ Interfaces to Lightroom
         # and PhotoLab ▸ PhotoLab Location, so the three DxO options sit together
         # instead of one being stranded here. The [Global] dxo_path key is unchanged.
@@ -54,20 +83,19 @@ class GlobalSettingsDialog(QDialog):
         save_button.clicked.connect(self.save_settings)
         layout.addWidget(save_button)
 
-    def _labeled_field(self, layout, label, value="", password=False):
-        layout.addWidget(QLabel(label))
-        field = QLineEdit(value)
-        if password:
-            field.setEchoMode(QLineEdit.EchoMode.Password)
-        layout.addWidget(field)
-        return field
-
     def save_settings(self):
         _config.set("Global", "splash_enabled", "yes" if self.splash_switch.isChecked() else "no")
         _config.set("Global", "debug_tools", "yes" if self.debug_switch.isChecked() else "no")
         set_global_profile(self.names_combo.currentData())
-        _config.set("websettings", "sftppwd", self.webpassword_field.text())
-        _config.set("websettings", "base_url", self.base_url_field.text())
+        if not _config.has_section("websettings"):
+            _config.add_section("websettings")
+        for key, f in (("base_url", self.base_url_field),
+                       ("sftp_host", self.sftp_host_field),
+                       ("sftp_user", self.sftp_user_field),
+                       ("sftppwd", self.webpassword_field),
+                       ("sftp_remote_root", self.sftp_root_field),
+                       ("contact_email", self.contact_field)):
+            _config.set("websettings", key, f.text().strip())
 
         persist_config()
 

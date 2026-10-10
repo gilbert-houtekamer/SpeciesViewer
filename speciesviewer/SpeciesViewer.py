@@ -125,6 +125,11 @@ def start_main():
         from utils.config import MIGRATION_NOTES
         for note in MIGRATION_NOTES:          # settings moved out of the repo root
             main_window.logger.info(note)
+        from utils import site_config
+        filled = site_config.fill_missing_from_fallback()
+        if filled:
+            main_window.logger.info("Website settings written to the machine config "
+                                    "(see Global Settings): " + ", ".join(filled))
         if _config.get("Global", "debug_tools", fallback="no") == "yes":
             print(f"✅ Logging configured, logger assigned: {main_window.logger}")
 
