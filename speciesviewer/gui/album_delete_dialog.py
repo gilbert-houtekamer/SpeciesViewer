@@ -176,8 +176,9 @@ class AlbumDeleteDialog(QDialog):
         the upload cache as it walks."""
         import engine.sftplib
         password = (_config.get("websettings", "Sftppwd", fallback="") or "").strip("'")
-        sftp = engine.sftplib.Sftp(password=password)
+        sftp = None
         try:
+            sftp = engine.sftplib.Sftp(password=password)
             sftp.connect()
             target = album_delete.remote_web_target(info["web_root"], sftp.remotePrefix())
             if target:

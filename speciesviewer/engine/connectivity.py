@@ -43,6 +43,9 @@ SLOW_MS = 1500
 
 def probe(host: str, port: int, timeout: float = 6.0) -> dict:
     """Fast TCP reachability check. Returns {ok, ms, slow, error}."""
+    if not host:
+        return {"ok": False, "ms": 0, "slow": False,
+                "error": "Not set up — see File ▸ Settings ▸ Global Settings"}
     t = time.time()
     try:
         socket.create_connection((host, port), timeout=timeout).close()
@@ -93,6 +96,9 @@ def any_reachable(timeout: float = 6.0) -> bool:
 # Message shown when a publish is blocked — specific, not the misleading
 # "no internet" (the network may be fine; the upload server is unreachable).
 def publish_unreachable_msg() -> str:
+    from utils import site_config
+    if not site_config.publishing_set_up():
+        return site_config.NOT_SET_UP_MSG
     return (
         "Couldn't reach the publish server ({host}). Your internet may be fine but "
         "the upload server is unreachable — try again shortly. "

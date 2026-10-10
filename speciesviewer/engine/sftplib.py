@@ -28,6 +28,10 @@ class Sftp:
         """Server and account default to this installation's own
         (utils/site_config.py); only the password is always passed in."""
         from utils import site_config
+        if not site_config.publishing_set_up():
+            # Never guess: an empty remote folder would upload to the server root.
+            from engine.exceptions import SVException
+            raise SVException(site_config.NOT_SET_UP_MSG)
         # Set connection object to None (initial value)
         self.connection = None
         self.hostname = hostname or site_config.sftp_host()

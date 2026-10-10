@@ -17,9 +17,9 @@ Values come from the machine config, section [websettings]:
 The password stays where it was ([websettings] Sftppwd, passed to the batch
 steps through svconfig.ini).
 
-0.4 plan, step 1 of 3: the author's own values are still the fallback, so
-nothing changes in behaviour yet. Step 3 removes them, after which an empty
-value means "not configured" rather than somebody else's website.
+Nothing personal is built in: an empty value means "not set up". Uploading
+then stops with NOT_SET_UP_MSG instead of guessing a server, and the
+OpenStreetMap User-Agent falls back to the project's own address.
 """
 
 from utils.config import _config
@@ -27,35 +27,24 @@ from utils.version import __version__
 
 _SECTION = "websettings"
 
-_FALLBACK = {
-    "sftp_host": "houtfp.ssh.transip.me",
-    "sftp_user": "houtekamercom",
-    "sftp_remote_root": "/data/sites/web/houtekamercom/www",
-    "base_url": "https://houtekamer.com",
-    "contact_email": "gilbert@houtekamer.com",
-}
+# Sent to OpenStreetMap when no contact e-mail is set: identifies the project,
+# never a person.
+PROJECT_URL = "https://github.com/gilbert-houtekamer/SpeciesViewer"
 
-
-def fill_missing_from_fallback() -> list:
-    """Step 2 of 3, run once at start-up: write the fallback into the machine
-    config for every key that is not there yet, so the values live in the ini
-    (and in Global Settings) rather than in the code. Returns the keys written.
-    Goes away with _FALLBACK in step 3."""
-    from utils.config import persist_config
-    if not _config.has_section(_SECTION):
-        _config.add_section(_SECTION)
-    written = [k for k in _FALLBACK
-               if not _config.get(_SECTION, k, fallback="").strip()]
-    for k in written:
-        _config.set(_SECTION, k, _FALLBACK[k])
-    if written:
-        persist_config()
-    return written
+NOT_SET_UP_MSG = (
+    "Publishing is not set up on this computer yet. Fill in the upload server, "
+    "account and website folder in File ▸ Settings ▸ Global Settings "
+    "(Website and publishing).")
 
 
 def _get(key: str) -> str:
-    value = _config.get(_SECTION, key, fallback="").strip()
-    return value or _FALLBACK[key]
+    return _config.get(_SECTION, key, fallback="").strip()
+
+
+def publishing_set_up() -> bool:
+    """True when server, account and website folder are all filled in — the
+    minimum for an upload to go to a known place."""
+    return bool(sftp_host() and sftp_user() and sftp_remote_root())
 
 
 def sftp_host() -> str:
@@ -72,9 +61,9 @@ def sftp_remote_root() -> str:
 
 def site_base() -> str:
     """The public site root, e.g. 'https://example.org' — no trailing slash.
-    A bare host in the config still yields a real URL."""
+    A bare host in the config still yields a real URL; "" when not set."""
     base = _get("base_url").rstrip("/")
-    if not base.startswith("http"):
+    if base and not base.startswith("http"):
         base = "https://" + base
     return base
 
@@ -93,4 +82,4 @@ def contact_email() -> str:
 def user_agent() -> str:
     """The User-Agent for OpenStreetMap tiles and Nominatim. Their policy asks
     for the application plus a contact, so each installation sends its own."""
-    return f"SpeciesViewer/{__version__} ({contact_email()})"
+    return f"SpeciesViewer/{__version__} ({contact_email() or PROJECT_URL})"

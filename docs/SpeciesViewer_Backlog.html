@@ -1963,14 +1963,15 @@ the binary is built:</p>
 
 <h3>The repository is personalised</h3>
 
-<p><span class="tag-bug">BUG</span> <strong>The User-Agent is a personal e-mail address.</strong>
+<p><span class="tag-shipped">FIXED 10 Oct (0.4)</span> <strong>The User-Agent is a personal e-mail address.</strong>
 <code>gui/geolocate.py</code> and <code>gui/map_view.py</code> both send
 <code>SpeciesViewer/1.0 (gilbert@houtekamer.com)</code> to Nominatim and to the OSM tile servers.
 Every user's traffic would be attributed to one person, and OSM enforces its usage policy by
 blocking User-Agents — so a handful of new users could get the author's own map view cut off.
-The contact has to come from configuration, with a sensible project-level default.</p>
+The contact has to come from configuration, with a sensible project-level default. <em>Now: Global Settings ▸ Contact e-mail; when empty, the project's GitHub
+address is sent instead.</em></p>
 
-<p><span class="tag-open">OPEN</span> <strong>Hardcoded site and account details.</strong>
+<p><span class="tag-shipped">DONE 10 Oct (0.4)</span> <strong>Hardcoded site and account details.</strong>
 <code>username='houtekamercom'</code>, <code>houtfp.ssh.transip.me</code> and the remote path
 <code>/data/sites/web/houtekamercom/www</code> appear literally in seven modules
 (<code>sv1MakeReposity</code>, <code>sv7WriteCommit</code>, <code>bloglib</code>,
@@ -1978,7 +1979,10 @@ The contact has to come from configuration, with a sensible project-level defaul
 <code>triplib</code>). <em>10 Oct: now ten &mdash; <code>engine/connectivity.py</code>,
 <code>gui/album_delete_dialog.py</code> and <code>gui/virttrip_process.py</code> joined, plus
 <code>one-off/push_animals_css.py</code>. The count is growing, which is the argument for doing
-this early in 0.4 rather than late.</em> No credential is committed — the <code>.gitignore</code> handles that
+this early in 0.4 rather than late.</em> <strong>Done:</strong> <code>utils/site_config.py</code> is the one
+place; server, account, website folder, address and contact are fields in Global Settings
+(Website and publishing). Nothing personal is built in — with them empty, every upload stops
+with a &ldquo;Publishing is not set up&rdquo; message instead of guessing a server. No credential is committed — the <code>.gitignore</code> handles that
 carefully — but the defaults are somebody's personal hosting. They belong in the site
 configuration.</p>
 
