@@ -700,7 +700,11 @@ def copy_settings_snapshot(dest_dir, source_dir=None, logger_=None) -> list[str]
     """
     log = logger_ or logger
     dest = Path(dest_dir) / SETTINGS_SUBDIR
-    src_root = Path(source_dir) if source_dir else Path.cwd()
+    if source_dir:
+        src_root = Path(source_dir)
+    else:
+        from utils.config import CONFIG_DIR
+        src_root = CONFIG_DIR
     try:
         from utils.config import MACHINE_NAME
         machine = "".join(c for c in MACHINE_NAME if c.isalnum() or c in "-_") or "machine"

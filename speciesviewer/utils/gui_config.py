@@ -3,7 +3,12 @@ import os
 import time
 from pathlib import Path
 
-CACHE_FILE = Path("sv_gui_cache.json")
+from utils.config import CONFIG_DIR
+
+# Beside the machine config, never relative to the working directory: a bare
+# relative path silently started a second, empty cache whenever the app was
+# launched from another folder.
+CACHE_FILE = CONFIG_DIR / "sv_gui_cache.json"
 
 def load_gui_cache():
     if CACHE_FILE.exists():
