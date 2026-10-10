@@ -9,6 +9,7 @@ import sys
 import time
 import logging
 from utils.raw_extensions import RAW_OR_HEIC
+from utils.runtime_files import svconfig_path
 
 # add directory to python path (only when run as executable)
 if __name__ == "__main__":
@@ -93,7 +94,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--config",
         type=str,
-        default=os.environ.get("SVCONFIG", "svconfig.ini"),
+        default=os.environ.get("SVCONFIG") or str(svconfig_path()),
         help="Module Configuration File",
     )
     args = parser.parse_args()

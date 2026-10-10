@@ -32,7 +32,8 @@ def _master_root() -> Path:
     from configparser import ConfigParser
     from utils import ini_io  # noqa: E402  (project's own .ini reader)
     cfg = ConfigParser(interpolation=None)
-    ini_io.read_ini(cfg, Path(__file__).resolve().parents[1] / "speciesviewer" / "svconfig.ini")
+    from utils.runtime_files import svconfig_path
+    ini_io.read_ini(cfg, svconfig_path())
     return Path(cfg.get("master", "masterbiotadatabase"))
 
 

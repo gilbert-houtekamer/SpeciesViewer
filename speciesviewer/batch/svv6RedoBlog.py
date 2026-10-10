@@ -46,6 +46,7 @@ import engine.triplib
 from engine import SVException
 from batch.svv3WriteBlog import _read_blog_ini, _register_day_blog
 from utils.ini_io import read_ini
+from utils.runtime_files import svconfig_path
 
 logger = logging.getLogger("speciesviewer")
 
@@ -293,7 +294,7 @@ def main(args, config):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="svv6RedoBlog")
     parser.add_argument("--config", type=str,
-                        default=os.environ.get("SVCONFIG", "svconfig.ini"))
+                        default=os.environ.get("SVCONFIG") or str(svconfig_path()))
     args = parser.parse_args()
     config = configparser.ConfigParser()
     read_ini(config, args.config)

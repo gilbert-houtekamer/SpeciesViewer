@@ -35,3 +35,15 @@ def runtime_path(name: str) -> Path:
     d = app_data_dir() / "runtime"
     d.mkdir(parents=True, exist_ok=True)
     return d / name
+
+
+# The batch handoff: the GUI writes it (utils/batch_config.generate_svconfig_ini)
+# just before a step runs, and reads it straight back. It carries the SFTP
+# password, which is one more reason it must not land in the source tree.
+SVCONFIG = "svconfig.ini"
+
+
+def svconfig_path() -> Path:
+    """Absolute path of svconfig.ini — the one name writer, readers and the
+    batch scripts' --config default all use."""
+    return runtime_path(SVCONFIG)

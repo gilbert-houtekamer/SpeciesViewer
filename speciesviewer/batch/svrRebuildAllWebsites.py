@@ -278,9 +278,10 @@ def main(args, config):
 
 
 if __name__ == "__main__":
+    from utils.runtime_files import svconfig_path
     parser = argparse.ArgumentParser(description="Rebuild every album website")
     parser.add_argument("--config", type=str,
-                        default=os.environ.get("SVCONFIG", "svconfig.ini"))
+                        default=os.environ.get("SVCONFIG") or str(svconfig_path()))
     parser.add_argument("--apply", action="store_true",
                         help="actually rebuild (default is a dry run)")
     parser.add_argument("--only", default="",

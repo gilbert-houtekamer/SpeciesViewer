@@ -56,6 +56,7 @@ import engine.statemachine
 import batch.sv7WriteCommit as sv7WriteCommit
 from batch.sv5BuildWebsite import makeIntroPages
 from utils.ini_io import read_ini
+from utils.runtime_files import svconfig_path
 
 logger = logging.getLogger("speciesviewer")
 
@@ -135,7 +136,7 @@ def main(args, config):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="svMasterRebuildWeb")
-    parser.add_argument("--config", type=str, default="svconfig.ini")
+    parser.add_argument("--config", type=str, default=str(svconfig_path()))
     cli_args = parser.parse_args()
     cfg = configparser.ConfigParser()
     read_ini(cfg, cli_args.config)

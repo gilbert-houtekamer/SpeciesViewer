@@ -1,6 +1,6 @@
 # Configuration out of the repository root — plan (0.4, step 3)
 
-Status: **Step A built 2026-10-10, awaiting test.** Steps B–D still dry run. Written 2026-10-10 on `SpeciesViewer04`.
+Status: **Step A shipped 2026-10-10 (2e9e0db). Step B built, awaiting test.** C–D still dry run. Written 2026-10-10 on `SpeciesViewer04`.
 Backlog: ch.20 "The first-run problem", ch.19 "Structural loose ends".
 Checklist source: `docs/configuration_inventory.md` → Known irregularities #1, #2.
 
@@ -85,6 +85,10 @@ holds four `*.moved-to-appdata`. Read & Summarize one day. Repeat on SmallBoy.
 **Undo:** delete `config\`, rename the four files back. Nothing is lost.
 
 ## Step B — `svconfig.ini` to `runtime/` (one commit)
+
+*Built:* `utils.runtime_files.svconfig_path()`; writer default, 13 GUI reads, the
+`--config` default of 36 batch/engine scripts and 4 `tools/` scripts all use it.
+The old root `svconfig.ini` is no longer written or read — it goes in step D.
 
 The batch handoff is written by `utils/batch_config.generate_svconfig_ini()` and
 read back by name in ~15 places (`gui/batch.py`, `mainwindow.py`, `menuspec.py`,

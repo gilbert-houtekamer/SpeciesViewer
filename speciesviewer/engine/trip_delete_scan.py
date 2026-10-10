@@ -32,6 +32,7 @@ import os
 import csv
 import logging
 from utils.ini_io import read_ini
+from utils.runtime_files import svconfig_path
 from utils.raw_extensions import PICTURE, SIDECAR
 
 logger = logging.getLogger("speciesviewer")
@@ -364,7 +365,7 @@ if __name__ == "__main__":
     sys.path.append(os.path.join(reporoot, "speciesviewer"))
 
     parser = argparse.ArgumentParser(description="trip delete dry-run (no deletes)")
-    parser.add_argument("--config", default=os.environ.get("SVCONFIG", "svconfig.ini"))
+    parser.add_argument("--config", default=os.environ.get("SVCONFIG") or str(svconfig_path()))
     parser.add_argument("--picture-root", default=None,
                         help="trip picture root (default: parent of [project]picturedirectory)")
     args = parser.parse_args()

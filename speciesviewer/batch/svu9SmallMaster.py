@@ -35,6 +35,7 @@ if __name__ == "__main__":
 from engine.exceptions import SVException
 from engine.handling import relativize_path
 from utils.ini_io import read_ini
+from utils.runtime_files import svconfig_path
 
 logger = logging.getLogger("speciesviewer")
 
@@ -277,7 +278,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="svu9SmallMaster — create SmallMaster database ZIP")
     parser.add_argument(
         "--config",
-        default=os.environ.get("SVCONFIG", "svconfig.ini"),
+        default=os.environ.get("SVCONFIG") or str(svconfig_path()),
         help="Configuration file",
     )
     parser.add_argument("--target", required=True, help="Target directory to write smallmaster.zip into")

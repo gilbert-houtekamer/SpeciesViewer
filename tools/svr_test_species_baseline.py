@@ -24,7 +24,7 @@ Usage:
     python tools/svr_test_species_baseline.py [--trip PATH] [--master PATH]
                                               [--sandbox DIR] [--keep]
 
-Defaults for --trip / --master are read from svconfig.ini in the repo root.
+Defaults for --trip / --master are read from svconfig.ini (utils.runtime_files.svconfig_path).
 """
 import argparse
 import configparser
@@ -190,7 +190,8 @@ def main():
     args = ap.parse_args()
 
     cfg = configparser.ConfigParser()
-    cfg.read(os.path.join(REPO, "svconfig.ini"))
+    from utils.runtime_files import svconfig_path
+    cfg.read(svconfig_path(), encoding="utf-8")
     real_trip = args.trip or cfg.get("repository", "BiotaDatabase", fallback="")
     real_master = args.master or cfg.get("master", "MasterBiotaDatabase", fallback="")
     if not real_trip or not os.path.isdir(os.path.join(real_trip, "metadata", "review")):

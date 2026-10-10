@@ -21,6 +21,7 @@ from gui.virttrip_process import (VirtualTripCreationDialog,
                                    ExportVirtualTripDialog, ImportVirtualTripDialog,
                                    require_full_master)
 from utils.config import _config, debug_enabled
+from utils.runtime_files import svconfig_path
 from utils.trip_config import read_trip_ini
 import gui.days_process as days_process
 import gui.unfiled_view as unfiled_view
@@ -75,7 +76,7 @@ def build_menu_spec(main_window):
     # Load config and statemachine
     generate_svconfig_ini()
     module_config = configparser.ConfigParser()
-    read_ini(module_config, "svconfig.ini")
+    read_ini(module_config, svconfig_path())
 
     sm = StateMachine(
         module_config.get("repository", "BiotaDatabase"),

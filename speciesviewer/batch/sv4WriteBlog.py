@@ -27,6 +27,7 @@ import engine.statemachine
 import engine.triplib
 from engine import SVException
 from utils.ini_io import read_ini
+from utils.runtime_files import svconfig_path
 
 logger = logging.getLogger("speciesviewer")
 
@@ -203,7 +204,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--config",
         type=str,
-        default=os.environ.get("SVCONFIG", "svconfig.ini"),
+        default=os.environ.get("SVCONFIG") or str(svconfig_path()),
         help="Module Configuration File",
     )
     args = parser.parse_args()

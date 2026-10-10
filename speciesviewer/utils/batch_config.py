@@ -3,8 +3,9 @@ from configparser import ConfigParser
 from pathlib import Path
 import logging
 from utils.config import _config, persist_config
+from utils.runtime_files import svconfig_path as _svconfig_path
 
-def generate_svconfig_ini(svconfig_path="svconfig.ini", master_mode=False,
+def generate_svconfig_ini(svconfig_path=None, master_mode=False,
                           virttrip_mode=False, single_dir=None, recurse=True):
     """Write svconfig.ini for the next batch step.
 
@@ -102,6 +103,8 @@ def generate_svconfig_ini(svconfig_path="svconfig.ini", master_mode=False,
         "trip_restore_mode": _config.get("utilities", "trip_restore_mode", fallback="no"),
     }
 
+    if svconfig_path is None:
+        svconfig_path = _svconfig_path()
     try:
         with open(svconfig_path, "w", encoding="utf-8") as f:
             cfg.write(f)

@@ -82,7 +82,8 @@ def find_trips(trips_root):
 
 def default_paths():
     cfg = configparser.ConfigParser()
-    cfg.read(os.path.join(REPO, "svconfig.ini"))
+    from utils.runtime_files import svconfig_path
+    cfg.read(svconfig_path(), encoding="utf-8")
     master = cfg.get("master", "MasterBiotaDatabase", fallback="")
     from utils.config import CONFIG_PATH        # the machine config, in app-data
     host_ini = str(CONFIG_PATH)

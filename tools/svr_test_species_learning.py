@@ -66,7 +66,8 @@ def main():
     src = args.collection
     if not src:
         cfg = configparser.ConfigParser()
-        cfg.read(os.path.join(REPO, "svconfig.ini"))
+        from utils.runtime_files import svconfig_path
+        cfg.read(svconfig_path(), encoding="utf-8")
         master = cfg.get("master", "MasterBiotaDatabase", fallback="")
         src = os.path.join(master, "metadata", "active", "speciescollection.csv")
     if not os.path.exists(src):

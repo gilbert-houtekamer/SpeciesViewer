@@ -7,6 +7,7 @@ import logging
 import argparse
 from pathlib import Path
 from utils.ini_io import read_ini
+from utils.runtime_files import svconfig_path
 
 if __name__ == "__main__":
     scriptpath = os.path.dirname(__file__)
@@ -72,7 +73,7 @@ def main(args, config):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="svv1MakeVirtualRepository.")
     parser.add_argument("--config", type=str,
-                        default=os.environ.get("SVCONFIG", "svconfig.ini"),
+                        default=os.environ.get("SVCONFIG") or str(svconfig_path()),
                         help="Module Configuration File")
     args = parser.parse_args()
     config = configparser.ConfigParser()

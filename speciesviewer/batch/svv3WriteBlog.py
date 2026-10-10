@@ -50,6 +50,7 @@ import engine.bloglib
 import engine.triplib
 from engine import SVException
 from utils.virttrip_config import read_virttrip_ini
+from utils.runtime_files import svconfig_path
 from utils.ini_io import read_ini
 
 logger = logging.getLogger("speciesviewer")
@@ -661,7 +662,7 @@ def main(args, config):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="svv3WriteBlog")
     parser.add_argument("--config", type=str,
-                        default=os.environ.get("SVCONFIG", "svconfig.ini"))
+                        default=os.environ.get("SVCONFIG") or str(svconfig_path()))
     args = parser.parse_args()
     config = configparser.ConfigParser()
     read_ini(config, args.config)

@@ -303,10 +303,11 @@ if __name__ == "__main__":
     reporoot = os.path.abspath(os.path.join(scriptpath, os.pardir, os.pardir))
     os.chdir(reporoot)
     sys.path.append(os.path.join(reporoot, "speciesviewer"))
+    from utils.runtime_files import svconfig_path
 
     parser = argparse.ArgumentParser(description="micro-trip ingest of one directory (no master writes)")
     parser.add_argument("input_dir", help="directory of pictures to ingest")
-    parser.add_argument("--config", default=os.environ.get("SVCONFIG", "svconfig.ini"))
+    parser.add_argument("--config", default=os.environ.get("SVCONFIG") or str(svconfig_path()))
     parser.add_argument("--keep", action="store_true", help="leave the scratch repo on disk")
     parser.add_argument("--recurse", action="store_true", help="descend into sub-folders")
     args = parser.parse_args()

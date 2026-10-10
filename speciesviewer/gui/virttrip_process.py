@@ -13,6 +13,7 @@ from pathlib import Path
 
 from gui.batch import BatchModuleRunner
 from utils.config import set_setting, _config, get_virttrips_root, get_trips_root
+from utils.runtime_files import svconfig_path
 from utils.virttrip_config import read_virttrip_ini
 from gui.virttrip_overview import populate_virttrip_overview
 import batch.svv3WriteBlog
@@ -498,12 +499,12 @@ def retire_trip_to_virttrip(parent):
                               source_trip_id=trip_id)
         generate_svconfig_ini(virttrip_mode=True)
         mcfg = _cp.ConfigParser()
-        read_ini(mcfg, "svconfig.ini")
+        read_ini(mcfg, svconfig_path())
     except Exception as e:
         logger.warning(f"Retire trip setup failed: {e}")
         QMessageBox.critical(parent, "Retire Trip", f"Setup failed: {e}")
         return
-    args = _argparse.Namespace(config="svconfig.ini", dir="")
+    args = _argparse.Namespace(config=str(svconfig_path()), dir="")
     trip_pic_root = _trip_picture_root(trip_db)
 
     def _migrate_blogs():
@@ -1029,12 +1030,12 @@ class VirtualTripCreationDialog(QDialog):
         try:
             generate_svconfig_ini(virttrip_mode=True)
             mcfg = _cp.ConfigParser()
-            read_ini(mcfg, "svconfig.ini")
+            read_ini(mcfg, svconfig_path())
         except Exception as e:
             self.passed_parent.logger.warning(f"Create Album setup failed: {e}")
             QMessageBox.critical(self, "Create Album", f"Setup failed: {e}")
             return
-        args = _argparse.Namespace(config="svconfig.ini", dir="")
+        args = _argparse.Namespace(config=str(svconfig_path()), dir="")
         name = Path(virttrip_root).name
 
         steps = [

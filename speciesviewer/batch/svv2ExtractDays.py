@@ -26,6 +26,7 @@ if __name__ == "__main__":
     sys.path.append(modpath)
 
 from utils.virttrip_config import read_virttrip_ini
+from utils.runtime_files import svconfig_path
 from engine.handling import resolve_path
 from utils.ini_io import read_ini
 
@@ -191,7 +192,7 @@ def main(args, config):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="svv2ExtractDays.")
     parser.add_argument("--config", type=str,
-                        default=os.environ.get("SVCONFIG", "svconfig.ini"),
+                        default=os.environ.get("SVCONFIG") or str(svconfig_path()),
                         help="Extract days from the master database based on the virttrip.ini date range. ")
     args = parser.parse_args()
     config = configparser.ConfigParser()

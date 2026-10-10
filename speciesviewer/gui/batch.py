@@ -10,6 +10,7 @@ from PyQt6.QtCore import Qt, QThread, QObject, pyqtSignal
 from PyQt6.QtGui import QMovie
 
 from utils.batch_config import generate_svconfig_ini
+from utils.runtime_files import svconfig_path
 from engine.statemachine import StateMachine, NOTHING_TO_DO_PREFIX, is_nothing_to_do
 
 # statusname → trip-overview cell header. ReadDirExif and WritePictures share
@@ -122,7 +123,7 @@ class BatchModuleRunner:
         # read_ini, not plain .read: batch_config writes this file as UTF-8, and
         # reading it in the locale encoding turned a path like "Brazilië" into
         # mojibake that no longer named a file that exists.
-        read_ini(module_config, "svconfig.ini")
+        read_ini(module_config, svconfig_path())
 
         # Inject any caller-supplied config overrides (e.g. minimum_score from dialog)
         for (section, key, value) in batch_parms.get("extra_config", []):
@@ -445,7 +446,7 @@ class ColumnBatchRunner:
         generate_svconfig_ini()
 
         module_config = configparser.ConfigParser()
-        read_ini(module_config, "svconfig.ini")   # UTF-8, as it was written
+        read_ini(module_config, svconfig_path())   # UTF-8, as it was written
 
         review_day = trip_root / "metadata" / "review" / day_str
         sm = StateMachine(str(trip_root), str(review_day), readState=True)

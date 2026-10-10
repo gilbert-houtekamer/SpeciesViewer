@@ -8,6 +8,7 @@ from PyQt6.QtWidgets import QStackedWidget, QPushButton, QButtonGroup
 from PyQt6.QtCore import Qt, QTimer
 
 from utils.config import _config, persist_config
+from utils.runtime_files import svconfig_path
 from gui.window_state import restore_window, save_window
 from gui.window_title import window_title
 from gui.menu import create_menubar
@@ -1186,7 +1187,7 @@ class MainWindow(QMainWindow):
         # Build (module_called, statusname, before_msg, after_msg) list from menu specs
         generate_svconfig_ini()
         module_config = configparser.ConfigParser()
-        read_ini(module_config, "svconfig.ini")
+        read_ini(module_config, svconfig_path())
 
         steps_to_run = []
         for sname, label, bmsg, amsg in completed:
@@ -1584,7 +1585,7 @@ class MainWindow(QMainWindow):
         _config.set("project", "picturedirectory", str(project_root / day_name))
         generate_svconfig_ini()
         module_config = configparser.ConfigParser()
-        read_ini(module_config, "svconfig.ini")
+        read_ini(module_config, svconfig_path())
         sm = StateMachine(str(trip_root), str(review_day), readState=True)
         steps = [
             (batch.sv2ReadDirExif.main, "ReadDirExif",

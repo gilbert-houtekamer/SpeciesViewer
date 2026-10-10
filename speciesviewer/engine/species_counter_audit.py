@@ -17,6 +17,7 @@ import os
 import csv
 import logging
 from utils.ini_io import read_ini
+from utils.runtime_files import svconfig_path
 
 logger = logging.getLogger("speciesviewer")
 
@@ -215,7 +216,7 @@ if __name__ == "__main__":
     sys.path.append(os.path.join(reporoot, "speciesviewer"))
 
     parser = argparse.ArgumentParser(description="species-counter audit (no writes)")
-    parser.add_argument("--config", default=os.environ.get("SVCONFIG", "svconfig.ini"))
+    parser.add_argument("--config", default=os.environ.get("SVCONFIG") or str(svconfig_path()))
     parser.add_argument("--master", default=None)
     args = parser.parse_args()
 

@@ -39,6 +39,7 @@ import engine.exceptions
 import engine.statemachine
 import engine.exifcache as exifcache
 from utils.ini_io import read_ini
+from utils.runtime_files import svconfig_path
 
 # What a day folder may contribute to the trip data: pictures, video, and the
 # sidecars that belong to one. From the ONE table (utils/raw_extensions.py).
@@ -643,7 +644,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--config",
         type=str,
-        default=os.environ.get("SVCONFIG", "svconfig.ini"),
+        default=os.environ.get("SVCONFIG") or str(svconfig_path()),
         help="Module Configuration File",
     )
     parser.add_argument(

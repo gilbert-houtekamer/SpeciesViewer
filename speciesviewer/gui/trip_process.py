@@ -14,6 +14,7 @@ import webbrowser
 from gui.batch import BatchModuleRunner  # Assuming batch handler is here
 
 from utils.config import set_trip_settings, _config, get_trips_root, persist_config
+from utils.runtime_files import svconfig_path
 from utils.trip_config import read_trip_ini
 from widgets.small_widgets import HTMLLabel
 from widgets.trip_widgets import (LabeledTextFieldQt, DateRangeFieldQt, DirectoryFieldQt, RecentDirectoryFieldQt, ImageFileFieldQt, image_field_row)
@@ -2880,7 +2881,7 @@ class ReadSummarizeDialog(QDialog):
 
         generate_svconfig_ini()
         module_config = configparser.ConfigParser()
-        read_ini(module_config, "svconfig.ini")
+        read_ini(module_config, svconfig_path())
 
         trip_root = Path(_config.get("trip", "tripbiotadatabase"))
         review_day = trip_root / "metadata" / "review" / selected_subdir
@@ -3009,7 +3010,7 @@ class PublishDayDialog(QDialog):
 
         generate_svconfig_ini()
         module_config = configparser.ConfigParser()
-        read_ini(module_config, "svconfig.ini")
+        read_ini(module_config, svconfig_path())
 
         trip_root = Path(_config.get("trip", "tripbiotadatabase"))
         review_day = trip_root / "metadata" / "review" / selected_subdir
@@ -4485,7 +4486,7 @@ class BlogAdminDialog(QDialog):
                 worker_logger = logging.getLogger("speciesviewer")
 
                 cfg = _cp.ConfigParser()
-                read_ini(cfg, "svconfig.ini")
+                read_ini(cfg, svconfig_path())
 
                 worker_logger.info("Manage Blogs: initializing project for index rebuild...")
                 project = engine.projectlib.Project(
@@ -6004,7 +6005,7 @@ class ImportTripDialog(QDialog):
                 try:
                     generate_svconfig_ini()
                     module_config = _cp.ConfigParser()
-                    read_ini(module_config, "svconfig.ini")
+                    read_ini(module_config, svconfig_path())
                     module_config.set("repository", "BiotaDatabase", dest)
                     # No web root → sv1's whole SFTP block is skipped. Importing a
                     # trip must never touch the website.
