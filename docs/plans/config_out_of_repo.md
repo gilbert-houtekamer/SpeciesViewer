@@ -1,6 +1,6 @@
 # Configuration out of the repository root — plan (0.4, step 3)
 
-Status: **A shipped (2e9e0db), B shipped (0c518f9), C built — awaiting test.** D still dry run. Written 2026-10-10 on `SpeciesViewer04`.
+Status: **DONE 2026-10-10** — A 2e9e0db, B 0c518f9, C 2684b99, D done by hand (no commit: nothing tracked changed). Written 2026-10-10 on `SpeciesViewer04`.
 Backlog: ch.20 "The first-run problem", ch.19 "Structural loose ends".
 Checklist source: `docs/configuration_inventory.md` → Known irregularities #1, #2.
 
@@ -123,6 +123,14 @@ overwrite recovery; deleting them does not touch the shared file.
 
 The stale files in the table above. Proposed: delete the three stale logs and the
 two orphans; you decide on the two `trip_admin` copies and `sv_config_smallboy.ini`.
+
+*Done 10 Oct, his choices:* stale logs, the root `svconfig.ini`, `Species
+print.txt`, the orphans in `speciesviewer/` and `qt/`, both `trip_admin` copies
+and `sv_config_smallboy.ini` → `.trash/2026-10-10 root cleanup/` (gitignored,
+recoverable). Empty leftover folders removed (`bin`, `ghexif`, `gui`, `qt`,
+`sview`, `utils`, `wx_*`, `installation files`). Test data moved to
+`d:/code/camerafiles/Willcox` and `.../xmptest`. The four `*.moved-to-appdata`
+files stay until 0.4 has run a while and SmallBoy has migrated.
 
 ## Not in this plan
 

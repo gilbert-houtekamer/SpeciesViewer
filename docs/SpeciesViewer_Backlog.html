@@ -1807,7 +1807,7 @@ are places where bugs have actually been fixed more than once:</p>
     portability audit: the default PhotoLab path is a Windows <code>.exe</code>
     (<code>gui/large_image_view.py</code>), and <code>engine/projectlib.py</code> lowercases whole
     paths for website output, which is wrong on a case-sensitive Mac disk.</li>
-  <li><span class="tag-bug">BUG</span> <strong>The GUI cache follows the working
+  <li><span class="tag-shipped">FIXED 10 Oct</span> <strong>The GUI cache follows the working
     directory.</strong> <code>utils/gui_config.py</code> opens <code>sv_gui_cache.json</code> as a
     bare relative path, so a launch from another folder starts an empty cache &mdash; a stray copy
     already sits in <code>speciesviewer/</code>. Listed in the inventory; repeated here because it is
@@ -1868,8 +1868,11 @@ chapter 19 item. It names every file that lands in the source tree today, and on
 than the rest — <code>sv_gui_cache.json</code> resolves against the <em>working directory</em>
 rather than <code>CONFIG_DIR</code>, so a launch from another folder silently starts a second,
 empty cache. That has already happened on BigBoy. Fixing this closes an item in both chapters.
-<em>10 Oct: unchanged &mdash; <code>CONFIG_DIR</code> is still the source tree and the GUI cache is
-still a bare relative path (<code>utils/gui_config.py:6</code>).</em></p>
+<span class="tag-shipped">DONE 10 Oct (0.4)</span> per-machine settings now live in app-data
+<code>config/</code>, remembered state in <code>state/</code>, the batch handoff in
+<code>runtime/</code> and every log in <code>logs/</code>; the repository root is no longer written
+at runtime. Migration is automatic on first start. See
+<code>docs/plans/config_out_of_repo.md</code>.</p>
 
 <p><span class="tag-open">OPEN</span> The harder half of the same problem: <strong>what does
 SpeciesViewer do on a machine with no data?</strong> No master, no trip, no website, no species
