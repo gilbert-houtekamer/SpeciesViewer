@@ -77,3 +77,6 @@ docs/manual/pdf/
 # Vendored mermaid.js (3 MB, MIT) fetched by --vendor-mermaid so the built
 # page needs no network. Re-fetchable in one command; not worth tracking.
 docs/manual/_assets/
+
+# Old per-machine files left behind by the move to app-data (may hold the SFTP password)
+*.moved-to-appdata

@@ -94,6 +94,11 @@ text. The work-backup written to a camera card therefore copies
 
 ## Machine scope — one per computer, never copied
 
+Since 0.4 (2026-10-10) these live in the per-OS app-data folder, not the
+repository root: settings in **`config/`**, remembered state in **`state/`**
+(`%LOCALAPPDATA%\SpeciesViewer\…` on Windows). `utils/config.py` moves them
+there once, renaming the old copy `<name>.moved-to-appdata`.
+
 | File | Format | Holds | Copy? | Lose it? |
 |---|---|---|---|---|
 | `sv_config_<hostname>.ini` | ini | **The** machine config: every repository path, `[websettings] Sftppwd` + `base_url`, `[translate] google_api_key`, window geometry, RAW-decode knobs, cache overrides, per-machine EXIF worker count. Created as a `[Global]` stub on first run. | 🔴 **never** — password | 🟡 re-enter every path and the SFTP password |
@@ -222,7 +227,7 @@ and the page templates. Read-only at runtime.
 Worth knowing before they surprise you; each is a real observation from the
 source, not a suspicion.
 
-1. **The machine config lives in the repository root.** `CONFIG_DIR` is the
+1. ✅ **FIXED 2026-10-10 (0.4)** — files now in app-data `config/` + `state/`; see docs/plans/config_out_of_repo.md. *Was:* **The machine config lives in the repository root.** `CONFIG_DIR` is the
    source tree ([utils/config.py:12](../speciesviewer/utils/config.py#L12)), so
    `sv_config_<host>.ini`, `days_<host>.json`, `sv_gui_cache.json`,
    `photolab_denoise.ini`, `svconfig.ini` and `studio.log` all land among the
@@ -230,7 +235,7 @@ source, not a suspicion.
    ch.20 names, because an installed application directory is not writable.
    `utils/cache_paths.app_data_dir()` is already the right destination and is
    already used by the caches and by `runtime_files`.
-2. **`sv_gui_cache.json` resolves against the working directory**, not
+2. ✅ **FIXED 2026-10-10 (0.4)** — now `STATE_DIR / sv_gui_cache.json`. *Was:* **`sv_gui_cache.json` resolves against the working directory**, not
    `CONFIG_DIR` — it is a bare `Path("sv_gui_cache.json")`
    ([utils/gui_config.py:6](../speciesviewer/utils/gui_config.py#L6)). Launch
    the app from a different folder and it silently starts a second, empty cache.

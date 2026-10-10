@@ -12,7 +12,7 @@ import os
 import re
 from pathlib import Path
 
-from utils.config import CONFIG_DIR, MACHINE_NAME
+from utils.config import STATE_DIR, MACHINE_NAME
 
 logger = logging.getLogger("speciesviewer")
 
@@ -23,7 +23,7 @@ STATUS_DONE = "done"
 
 
 def registry_path():
-    return CONFIG_DIR / f"days_{MACHINE_NAME}.json"
+    return STATE_DIR / f"days_{MACHINE_NAME}.json"
 
 
 def is_day_folder_name(name):

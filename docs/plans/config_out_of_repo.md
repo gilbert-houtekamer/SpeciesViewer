@@ -1,6 +1,6 @@
 # Configuration out of the repository root — plan (0.4, step 3)
 
-Status: **DRY RUN — nothing moved yet.** Written 2026-10-10 on `SpeciesViewer04`.
+Status: **Step A built 2026-10-10, awaiting test.** Steps B–D still dry run. Written 2026-10-10 on `SpeciesViewer04`.
 Backlog: ch.20 "The first-run problem", ch.19 "Structural loose ends".
 Checklist source: `docs/configuration_inventory.md` → Known irregularities #1, #2.
 
@@ -25,22 +25,34 @@ runtime handoff files already use it:
 | macOS | `~/Library/Application Support/SpeciesViewer` |
 | Linux | `~/.local/share/SpeciesViewer` |
 
-New subfolder: **`config/`** for the machine-scope files.
+Two new subfolders — split at your suggestion (10 Oct), because the four files
+are not one kind of thing:
+
+- **`config/`** — *settings*: what you would set up again on a new machine
+  (`sv_config_<host>.ini`, `photolab_denoise.ini`).
+- **`state/`** — *remembered state*: what the app re-learns by being used
+  (`days_<host>.json`, `sv_gui_cache.json`).
+
+**Known impurity, left for later:** `sv_config_<host>.ini` itself holds both —
+settings (repository paths, website, decode quality) *and* state (window
+geometry in `[WindowState]`, last folders in `[PhotoSorter]`, the active
+trip/day). Splitting the ini is a bigger, riskier change than moving files, so it
+is noted here rather than done in step A.
 
 ## What is in the repository root on BigBoy today (10 Oct)
 
 | File | Last written | Scope | Plan |
 |---|---|---|---|
 | `sv_config_bigboy.ini` | today | machine — **has the SFTP password** | **A** move to `config/` |
-| `days_bigboy.json` | today | machine | **A** move to `config/` |
-| `sv_gui_cache.json` | yesterday | machine | **A** move to `config/` |
+| `days_bigboy.json` | today | machine | **A** move to `state/` |
+| `sv_gui_cache.json` | yesterday | machine | **A** move to `state/` |
 | `photolab_denoise.ini` | 23 Sep | machine | **A** move to `config/` |
 | `svconfig.ini` | today | ephemeral — **has the SFTP password** | **B** → `runtime/` |
 | `sysprint-recreatetrip.txt` | today, 286 KB | log residue | **C** see bug below |
 | `Species print.txt` | yesterday, 302 KB | debug dump from Freeze | **C** → `logs/` |
 | `studio.log` | 19 Aug | stale — the log moved to `logs/` already | **D** delete |
 | `speciesviewer.log`, `SpeciesViewerLog.txt` | 2025 | stale | **D** delete |
-| `trip_admin.csv`, `trip_admin.pre-fix-backup.csv` | 21 Aug | one-off recovery copies | **D** your call |
+| `trip_admin.csv`, `trip_admin.pre-fix-backup.csv` | 21 Aug | one-off recovery copies — **not** the shared file (see below) | **D** your call |
 | `sv_config_smallboy.ini` | 2025 | SmallBoy's file, not read on BigBoy | **D** your call |
 | `speciesviewer/sv_gui_cache.json`, `speciesviewer/svconfig.ini` | Aug | orphans (inventory #2) | **D** delete |
 
@@ -93,6 +105,13 @@ as `__main__`, writing to `logs/`. `Species print.txt` (sv6Freeze, projectlib)
 moves to `logs/` as well.
 
 ## Step D — clean the root (deletes — your call, item by item)
+
+**About `trip_admin.csv`.** The shared file that lets the laptop and BigBoy both
+update the trip list is `<master>/admin/trip_admin.csv` — its authority is the
+copy on the website, and the local one is rebuilt from it on every publish
+(inventory, irregularity #5). No code reads a `trip_admin.csv` in the
+repository root. The two in the root date from 21 August, the Create-Trip
+overwrite recovery; deleting them does not touch the shared file.
 
 The stale files in the table above. Proposed: delete the three stale logs and the
 two orphans; you decide on the two `trip_admin` copies and `sv_config_smallboy.ini`.

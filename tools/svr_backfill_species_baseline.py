@@ -41,12 +41,11 @@ Usage:
     python tools/svr_backfill_species_baseline.py [--trips-root DIR]
         [--master DIR] [--trip PATH] [--apply]
 
-Defaults come from svconfig.ini / sv_config_<hostname>.ini in the repo root.
+Defaults come from svconfig.ini and the machine config (utils.config.CONFIG_PATH).
 """
 import argparse
 import configparser
 import os
-import socket
 import sys
 from configparser import ConfigParser
 
@@ -85,7 +84,8 @@ def default_paths():
     cfg = configparser.ConfigParser()
     cfg.read(os.path.join(REPO, "svconfig.ini"))
     master = cfg.get("master", "MasterBiotaDatabase", fallback="")
-    host_ini = os.path.join(REPO, f"sv_config_{socket.gethostname().lower()}.ini")
+    from utils.config import CONFIG_PATH        # the machine config, in app-data
+    host_ini = str(CONFIG_PATH)
     trips_root = ""
     if os.path.isfile(host_ini):
         hc = configparser.ConfigParser()

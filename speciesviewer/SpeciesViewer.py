@@ -122,6 +122,9 @@ def start_main():
         _main_window = MainWindow()
         main_window = _main_window
         main_window.logger = init_logger(main_window.green_log_box)           # ✅ Set up logging
+        from utils.config import MIGRATION_NOTES
+        for note in MIGRATION_NOTES:          # settings moved out of the repo root
+            main_window.logger.info(note)
         if _config.get("Global", "debug_tools", fallback="no") == "yes":
             print(f"✅ Logging configured, logger assigned: {main_window.logger}")
 

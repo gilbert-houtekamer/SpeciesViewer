@@ -1,16 +1,63 @@
 import configparser
 import os
 import platform
+import shutil
 from pathlib import Path
 from utils.ini_io import read_ini
+from utils.cache_paths import app_data_dir
 
 # 🖥️ Get machine name
 MACHINE_NAME = platform.node().lower()
 
-# 📁 Config file path
-CONFIG_DIR = Path(__file__).resolve().parent.parent.parent  # Goes from config.sys → utils → qt → SpeciesViewer 
+# 📁 Per-machine files live in the per-OS app-data folder, never in the source
+# tree (docs/plans/config_out_of_repo.md):
+#   config/  settings — what you would set up again on a new machine
+#   state/   remembered state — what the app re-learns by being used
+# The repository root is where they used to live; it is only read once, to
+# migrate, and is the fallback when the app-data folder cannot be created.
+LEGACY_DIR = Path(__file__).resolve().parent.parent.parent  # utils → speciesviewer → repo root
 CONFIG_FILENAME = f"sv_config_{MACHINE_NAME}.ini"
+
+# What a migration did, for SpeciesViewer.py to log once the logger exists
+# (this module is imported long before that).
+MIGRATION_NOTES = []
+
+
+def _app_dir(sub):
+    d = app_data_dir() / sub
+    try:
+        d.mkdir(parents=True, exist_ok=True)
+        return d
+    except OSError as e:
+        MIGRATION_NOTES.append(f"⚠ Could not create {d} ({e}); using {LEGACY_DIR}")
+        return LEGACY_DIR
+
+
+CONFIG_DIR = _app_dir("config")
+STATE_DIR = _app_dir("state")
 CONFIG_PATH = CONFIG_DIR / CONFIG_FILENAME
+
+
+def _migrate(name, new_dir):
+    """One-time move of `name` from the repository root to `new_dir`: copy it,
+    then rename the old file to `<name>.moved-to-appdata`. Nothing is deleted,
+    and the rename means a hand-edit of the old file cannot silently go to a
+    file nobody reads any more. Does nothing once the new file exists."""
+    old, new = LEGACY_DIR / name, new_dir / name
+    if new_dir == LEGACY_DIR or new.exists() or not old.is_file():
+        return
+    try:
+        shutil.copy2(old, new)
+        old.rename(old.with_name(name + ".moved-to-appdata"))
+        MIGRATION_NOTES.append(f"Moved {name} → {new_dir}")
+    except OSError as e:
+        MIGRATION_NOTES.append(f"⚠ Could not move {name} to {new_dir}: {e}")
+
+
+_migrate(CONFIG_FILENAME, CONFIG_DIR)
+_migrate("photolab_denoise.ini", CONFIG_DIR)
+_migrate(f"days_{MACHINE_NAME}.json", STATE_DIR)
+_migrate("sv_gui_cache.json", STATE_DIR)
 
 # 🧠 Singleton config object
 _config = configparser.ConfigParser()
