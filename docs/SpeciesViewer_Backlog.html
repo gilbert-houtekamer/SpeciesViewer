@@ -1657,6 +1657,13 @@ where you are going — the Read dialog now warns, but knowing beforehand is bet
 
 <h2 id="refactors">19. Refactors worth doing — after the trip</h2>
 
+<p class="note"><strong>Reviewed 10 October 2026, after Brazil &mdash; this chapter and ch.20 are
+the scope of SpeciesViewer 0.4.</strong> 0.3 closes with the Brazil work; 0.4 is about product
+quality, not new capability, so that it can serve as a solid fallback release. Status per item is
+marked below. In short: the four-panels move, the stylesheet copies and stored-path parsing are
+done; the dead-module list is untouched; <code>trip_process.py</code> grew another thousand lines.
+The Python is now about <strong>102,700 lines</strong> (88,600 when this chapter was written).</p>
+
 <p>A chapter for work that makes the program <em>smaller</em> rather than better. Nothing here adds
 a capability, fixes a defect or speeds anything up; the payoff is fewer lines to read the next time
 something goes wrong, and fewer places for the same bug to hide twice. That is a real payoff, but a
@@ -1676,6 +1683,11 @@ through this have an easier time?”</em>, never <em>“how many lines does it r
 <p>A scan for modules that no other Python file mentions by name turned up the following. The scan
 is naive — something loaded dynamically or named only in a string would not show up — so each needs
 a look before it goes. Together they are roughly 900 lines outside the one-off and future folders.</p>
+
+<p><span class="tag-open">OPEN</span> Re-checked 10 Oct: every file below is still there, and still
+unreferenced by the app. Two are used by a tool, not the app: <code>topics_scan</code> by
+<code>tools/topics_dry_run.py</code> and <code>weburl</code> by
+<code>tools/svr_add_species_url.py</code> &mdash; so those two stay or move with their tool.</p>
 
 <ul>
   <li><code>speciesviewer/app.py</code> — 36 lines, and not the application. It is the PyQt tutorial
@@ -1701,7 +1713,8 @@ a look before it goes. Together they are roughly 900 lines outside the one-off a
     <em>file</em> date rather than capture date, which for a JPG exported from a raw later is the
     export date. That matters more than it sounds: making JPGs days, months or years after the shot
     is the normal way of working here, so the wrong grouping is the common case, not the odd one.
-    Deleting the variable is a one-line fix; <em>using</em> it is the better one.</li>
+    Deleting the variable is a one-line fix; <em>using</em> it is the better one.
+    <span class="tag-open">OPEN</span> still unused (<code>sv0ReadSDCard.py:1198</code>).</li>
 </ul>
 
 <p class="note"><strong>&ldquo;Dead&rdquo; here often means dormant.</strong> Several of the modules
@@ -1717,14 +1730,22 @@ re-proposing it.</p>
   <li><strong>Four overview panels, two implementations.</strong> Unfiled and Days already sit on
     the shared table; Trip and Album still carry their own. The shared one is the newer and better
     of the two, so this is finishing a move rather than starting one — and until it is finished
-    every column added has to be added twice. Today's back-up column is a case in point.</li>
+    every column added has to be added twice. Today's back-up column is a case in point.
+    <span class="tag-shipped">DONE</span> all four yellow tables are built by one factory,
+    <code>gui/overview_table.py</code> (Trip and Album use it too).</li>
   <li><strong>The Editor and the picture card.</strong> Parked deliberately, with a good rule
     attached: consolidate when a sixth caller forces it, not before. Worth re-counting the callers
-    after the trip to see whether that moment has arrived.</li>
+    after the trip to see whether that moment has arrived.
+    <span class="tag-parked">PARKED</span> re-counted: the large viewer has <strong>four</strong>
+    callers now (was five &mdash; the master viewer merged into the Trip Species Viewer), so the
+    moment has not arrived.</li>
   <li><strong>The per-site stylesheet, copied 29 times.</strong> Each published album carries its
     own copy, so a change to the shared look means 29 rewrites and any site not rebuilt drifts. This
     one is the most likely of all of these to cause a visible bug rather than merely cost reading
-    time.</li>
+    time.
+    <span class="tag-shipped">DONE</span> fixed at the source (18 Aug): every publish now refreshes
+    the site's stylesheet, and <code>one-off/push_animals_css.py</code> brought all 29 up to date.
+    The copies still exist, but they can no longer drift.</li>
 </ul>
 
 <h3>Modules that have outgrown one file</h3>
@@ -1734,10 +1755,13 @@ are now large enough that finding anything in them is a search rather than a scr
 are places where bugs have actually been fixed more than once:</p>
 
 <ul>
-  <li><code>gui/trip_process.py</code> — <strong>5,416 lines</strong>. It holds the Read-SD-card
+  <li><code>gui/trip_process.py</code> — <strong>5,416 lines</strong>, now
+    <strong>6,373</strong>. It holds the Read-SD-card
     dialog, the blog dialogs, the trip creation and selection dialogs and much else. These are
-    unrelated jobs that happen to live together.</li>
-  <li><code>gui/rating_editor.py</code> (3,504) and <code>gui/map_view.py</code> (2,981) — both
+    unrelated jobs that happen to live together. <span class="tag-open">OPEN</span> &mdash; the
+    strongest split candidate; the Read-SD-card dialog is the obvious first piece to move out.</li>
+  <li><code>gui/rating_editor.py</code> (3,504, now 4,727) and <code>gui/map_view.py</code>
+    (2,981, now 3,260) — both
     single subjects, so the case is weaker; note them and leave them unless working in one becomes
     genuinely unpleasant.</li>
 </ul>
@@ -1749,7 +1773,13 @@ are places where bugs have actually been fixed more than once:</p>
     root are derived by walking up from a day folder, which is why a drifting picture directory once
     filed a whole card one level too high without complaint. They should be explicit keys. This one
     has already caused real damage once, so it is the strongest candidate in the chapter — arguably
-    it belongs in a bug chapter rather than this one.</li>
+    it belongs in a bug chapter rather than this one.
+    <span class="tag-progress">MOSTLY DONE</span> there are explicit keys now:
+    <code>[trip] tripsrootdirectory</code>, <code>[virttrip] virttriprootdirectory</code> (both in
+    the Repositories dialog) and the CurrentPictures root that a trip's <code>picture_root</code> is
+    stored relative to (WP8). What is left is the fallback: when a key is empty the code still walks
+    up with <code>.parent</code> (<code>utils/config.py</code>), and three places write the key
+    <em>from</em> a <code>.parent</code>. Small, but it is the last of the guesswork.</li>
   <li><strong>Configuration files have never been inventoried.</strong> There is no single statement
     of which <code>.ini</code> and <code>.json</code> exist, which are per-machine, which travel
     with a trip and which are throwaway caches. Today's work needed that answer twice — once to
@@ -1771,7 +1801,17 @@ are places where bugs have actually been fixed more than once:</p>
     chapters at once, and the inventory is the list of what has to move.</li>
   <li><strong>Persisted paths are the Mac blocker.</strong> Paths stored on one machine are parsed
     with the host's path rules, so a Windows-authored setting read on macOS is the thing most likely
-    to break first. Relevant only when the second machine actually arrives.</li>
+    to break first. Relevant only when the second machine actually arrives.
+    <span class="tag-progress">MOSTLY DONE</span> stored picture paths are parsed host-independently
+    since July (<code>engine/handling.py</code>, Cross-platform P1). Two small items remain from the
+    portability audit: the default PhotoLab path is a Windows <code>.exe</code>
+    (<code>gui/large_image_view.py</code>), and <code>engine/projectlib.py</code> lowercases whole
+    paths for website output, which is wrong on a case-sensitive Mac disk.</li>
+  <li><span class="tag-bug">BUG</span> <strong>The GUI cache follows the working
+    directory.</strong> <code>utils/gui_config.py</code> opens <code>sv_gui_cache.json</code> as a
+    bare relative path, so a launch from another folder starts an empty cache &mdash; a stray copy
+    already sits in <code>speciesviewer/</code>. Listed in the inventory; repeated here because it is
+    a one-line fix that should not wait for the full ch.20 move.</li>
 </ul>
 
 <h3>How to approach this chapter</h3>
@@ -1781,7 +1821,9 @@ work still running. Deleting is the one operation in this repository with a genu
 so anything in the first section gets confirmed before it goes, not after. And the order should
 follow risk rather than size: the implicit trip roots and the 29 stylesheet copies can still cause a
 visible fault, while a dead 62-line module can sit there for another year doing nothing worse than
-being read once by mistake.</p>
+being read once by mistake.
+<em>(10 Oct: the stylesheet risk is gone and the roots are mostly explicit, so the risk-ordered
+list is now: GUI-cache path, root fallback, then the rest.)</em></p>
 
 <hr class="section-divider">
 
@@ -1797,6 +1839,11 @@ ready-made download — for example
 <code>github.com/SlavomirDurej/claude-usage-widget</code> — and the honest observation is that
 such a repository is easy to produce for a 500-line widget and considerably harder for 88,000
 lines that assume a photo pipeline, a master database and a website.</p>
+
+<p class="note"><strong>Status on 10 October 2026, after Brazil.</strong> Nothing in this chapter
+moved during the trip work except by accident &mdash; the NOTICE file (21 Aug) is still the only
+item done. The rest is accurate as written, with the updates marked below. This chapter and ch.19
+together are the scope of <strong>SpeciesViewer 0.4</strong>.</p>
 
 <p class="note"><strong>Who v1 is for.</strong> Worth deciding early, because it sets the bar for
 everything below. SpeciesViewer assumes DxO PhotoLab, a master repository, an SFTP-published
@@ -1820,7 +1867,9 @@ before an installed build can work at all. <strong>The list of what has to move 
 chapter 19 item. It names every file that lands in the source tree today, and one that is worse
 than the rest — <code>sv_gui_cache.json</code> resolves against the <em>working directory</em>
 rather than <code>CONFIG_DIR</code>, so a launch from another folder silently starts a second,
-empty cache. That has already happened on BigBoy. Fixing this closes an item in both chapters.</p>
+empty cache. That has already happened on BigBoy. Fixing this closes an item in both chapters.
+<em>10 Oct: unchanged &mdash; <code>CONFIG_DIR</code> is still the source tree and the GUI cache is
+still a bare relative path (<code>utils/gui_config.py:6</code>).</em></p>
 
 <p><span class="tag-open">OPEN</span> The harder half of the same problem: <strong>what does
 SpeciesViewer do on a machine with no data?</strong> No master, no trip, no website, no species
@@ -1856,8 +1905,8 @@ last is acceptable for v1 <em>if</em> the failure message actually names the pro
 
 <p><span class="tag-open">OPEN</span> <strong>Python version and platform.</strong> Development
 is on Python 3.12 on Windows 11. The download is Windows-only for v1; the source runs anywhere
-the dependencies do, with the Mac caveat already recorded in ch.10 and ch.19 (persisted paths
-parsed with the host's path rules). Say both plainly in the README rather than leaving a visitor
+the dependencies do, with the Mac caveat already recorded in ch.10 and ch.19 (stored paths are
+now parsed host-independently; two small portability items remain). Say both plainly in the README rather than leaving a visitor
 to discover it.</p>
 
 <h3>Third-party code and the licence</h3>
@@ -1923,7 +1972,10 @@ The contact has to come from configuration, with a sensible project-level defaul
 <code>/data/sites/web/houtekamercom/www</code> appear literally in seven modules
 (<code>sv1MakeReposity</code>, <code>sv7WriteCommit</code>, <code>bloglib</code>,
 <code>regenerate_species</code>, <code>sftplib</code>, <code>trip_registry</code>,
-<code>triplib</code>). No credential is committed — the <code>.gitignore</code> handles that
+<code>triplib</code>). <em>10 Oct: now ten &mdash; <code>engine/connectivity.py</code>,
+<code>gui/album_delete_dialog.py</code> and <code>gui/virttrip_process.py</code> joined, plus
+<code>one-off/push_animals_css.py</code>. The count is growing, which is the argument for doing
+this early in 0.4 rather than late.</em> No credential is committed — the <code>.gitignore</code> handles that
 carefully — but the defaults are somebody's personal hosting. They belong in the site
 configuration.</p>
 
@@ -1932,7 +1984,11 @@ public.</strong> <code>data/configs/</code> holds sixteen real machine and trip 
 with local absolute paths; <code>days_bigboy.json</code>, <code>sv_gui_cache.json</code> and the
 loose <code>.txt</code> and <code>.log</code> files in the root are runtime residue. Most are
 already ignored, but ignored is not the same as absent from history. Decide what the public
-repository's root looks like — this is a presentation question as much as a privacy one.</p>
+repository's root looks like — this is a presentation question as much as a privacy one.
+<em>10 Oct: the seventeen files under <code>data/configs/</code> are <strong>tracked</strong> in
+git, not just present; <code>speciesviewer/bug.png</code> is tracked too. The root also holds
+<code>trip_admin.csv</code>, a <code>.pre-fix-backup</code> of it, <code>studio.log</code> and a
+<code>testpict - Willcox/</code> folder (untracked).</em></p>
 
 <h3>Identity — the About screen and an icon</h3>
 
@@ -1961,7 +2017,12 @@ it is already correct in the map view, but About is where anybody checking will 
 Not a constant, not a module attribute — the <code>0.1</code> in the About dialog is a literal in
 that one file. A single <code>__version__</code> that the About screen, the packaged build and the
 release tag all read is a precondition for tagging v1 at all, and it is a ten-minute job that
-nobody will remember to do at the end.</p>
+nobody will remember to do at the end.
+<em>10 Oct: there are now <strong>two</strong> literals that disagree &mdash; the About dialog says
+0.1, the main window title says <code>Species Viewer 0.3</code> (<code>gui/mainwindow.py</code>).
+There are no git tags yet either. This is the natural first commit of 0.4: one
+<code>__version__ = "0.4.0.dev"</code>, read by both, and a <code>v0.3</code> tag on the commit
+that closes 0.3.</em></p>
 
 <p><span class="tag-open">OPEN</span> <strong>The application has no icon.</strong> No
 <code>setWindowIcon()</code> call exists anywhere, which is why Windows falls back to the Python
@@ -1993,7 +2054,7 @@ insects and dragonflies just as well.</p>
 <h3>Structuring the repository for publication</h3>
 
 <p><span class="tag-open">OPEN</span> A visitor's first thirty seconds are the README and the
-top-level file listing. Today the README is two lines and the root holds a dozen working files.
+top-level file listing. Today the README is two lines (still, 10 Oct) and the root holds a dozen working files.
 The minimum: a README that says what SpeciesViewer is, who it is for and what it needs; a
 screenshot or two (the Biota browser and a species page do more than paragraphs); the existing
 <em>Capabilities</em> document linked rather than buried; <code>CONTRIBUTING</code>,
@@ -2001,7 +2062,8 @@ screenshot or two (the Biota browser and a species page do more than paragraphs)
 too — deleting <code>speciesviewer/app.py</code> (the PyQt tutorial file with the &ldquo;Push for
 Window&rdquo; button, which is exactly what a curious visitor opens first), the configuration
 inventory a new user needs in order to know what to fill in, and the per-site stylesheet
-duplication.</p>
+duplication. <em>10 Oct: the inventory exists and the stylesheet can no longer drift (ch.19), so
+only <code>app.py</code> is left of the three.</em></p>
 
 <p class="note"><strong>Note on ch.19.</strong> The rest of that chapter should <em>not</em> be a
 prerequisite for publishing. It is slow-payoff internal tidying whose value does not change
@@ -2013,7 +2075,9 @@ having an audience.</p>
 <p><span class="tag-open">OPEN</span> This needs no design. A public GitHub repository already
 gives anybody the ability to fork, branch and open a pull request, with review before anything
 merges. The only real decisions are which branch is the published one — <code>ClaudeSpecies</code>
-is the working branch today, and <code>main</code> should become what the world sees — and a
+is the working branch today, and <code>main</code> should become what the world sees
+<em>(10 Oct: the working branch is now <code>SpeciesViewer03</code>; <code>main</code> is the stable
+fallback and <code>ClaudeSpecies</code> is redundant)</em> — and a
 short <code>CONTRIBUTING.md</code> saying what a good pull request looks like. Direct write
 access to the repository is not something to hand out.</p>
 
@@ -2036,6 +2100,34 @@ access to the repository is not something to hand out.</p>
   <li>Clean the repository root, write the README and the install page, delete
     <code>app.py</code>.</li>
   <li>Publish <code>main</code>, tag v1, attach the ZIP as a release.</li>
+</ol>
+
+<h3>SpeciesViewer 0.4 &mdash; proposed order (10 Oct)</h3>
+
+<p>The order above still stands for <em>publishing</em>. For 0.4 as a quality release, the
+same work re-ordered so that each step is small, stands on its own, and leaves a program that is
+better than before even if 0.4 stops there:</p>
+
+<ol>
+  <li><strong>Close 0.3.</strong> Tag <code>v0.3</code> on the current <code>SpeciesViewer03</code>
+    head; the merge to <code>main</code> can wait. Open <code>SpeciesViewer04</code> from that
+    tag.</li>
+  <li><strong>One version string</strong> &mdash; <code>__version__</code>, read by the window
+    title and the About box. Ten minutes; makes every later step attributable to a release.</li>
+  <li><strong>The GUI cache path</strong> (one-line bug), then <strong>configuration out of the
+    repository root</strong> into the per-OS application-data folder, with a one-time migration of
+    the existing files. The inventory is the checklist. This is the real blocker in this chapter
+    and the largest ch.19 loose end at the same time.</li>
+  <li><strong>De-personalise</strong>: the OSM User-Agent and the ten hard-coded site details move
+    into configuration.</li>
+  <li><strong>The second master</strong> &mdash; the zero-data simulation. Its findings decide what
+    first run needs; do not design that before it.</li>
+  <li><strong>ch.19 tidying</strong>, one item per commit: dead modules (verify, then delete),
+    <code>cached_dates_for_new</code>, the trip-root fallback, the Read-SD-card dialog out of
+    <code>trip_process.py</code>.</li>
+  <li><strong>Identity</strong>: About box rendering <code>NOTICE.md</code>; the icon.</li>
+  <li><strong>Packaging</strong> (PyInstaller one-folder ZIP, exiftool arrangement), README,
+    repository clean-up, publish.</li>
 </ol>
 
 <hr class="section-divider">
