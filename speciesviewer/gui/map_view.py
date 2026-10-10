@@ -36,12 +36,13 @@ from gui.window_title import window_title
 from gui import theme
 from gui.widgets import wrapped
 from utils.raw_extensions import PICTURE, bare
+from utils import site_config
 
 logger = logging.getLogger("speciesviewer")
 
 TILE = 256
 MIN_ZOOM, MAX_ZOOM = 2, 18
-_USER_AGENT = b"SpeciesViewer/1.0 (gilbert@houtekamer.com)"
+# The OSM User-Agent comes from utils/site_config.user_agent() — see geolocate.py.
 _MERC_MAX_LAT = 85.05112878   # Web-Mercator clamp
 
 # Selectable basemaps. `url` is an XYZ tile template; `sub` is the per-provider
@@ -785,7 +786,7 @@ class TileMapView(QGraphicsView):
                 return
         self._pending.add(key)
         req = QNetworkRequest(QUrl(self._basemap["url"].format(z=z, x=tx, y=ty)))
-        req.setRawHeader(b"User-Agent", _USER_AGENT)
+        req.setRawHeader(b"User-Agent", site_config.user_agent().encode())
         reply = self._nam.get(req)
         reply.setProperty("tilekey", key)
 

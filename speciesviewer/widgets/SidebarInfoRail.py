@@ -106,5 +106,6 @@ class SidebarInfoRail(QWidget):
         self._days_stat.setText(f"{days}  Days")
 
         self._repo_label.setText(str(_config["master"]["masterbiotadatabase"]))
-        self._url_label.setText(f"www.houtekamer.com/{_config['master']['masterbiotawebroot']}")
+        from utils import site_config
+        self._url_label.setText(f"{site_config.site_host()}/{_config['master']['masterbiotawebroot'].lstrip('/')}")
         self._album_root_label.setText(get_virttrips_root() or "(not configured)")

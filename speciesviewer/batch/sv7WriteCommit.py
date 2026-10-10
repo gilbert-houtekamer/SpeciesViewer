@@ -142,11 +142,7 @@ def putTripImages(MyProject, sftp):
 
 def putRecursiveTreeWeb(MyProject, config):
     password = config.get("websettings","Sftppwd").strip("'")
-    sftp = engine.sftplib.Sftp(
-        hostname='houtfp.ssh.transip.me',
-        username='houtekamercom',
-        password=password,
-    )
+    sftp = engine.sftplib.Sftp(password=password)
     location_cache = os.path.join(MyProject.getRepositoryPath(), 'admin/FTPcache.json')
     sftp.openFTPCache(location_cache)
     # Connect to SFTP
@@ -204,7 +200,7 @@ def main(args, config):
     logger.info(f"sv7WriteCommit: Commit project {MyProject.ProjectName()} on repository.")
     import engine.connectivity as connectivity
     if not connectivity.publish_reachable():
-        raise SVException(connectivity.PUBLISH_UNREACHABLE_MSG)
+        raise SVException(connectivity.publish_unreachable_msg())
     
     if checkFrozenData(MyProject):
     # move "approved" files to the active directory

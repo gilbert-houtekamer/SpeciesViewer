@@ -155,11 +155,7 @@ def main(args, config):
 
     if WEB_TREE != "":
         password = config.get("websettings","Sftppwd").strip("'")
-        sftp = engine.sftplib.Sftp(
-            hostname='houtfp.ssh.transip.me',
-            username='houtekamercom',
-            password=password,
-        )
+        sftp = engine.sftplib.Sftp(password=password)
         # Connect to SFTP
         sftp.connect()
         location_cache = os.path.join(MyProject.getRepositoryPath(), 'admin/FTPcache.json')

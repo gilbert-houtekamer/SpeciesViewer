@@ -3324,11 +3324,8 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
             return
         self._status.setText(f"Regenerated and uploaded the page for {name}.")
         from urllib.parse import quote
-        base = _config.get("websettings", "base_url", fallback="").strip().rstrip("/")
-        if not base:
-            base = "https://houtekamer.com"
-        elif not base.startswith("http"):
-            base = "https://" + base
+        from utils import site_config
+        base = site_config.site_base()
         links = [f'<a href="{base + quote(u, safe="/")}">{base + u}</a>'
                  for u in res.get("urls", [])]
         box = QMessageBox(self)

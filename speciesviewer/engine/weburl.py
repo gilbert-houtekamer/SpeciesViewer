@@ -22,16 +22,12 @@ from utils.config import _config
 
 
 def site_base() -> str:
-    """The site root, e.g. 'https://houtekamer.com' — no trailing slash.
+    """The site root, e.g. 'https://example.org' — no trailing slash.
 
     Same normalisation the master species viewer does: accept a bare host in the
     config and still emit a real URL."""
-    base = _config.get("websettings", "base_url", fallback="").strip().rstrip("/")
-    if not base:
-        base = "https://houtekamer.com"
-    elif not base.startswith("http"):
-        base = "https://" + base
-    return base
+    from utils import site_config
+    return site_config.site_base()
 
 
 def web_root() -> str:

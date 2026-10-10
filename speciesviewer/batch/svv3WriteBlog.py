@@ -364,7 +364,7 @@ def main(args, config):
 
     import engine.connectivity as connectivity
     if not connectivity.publish_reachable():
-        raise SVException(connectivity.PUBLISH_UNREACHABLE_MSG)
+        raise SVException(connectivity.publish_unreachable_msg())
 
     sc = engine.speciesclassification.SpeciesClassification(project)
     project.registerSpeciesClassification(sc)

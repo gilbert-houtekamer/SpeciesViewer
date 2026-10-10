@@ -45,7 +45,7 @@ class GlobalSettingsDialog(QDialog):
         layout.addWidget(self.names_combo)
 
         self.webpassword_field = self._labeled_field(layout, "Website password", _config.get("websettings", "sftppwd", fallback="? still needed"), password=True)
-        self.base_url_field = self._labeled_field(layout, "Base URL for web address", _config.get("websettings", "base_url", fallback="https://houtekamer.com"))
+        self.base_url_field = self._labeled_field(layout, "Base URL for web address", _config.get("websettings", "base_url", fallback=""))
         # The DxO PhotoLab path moved to File ▸ Settings ▸ Interfaces to Lightroom
         # and PhotoLab ▸ PhotoLab Location, so the three DxO options sit together
         # instead of one being stranded here. The [Global] dxo_path key is unchanged.

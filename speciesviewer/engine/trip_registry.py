@@ -440,8 +440,7 @@ def build_registry(machine, trips_root, virttrips_root, master_repo=None):
     return rows
 
 
-def upload_status_shard(local_csv, web_root, pwd,
-                        hostname="houtfp.ssh.transip.me", username="houtekamercom"):
+def upload_status_shard(local_csv, web_root, pwd, hostname=None, username=None):
     """Upload a per-machine registry shard to '<web_root>includes web/status/'
     on the website host (same transport/credentials as the trip publishing).
     The status area is non-public. Returns the remote path on success, else None.
@@ -484,8 +483,7 @@ def read_shard_csv(path):
         return list(csv.DictReader(fh, delimiter=";"))
 
 
-def download_status_shards(web_root, pwd, dest_dir,
-                           hostname="houtfp.ssh.transip.me", username="houtekamercom"):
+def download_status_shards(web_root, pwd, dest_dir, hostname=None, username=None):
     """Download every per-machine shard (trip_registry_*.csv) from
     '<web_root>includes web/status/' into dest_dir. Returns the local paths."""
     import engine.sftplib as sftplib

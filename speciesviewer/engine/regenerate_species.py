@@ -171,8 +171,7 @@ def _upload_species(MyProject, config, target_path, progress_cb):
         return 0
     assets_dir = _stage_web_assets(MyProject)
     password = config.get("websettings", "Sftppwd", fallback="").strip("'")
-    sftp = engine.sftplib.Sftp(
-        hostname="houtfp.ssh.transip.me", username="houtekamercom", password=password)
+    sftp = engine.sftplib.Sftp(password=password)
     location_cache = os.path.join(MyProject.getRepositoryPath(), "admin", "FTPcache.json")
     sftp.openFTPCache(location_cache)
     sftp.connect()
@@ -215,7 +214,7 @@ def regenerate_species_page(scientific_name, master_db, progress_cb=None, upload
         logger.info(f"regenerate_species: {msg}")
 
     if upload and not connectivity.publish_reachable():
-        return {"ok": False, "error": connectivity.PUBLISH_UNREACHABLE_MSG}
+        return {"ok": False, "error": connectivity.publish_unreachable_msg()}
     if master_db is None:
         return {"ok": False, "error": "Master database is not open."}
 

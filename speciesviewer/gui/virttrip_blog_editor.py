@@ -261,7 +261,8 @@ class VirtTripBlogEditorDialog(QDialog):
         svv3 writes the relative URL to the shared runtime file on success."""
         import webbrowser
         from utils.runtime_files import LAST_BLOG_URL, runtime_path
-        base = _config.get("websettings", "base_url", fallback="https://houtekamer.com/")
+        from utils import site_config
+        base = site_config.site_base()
         try:
             with open(runtime_path(LAST_BLOG_URL), "r") as f:
                 rel = f.read().strip()

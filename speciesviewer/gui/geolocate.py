@@ -14,12 +14,15 @@ from __future__ import annotations
 
 import json
 import logging
+
+from utils import site_config
 import subprocess
 
 logger = logging.getLogger("speciesviewer")
 
 # Nominatim requires a descriptive User-Agent identifying the app + a contact.
-_USER_AGENT = "SpeciesViewer/1.0 (gilbert@houtekamer.com)"
+# Built per request from utils/site_config.py — each installation sends its own
+# contact, so OSM never attributes one user's traffic to another.
 
 # Machine-config home for the user-tunable lookup options (Settings ▸ Location
 # Settings). Read live so a change takes effect on the next 'Get location'. Kept
@@ -134,7 +137,7 @@ def reverse_geocode(lat, lon, *, lang="en", zoom=14, timeout=10):
             "https://nominatim.openstreetmap.org/reverse",
             params={"format": "jsonv2", "lat": lat, "lon": lon,
                     "zoom": zoom, "addressdetails": 1, "accept-language": lang},
-            headers={"User-Agent": _USER_AGENT}, timeout=timeout)
+            headers={"User-Agent": site_config.user_agent()}, timeout=timeout)
         r.raise_for_status()
         return r.json()
     except (requests.exceptions.ConnectionError, requests.exceptions.Timeout) as e:
@@ -196,7 +199,7 @@ def search_places(query, *, lang="en", limit=8, timeout=10, viewbox=None):
         import requests
         r = requests.get("https://nominatim.openstreetmap.org/search",
                          params=params,
-                         headers={"User-Agent": _USER_AGENT}, timeout=timeout)
+                         headers={"User-Agent": site_config.user_agent()}, timeout=timeout)
         r.raise_for_status()
         rows = r.json() or []
     except Exception as e:

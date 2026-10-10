@@ -571,8 +571,7 @@ def _clear_virttrip_blogs(virttrip_root, web_root, pwd, logger):
     if pwd and web_root:
         try:
             import engine.sftplib as sftplib
-            s = sftplib.Sftp(hostname="houtfp.ssh.transip.me",
-                             username="houtekamercom", password=pwd)
+            s = sftplib.Sftp(password=pwd)
             s.connect()
             remote = s.remotePrefix() + web_root.rstrip("/") + "/biotablog"
             s.rmtree(remote)
@@ -1456,7 +1455,8 @@ class VirttripWriteBlogDialog(QDialog):
         close_btn.clicked.connect(self.close)
 
     def get_blog_url(self) -> str:
-        base_url = _config.get("websettings", "base_url", fallback="https://houtekamer.com/")
+        from utils import site_config
+        base_url = site_config.site_base() + "/"
         try:
             from utils.runtime_files import LAST_BLOG_URL, runtime_path
             with open(runtime_path(LAST_BLOG_URL), "r") as f:
@@ -1568,7 +1568,8 @@ class VirttripRedoBlogDialog(QDialog):
         close_btn.clicked.connect(self.close)
 
     def get_blog_url(self) -> str:
-        base_url = _config.get("websettings", "base_url", fallback="https://houtekamer.com/")
+        from utils import site_config
+        base_url = site_config.site_base() + "/"
         try:
             from utils.runtime_files import LAST_BLOG_URL, runtime_path
             with open(runtime_path(LAST_BLOG_URL), "r") as f:
@@ -1637,7 +1638,8 @@ class VirttripBuildWebsiteDialog(QDialog):
         close_btn.clicked.connect(self.close)
 
     def get_website_url(self) -> str:
-        base_url = _config.get("websettings", "base_url", fallback="https://houtekamer.com/")
+        from utils import site_config
+        base_url = site_config.site_base() + "/"
         try:
             from utils.runtime_files import LAST_WEBSITE_URL, runtime_path
             with open(runtime_path(LAST_WEBSITE_URL), "r") as f:

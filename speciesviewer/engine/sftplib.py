@@ -20,17 +20,19 @@ def _remote_already_absent(e):
 
 
 class Sftp:
-    remote_path = "/data/sites/web/houtekamercom/www"
     FTPCache = {}
     FTPhits = 0
     FTPmisses = 0
 
-    def __init__(self, hostname, username, password, port=22):
-        """Constructor Method"""
+    def __init__(self, password, hostname=None, username=None, port=22):
+        """Server and account default to this installation's own
+        (utils/site_config.py); only the password is always passed in."""
+        from utils import site_config
         # Set connection object to None (initial value)
         self.connection = None
-        self.hostname = hostname
-        self.username = username
+        self.hostname = hostname or site_config.sftp_host()
+        self.username = username or site_config.sftp_user()
+        self.remote_path = site_config.sftp_remote_root()
         self.password = password
         self.port = port
     

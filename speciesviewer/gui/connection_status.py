@@ -45,8 +45,9 @@ class ConnectionStatusDialog(QDialog):
         lay.addLayout(grid)
 
         self._rows = {}
-        for r, key in enumerate(connectivity.ENDPOINTS):
-            label, host, port, note = connectivity.ENDPOINTS[key]
+        eps = connectivity.endpoints()
+        for r, key in enumerate(eps):
+            label, host, port, note = eps[key]
             lamp = QLabel("●")
             lamp.setStyleSheet(f"color:{_LAMP['checking']}; font-size:16px;")
             name = QLabel(f"<b>{label}</b><br>"

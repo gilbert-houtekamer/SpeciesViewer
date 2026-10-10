@@ -3694,7 +3694,8 @@ class CreateBlogDialog(QDialog):
         close_btn.clicked.connect(self.close)
 
     def get_blog_url(self):
-        base_url = _config.get("websettings", "base_url", fallback="https://houtekamer.com/")
+        from utils import site_config
+        base_url = site_config.site_base() + "/"
         try:
             from utils.runtime_files import LAST_BLOG_URL, runtime_path
             with open(runtime_path(LAST_BLOG_URL), "r") as f:

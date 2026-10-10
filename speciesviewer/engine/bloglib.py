@@ -426,11 +426,7 @@ class Blog:
     def openSFTP(self, pwd):
         MyProject = self.mp
         if MyProject.online:        
-            sftp = engine.sftplib.Sftp(
-                hostname='houtfp.ssh.transip.me',
-                username='houtekamercom',
-                password=pwd,
-            )
+            sftp = engine.sftplib.Sftp(password=pwd)
             # Connect to SFTP
             sftp.connect()
         else:
