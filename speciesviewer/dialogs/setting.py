@@ -1,5 +1,7 @@
 from PyQt6.QtWidgets import QDialog, QVBoxLayout, QLabel, QPushButton
 
+from utils.version import APP_NAME, __version__
+
 class AboutDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -8,7 +10,7 @@ class AboutDialog(QDialog):
 
         layout = QVBoxLayout()
 
-        label = QLabel("🚀 Species Viewer 0.1 with PyQt6\n(c) 2025 Gilbert Inc.")
+        label = QLabel(f"🚀 {APP_NAME} {__version__} with PyQt6\n(c) 2025 Gilbert Inc.")
         label.setWordWrap(True)
 
         close_button = QPushButton("Close")

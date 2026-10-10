@@ -32,6 +32,7 @@ from engine.statemachine import StateMachine
 from gui.image_viewer import ImagePreviewDialog
 from utils.gui_config import load_gui_cache  # or wherever your cache functions live
 from utils.ini_io import read_ini
+from utils.version import APP_NAME, __version__
 
 logger = logging.getLogger("speciesviewer")
 
@@ -86,7 +87,7 @@ class MainWindow(QMainWindow):
         self.virttrip_table = None
         self.state_keys = None
         self.state_labels = None
-        self.setWindowTitle("Species Viewer 0.3")
+        self.setWindowTitle(f"{APP_NAME} {__version__}")
         # Create and attach status bar
         self.status_bar = QStatusBar()
         self.setStatusBar(self.status_bar)        
