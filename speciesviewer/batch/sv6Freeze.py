@@ -440,7 +440,8 @@ def main(args, config):
 
     # copy all files to big file depository based on classification of data
     # logger.info(f"Will copy all files to destination.")
-    debugfile = open("Species print.txt", "w")
+    from utils.logger_support import log_file
+    debugfile = open(log_file("Species print.txt"), "w", encoding="utf-8")
     count = 0
     print(f"Debug enabled for Species copy.", file=debugfile)
     # Copy gate by mode (confirmed live on Kreta 2026-07-24):

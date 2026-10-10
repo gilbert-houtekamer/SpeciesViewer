@@ -1,6 +1,6 @@
 # Configuration out of the repository root — plan (0.4, step 3)
 
-Status: **Step A shipped 2026-10-10 (2e9e0db). Step B built, awaiting test.** C–D still dry run. Written 2026-10-10 on `SpeciesViewer04`.
+Status: **A shipped (2e9e0db), B shipped (0c518f9), C built — awaiting test.** D still dry run. Written 2026-10-10 on `SpeciesViewer04`.
 Backlog: ch.20 "The first-run problem", ch.19 "Structural loose ends".
 Checklist source: `docs/configuration_inventory.md` → Known irregularities #1, #2.
 
@@ -99,6 +99,10 @@ their `--config` argument, defaulting to the same constant. It carries the SFTP
 password, so getting it out of the source tree also gets it away from `git add .`.
 
 ## Step C — log residue (one commit) — includes a real bug
+
+*Built:* `utils.logger_support.log_file(name)` → the `logs/` folder beside
+`studio.log`. svr8's handler now attaches only under `__main__`; both
+`Species print.txt` writers use `log_file()` and UTF-8.
 
 **BUG:** `batch/svr8RecreateTripRepository.py` adds a `FileHandler` to the shared
 `speciesviewer` logger **at import time** (line 41). Whenever that module is

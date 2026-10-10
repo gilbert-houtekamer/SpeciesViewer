@@ -1037,7 +1037,8 @@ class Project:
     # Also update counters while we are at it, for all pictures, also the ones without JPGs 
     def addPicturesToSpecies(self, sp, firstUPNtoProcess, SpeciesDebug):
         if SpeciesDebug > 0:  
-            debugfile = open("Species print.txt", "w")
+            from utils.logger_support import log_file
+            debugfile = open(log_file("Species print.txt"), "w", encoding="utf-8")
             print(f"Debug enabled for Species analysis at level {SpeciesDebug}.", file=debugfile)
         else:
             debugfile = ""

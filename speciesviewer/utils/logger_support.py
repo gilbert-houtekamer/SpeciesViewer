@@ -69,6 +69,12 @@ def log_path() -> Path:
     except OSError:
         return Path("studio.log").resolve()
 
+def log_file(name: str) -> Path:
+    """Absolute path for an extra log or debug dump `name` (e.g. the Freeze
+    "Species print.txt"), in the same logs folder as studio.log — never the
+    working directory, which put these files in the source tree."""
+    return log_path().parent / name
+
 # Filter to suppress noisy ExifTool output
 class SuppressExifToolOutput(logging.Filter):
     def filter(self, record):

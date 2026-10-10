@@ -38,10 +38,6 @@ from utils.ini_io import read_ini
 from utils.runtime_files import svconfig_path
 
 logger = logging.getLogger("speciesviewer")
-# create file handler which logs even debug messages
-fh = logging.FileHandler('sysprint-recreatetrip.txt')
-fh.setLevel(logging.INFO)
-logger.addHandler(fh)
 
 # read parameters, but will be overwritten probably
 def readConfig():
@@ -139,6 +135,13 @@ if __name__ == "__main__":
         "--dir", type=str, default=os.path.join(modpath, "data"), help="foto directory"
     )
     args = parser.parse_args()
+    # A file log for a command-line run only. It used to be attached at import
+    # time, and the GUI imports this module at start-up — so every log line of
+    # every session also went to a file in the working directory.
+    from utils.logger_support import log_file
+    fh = logging.FileHandler(log_file("sysprint-recreatetrip.txt"), encoding="utf-8")
+    fh.setLevel(logging.INFO)
+    logger.addHandler(fh)
     # get configuration
     INI_LOCATION = args.config
     config = configparser.ConfigParser()
