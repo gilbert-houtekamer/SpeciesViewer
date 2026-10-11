@@ -1,7 +1,7 @@
 # Multiple masters on one machine — plan
 
 *0.4, step 5 prerequisite (backlog ch.20, "SpeciesViewer 0.4 — proposed order").
-Written 2026-10-11. Status: steps 1–3 SHIPPED (89550ee, f69cfed, a8ea017); step 4 built (rename, remove, Repository Settings moved), awaiting test.*
+Written 2026-10-11. Status: steps 1–4 SHIPPED (89550ee, f69cfed, a8ea017, 8ae1dd0); Restore Master built, awaiting test.*
 
 ## Why
 
@@ -159,6 +159,11 @@ A packaged build (`sys.frozen`) restarts the .exe itself.
   and simply travels with it.
 
 ## Nothing here deletes
+
+**Restore Master…** (Gilbert, 2026-10-11: "otherwise we have a trash we might
+as well delete") brings a removed master back from that zip — old name, or
+"… (restored)" when taken; fresh folder; never main; the zip is deleted once
+the master is back.
 
 Remove-master zips its app-data folder to `.trash` first, in line with Delete
 Album, and never touches the master's data folder. The main master cannot be

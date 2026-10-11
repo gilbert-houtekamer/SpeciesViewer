@@ -192,6 +192,29 @@ def _remove(main_window) -> None:
     main_window.rebuild_menu()
 
 
+def _restore(main_window) -> None:
+    import datetime
+    trashed = masters.trashed_masters()
+    if not trashed:
+        return
+    labels = [f"{entry['name']} — removed "
+              f"{datetime.datetime.fromtimestamp(z.stat().st_mtime):%Y-%m-%d %H:%M}"
+              for z, entry in trashed]
+    choice, ok = QInputDialog.getItem(main_window, "Restore Master",
+                                      "Master to restore:", labels, 0, False)
+    if not ok:
+        return
+    zip_path = trashed[labels.index(choice)][0]
+    try:
+        entry = masters.restore(zip_path)
+    except (masters.MasterError, OSError) as e:
+        QMessageBox.warning(main_window, "Restore Master", str(e))
+        return
+    main_window.logger.info(f"Master “{entry['name']}” restored from {zip_path.name}.")
+    main_window.rebuild_menu()
+    _ask_restart(main_window, entry["name"], f"The master “{entry['name']}” is back.")
+
+
 def masters_menu(main_window) -> dict:
     """The Master ▸ Masters submenu, built from masters.json. The open master
     is ticked and greyed (you are in it); every other one switches to it."""
@@ -220,6 +243,10 @@ def masters_menu(main_window) -> dict:
             callback=lambda *_: _make_main(main_window))
     menu["Rename Master…"] = MenuSpec(callback=lambda *_: _rename(main_window))
     menu["Remove Master…"] = MenuSpec(callback=lambda *_: _remove(main_window))
+    menu["Restore Master…"] = MenuSpec(
+        callback=lambda *_: _restore(main_window),
+        enabled=lambda: bool(masters.trashed_masters()),
+        tooltip="Bring back a removed master from the trash")
     menu[f"{MenuSpec.separator()}_masters_1"] = None
     # Moved here from File ▸ Settings: these folders belong to the OPEN master.
     menu["Repository Settings…"] = MenuSpec(

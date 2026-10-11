@@ -90,6 +90,16 @@ def _folder_name(name: str) -> str:
     return safe or "master"
 
 
+def _new_folder(data: dict, name: str) -> str:
+    """A folder (relative to app-data) that no master uses and does not exist."""
+    used = {m["folder"].lower() for m in data["masters"]}
+    base = f"masters/{_folder_name(name)}"
+    folder, n = base, 2
+    while folder.lower() in used or (app_data_dir() / folder).exists():
+        folder, n = f"{base} {n}", n + 1
+    return folder
+
+
 def add(name: str) -> dict:
     """Register a new, empty master (not main, not active). Its folder is
     created on first use. Returns the new entry."""
@@ -99,12 +109,7 @@ def add(name: str) -> dict:
     data = load()
     if any(m["name"].lower() == name.lower() for m in data["masters"]):
         raise MasterError(f"A master named {name!r} already exists.")
-    used = {m["folder"].lower() for m in data["masters"]}
-    base = f"masters/{_folder_name(name)}"
-    folder, n = base, 2
-    while folder.lower() in used or (app_data_dir() / folder).exists():
-        folder, n = f"{base} {n}", n + 1
-    entry = {"name": name, "folder": folder, "main": False}
+    entry = {"name": name, "folder": _new_folder(data, name), "main": False}
     data["masters"].append(entry)
     save(data)
     return entry
@@ -206,7 +211,7 @@ def remove(name: str) -> Path:
     files = [p for p in folder.rglob("*") if p.is_file()
              and not (p.parent.name == "db" and p.suffix == ".db")] if folder.exists() else []
     with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as z:
-        z.writestr("masters-entry.json", json.dumps(entry, indent=2, ensure_ascii=False))
+        z.writestr(_ENTRY_FILE, json.dumps(entry, indent=2, ensure_ascii=False))
         for p in files:
             z.write(p, p.relative_to(folder))
     with zipfile.ZipFile(zip_path) as z:
@@ -219,6 +224,55 @@ def remove(name: str) -> Path:
     if folder.exists():
         shutil.rmtree(folder)
     return zip_path
+
+
+_ENTRY_FILE = "masters-entry.json"
+
+
+def trashed_masters() -> list[tuple[Path, dict]]:
+    """The removed masters that can be restored: (zip, its masters.json
+    entry), newest first. Anything in .trash that is not a master zip is
+    ignored."""
+    import zipfile
+    found = []
+    for z in sorted(trash_dir().glob("master *.zip"), key=lambda p: p.stat().st_mtime,
+                    reverse=True) if trash_dir().exists() else []:
+        try:
+            with zipfile.ZipFile(z) as zf:
+                found.append((z, json.loads(zf.read(_ENTRY_FILE).decode("utf-8"))))
+        except (OSError, KeyError, ValueError, zipfile.BadZipFile):
+            continue
+    return found
+
+
+def restore(zip_path: Path) -> dict:
+    """Bring a removed master back: its old name (or "<name> (restored)" when
+    that is taken), a fresh folder, never main. The zip is deleted only after
+    the files are out and the entry is saved — the restored folder is then
+    the copy. Returns the new entry."""
+    import zipfile
+    data = load()
+    with zipfile.ZipFile(zip_path) as zf:
+        old = json.loads(zf.read(_ENTRY_FILE).decode("utf-8"))
+        taken = {m["name"].lower() for m in data["masters"]}
+        name, n = old["name"], 1
+        while name.lower() in taken:
+            name = f"{old['name']} (restored)" if n == 1 else f"{old['name']} (restored {n})"
+            n += 1
+        entry = {"name": name, "folder": _new_folder(data, name), "main": False}
+        folder = folder_of(entry).resolve()
+        for member in zf.namelist():
+            if member == _ENTRY_FILE:
+                continue
+            target = (folder / member).resolve()
+            if folder not in target.parents:
+                raise MasterError(f"{zip_path.name}: unexpected path {member!r}; nothing restored.")
+        folder.mkdir(parents=True)
+        zf.extractall(folder, [m for m in zf.namelist() if m != _ENTRY_FILE])
+    data["masters"].append(entry)
+    save(data)
+    zip_path.unlink()
+    return entry
 
 
 def set_active(name: str) -> None:

@@ -37,6 +37,7 @@ bar until its publishing is set up (× hides the strip for the session).
 | Make "…" the Main Master… | Shown when the open master is not the main one. Moves the "main" flag; nothing is moved or deleted. |
 | Rename Master… | The name only; nothing on disk moves. |
 | Remove Master… | Not for the main or the open master. Its settings are zipped to the trash first; its pictures and data folders are **not** deleted. |
+| Restore Master… | Greyed until a master has been removed. Brings it back from the trash under its old name (or "… (restored)" when that name is taken), never as the main master. The zip is deleted once the master is back. |
 | Repository Settings… | Where the open master's data lives: the master, the trips root, the albums root, the local pictures root. The single most consequential settings dialog — most "nothing is enabled" states trace back to a path here being empty. |
 
 ---
