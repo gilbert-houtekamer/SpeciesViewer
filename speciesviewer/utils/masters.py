@@ -100,15 +100,22 @@ def _new_folder(data: dict, name: str) -> str:
     return folder
 
 
-def add(name: str) -> dict:
-    """Register a new, empty master (not main, not active). Its folder is
-    created on first use. Returns the new entry."""
+def check_new_name(name: str) -> str:
+    """The stripped name, or MasterError when it is empty or taken. Separate so
+    a caller can check BEFORE doing work it would otherwise have to undo."""
     name = name.strip()
     if not name:
         raise MasterError("A master needs a name.")
-    data = load()
-    if any(m["name"].lower() == name.lower() for m in data["masters"]):
+    if any(m["name"].lower() == name.lower() for m in load()["masters"]):
         raise MasterError(f"A master named {name!r} already exists.")
+    return name
+
+
+def add(name: str) -> dict:
+    """Register a new, empty master (not main, not active). Its folder is
+    created on first use. Returns the new entry."""
+    name = check_new_name(name)
+    data = load()
     entry = {"name": name, "folder": _new_folder(data, name), "main": False}
     data["masters"].append(entry)
     save(data)
@@ -301,13 +308,28 @@ IS_LEGACY_FOLDER = ACTIVE["folder"] in (".", "")
 
 def banner_text() -> str:
     """What the window says about the master: "" for the main master (no
-    change to its look), otherwise a label naming the test master."""
-    return "" if IS_MAIN else f"TEST: {ACTIVE['name']}"
+    change to its look), otherwise the master's name — not "test": a second
+    master may be a real one (birds and plants)."""
+    return "" if IS_MAIN else ACTIVE["name"]
+
+
+def first_start() -> bool:
+    """True exactly once per master: on the first start in which this asks.
+    Records the start in masters.json, so the next start answers False. For
+    the orange strip — a clear signal right after creating or switching to a
+    master, not a nag on every start of a master you keep (birds, plants)."""
+    data = load()
+    entry = find(data, ACTIVE["name"])
+    if entry.get("started"):
+        return False
+    entry["started"] = True
+    save(data)
+    return True
 
 
 def describe() -> str:
     """One line for the start-up log."""
-    role = "main master" if IS_MAIN else "TEST master (not main)"
+    role = "the main master" if IS_MAIN else "not the main master"
     return f"Master: {ACTIVE['name']} — {role} — settings in {ACTIVE_DIR}"
 
 

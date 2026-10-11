@@ -18,7 +18,7 @@ class RepoSettingsDialog(QDialog):
     that has to be reachable.
     """
 
-    TAB_MASTER, TAB_TRIP, TAB_ALBUM = 0, 1, 2
+    TAB_MASTER, TAB_PICTURES, TAB_TRIP, TAB_ALBUM = 0, 1, 2, 3
 
     def __init__(self, parent, tab: int = TAB_MASTER):
         super().__init__(parent)
@@ -57,18 +57,11 @@ class RepoSettingsDialog(QDialog):
         layout.addStretch()
         tabs.addTab(master_tab, "Master")
 
-        # ── Active Trip ──────────────────────────────────────────────────────
-        trip_tab = QWidget()
-        layout = QVBoxLayout(trip_tab)
-        self.trip_field = self._labeled_field(layout, "Database", _config.get("trip", "tripbiotadatabase", fallback=""))
-        browse_trip_btn = QPushButton("Browse Trip Database")
-        browse_trip_btn.clicked.connect(self.browse_trip)
-        layout.addWidget(browse_trip_btn)
-        self.trip_web = self._labeled_field(layout, "Web root", _config.get("trip", "tripbiotawebroot", fallback=""))
-        self.trips_root_field = self._labeled_field(layout, "Trips root directory", get_trips_root())
-        browse_trips_root_btn = QPushButton("Browse Trips Root")
-        browse_trips_root_btn.clicked.connect(self.browse_trips_root)
-        layout.addWidget(browse_trips_root_btn)
+        # ── Pictures ─────────────────────────────────────────────────────────
+        # Not only for trips: the Unfiled inbox scans the pictures folder and
+        # the GPS-log folder defaults to <pictures folder>/gpslogs.
+        pictures_tab = QWidget()
+        layout = QVBoxLayout(pictures_tab)
         # Per-machine base that holds every trip's source pictures (e.g.
         # D:\CurrentPictures). trip.ini stores its picture_root RELATIVE to this,
         # so the shared trip.ini stays portable across machines. WP8.
@@ -87,6 +80,21 @@ class RepoSettingsDialog(QDialog):
         browse_gpslogs_btn = QPushButton("Browse GPS Logs Root")
         browse_gpslogs_btn.clicked.connect(self.browse_gpslogs_root)
         layout.addWidget(browse_gpslogs_btn)
+        layout.addStretch()
+        tabs.addTab(pictures_tab, "Pictures")
+
+        # ── Active Trip ──────────────────────────────────────────────────────
+        trip_tab = QWidget()
+        layout = QVBoxLayout(trip_tab)
+        self.trip_field = self._labeled_field(layout, "Database", _config.get("trip", "tripbiotadatabase", fallback=""))
+        browse_trip_btn = QPushButton("Browse Trip Database")
+        browse_trip_btn.clicked.connect(self.browse_trip)
+        layout.addWidget(browse_trip_btn)
+        self.trip_web = self._labeled_field(layout, "Web root", _config.get("trip", "tripbiotawebroot", fallback=""))
+        self.trips_root_field = self._labeled_field(layout, "Trips root directory", get_trips_root())
+        browse_trips_root_btn = QPushButton("Browse Trips Root")
+        browse_trips_root_btn.clicked.connect(self.browse_trips_root)
+        layout.addWidget(browse_trips_root_btn)
         layout.addStretch()
         tabs.addTab(trip_tab, "Trip")
 

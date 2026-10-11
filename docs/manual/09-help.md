@@ -16,13 +16,13 @@ What SpeciesViewer needs, and what is optional — one row per setting, each wit
 a mark and a button that opens the dialog for it. The marks are read from the
 real settings every time, so the window also answers *"why is this menu grey?"*
 long after day one. It opens by itself when the open master has no collection
-yet (a new user, a new test master).
+yet — the first time you start SpeciesViewer, or in a new master without one.
 
 | Row | Needed for | Mark when missing |
 |---|---|---|
-| Master collection | everything — **Create…** a new one, or **Choose…** an existing one | ✗ |
+| Master collection | everything — create one with *Master ▸ Masters ▸ Create Master Collection…*, or **Choose…** an existing one | ✗ |
 | Website publishing | publishing blogs and pages; optional | – |
-| Pictures folder | trips | ✗ |
+| Pictures folder | unfiled days, trips — and the GPS-log folder inside it | ✗ |
 | Trips folder | trips | ✗ |
 | Albums folder | albums | ✗ |
 | exiftool | reading pictures — must be on the PATH | ✗ |

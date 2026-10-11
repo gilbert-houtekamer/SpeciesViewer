@@ -322,11 +322,11 @@ class MainWindow(QMainWindow):
 
         widget = QWidget()
         layout = QVBoxLayout(widget)
-        # The strip is for a test master that is still uncustomised: once its
-        # publishing is set up it is a master someone works in, and the title
-        # alone says which one it is. × hides it for this session only.
-        from utils import site_config
-        if _banner and not site_config.publishing_set_up():
+        # The strip shows on a master's FIRST start only (Gilbert, 2026-10-11):
+        # a clear signal right after creating or switching to it, no nag on
+        # every start of a master you keep. The title always names it.
+        # × hides it for this session.
+        if _banner and masters.first_start():
             strip = QWidget()
             # Same strong orange in light and dark: it must not read as one of
             # the theme's own panels (yellow work area, green log).
@@ -334,7 +334,7 @@ class MainWindow(QMainWindow):
                                 " font-weight: bold;")
             strip_row = QHBoxLayout(strip)
             strip_row.setContentsMargins(6, 2, 6, 2)
-            self._master_strip_label = QLabel(f"{_banner} — not your main master")
+            self._master_strip_label = QLabel(f"Master: {_banner} — not your main master")
             self._master_strip_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
             strip_row.addWidget(self._master_strip_label, 1)
             strip_close = QPushButton("✕")
@@ -821,7 +821,7 @@ class MainWindow(QMainWindow):
         self.setWindowTitle(f"{APP_NAME} {__version__}"
                             + (f" — {banner}" if banner else ""))
         if self._master_strip_label is not None and banner:
-            self._master_strip_label.setText(f"{banner} — not your main master")
+            self._master_strip_label.setText(f"Master: {banner} — not your main master")
 
     def rebuild_menu(self):
         self.menuBar().clear()

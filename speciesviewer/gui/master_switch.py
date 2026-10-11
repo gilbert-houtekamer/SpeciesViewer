@@ -78,33 +78,78 @@ def _switch(main_window, name: str) -> None:
 
 class NewMasterDialog(QDialog):
     """Name + how it starts: empty (what a brand-new user sees) or with this
-    computer's settings copied from the main master."""
+    computer's settings copied from the main master — and, as part of making
+    it (Gilbert: creating a collection is not "configuration"), optionally a
+    new, empty collection in an empty folder. Mistakes keep the dialog open."""
 
     def __init__(self, parent):
+        from PyQt6.QtWidgets import QCheckBox, QHBoxLayout, QPushButton
         super().__init__(parent)
-        self.setWindowTitle("New Test Master")
+        self.setWindowTitle("New Master")
         layout = QVBoxLayout(self)
         layout.addWidget(wrapped(
-            "A test master has its own settings, trips and albums. Your main "
-            "master is not touched while you work in it.", self))
+            "A new master has its own settings, trips and albums. Your existing "
+            "masters are not touched while you work in it.", self))
         self.name = QLineEdit()
-        self.name.setPlaceholderText("Name, e.g. Test new user")
+        self.name.setPlaceholderText("Name, e.g. Birds or Plants")
         layout.addWidget(self.name)
-        self.empty = QRadioButton("Start empty — see SpeciesViewer as a new user does")
+        self.empty = QRadioButton("Start with SpeciesViewer's default settings")
         self.copy = QRadioButton("Copy this computer's settings from the main master "
                                  "(PhotoLab, window sizes — no data, no website)")
         self.empty.setChecked(True)
         layout.addWidget(self.empty)
         layout.addWidget(self.copy)
+        self.with_collection = QCheckBox(
+            "Also create a new, empty collection in this folder (it must be empty or new):")
+        self.with_collection.setChecked(True)
+        layout.addWidget(self.with_collection)
+        row = QHBoxLayout()
+        self.folder = QLineEdit()
+        self.folder.setPlaceholderText(r"e.g. D:\Nature\Plants")
+        browse = QPushButton("Browse…")
+        browse.clicked.connect(self._browse)
+        row.addWidget(self.folder, 1)
+        row.addWidget(browse)
+        layout.addLayout(row)
+        self.with_collection.toggled.connect(self.folder.setEnabled)
+        self.with_collection.toggled.connect(browse.setEnabled)
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok
                                    | QDialogButtonBox.StandardButton.Cancel)
-        buttons.accepted.connect(self.accept)
+        buttons.accepted.connect(self._check_and_accept)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
-        self.resize(520, self.sizeHint().height())
+        self.resize(560, self.sizeHint().height())
+
+    def _browse(self):
+        from PyQt6.QtWidgets import QFileDialog
+        chosen = QFileDialog.getExistingDirectory(
+            self, "Choose an EMPTY folder for the new collection")
+        if chosen:
+            self.folder.setText(chosen)
+
+    def _check_and_accept(self):
+        """Everything that could fail cheaply is checked BEFORE anything is
+        made: a taken name or a full folder must not leave half a master."""
+        from pathlib import Path
+        from engine.master_create import CreateMasterError, check_folder
+        try:
+            masters.check_new_name(self.name.text())
+            if self.with_collection.isChecked():
+                if not self.folder.text().strip():
+                    raise CreateMasterError("Choose a folder for the collection, "
+                                            "or untick the option.")
+                check_folder(Path(self.folder.text().strip()))
+        except (masters.MasterError, CreateMasterError) as e:
+            QMessageBox.warning(self, "New Master", str(e))
+            return
+        self.accept()
 
 
 def _new_master(main_window) -> None:
+    from pathlib import Path
+    from PyQt6.QtCore import Qt
+    from PyQt6.QtWidgets import QApplication
+    from engine.master_create import make_collection, point_master_at
     from utils.config import CONFIG_FILENAME
     dlg = NewMasterDialog(main_window)
     if dlg.exec() != QDialog.DialogCode.Accepted:
@@ -113,15 +158,34 @@ def _new_master(main_window) -> None:
     if dlg.copy.isChecked():
         main = masters.main_master(masters.load())
         source = masters.folder_of(main) / "config" / CONFIG_FILENAME
+    folder = Path(dlg.folder.text().strip()) if dlg.with_collection.isChecked() else None
+    # Collection first, then the master: if the collection fails there is no
+    # master pointing at half a folder.
+    if folder:
+        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+        try:
+            make_collection(folder)
+        except Exception as e:
+            QApplication.restoreOverrideCursor()
+            main_window.logger.warning(f"New Master: collection failed: {e}")
+            QMessageBox.warning(main_window, "New Master",
+                                f"The collection could not be created:\n{e}\n\n"
+                                "No master was added.")
+            return
+        QApplication.restoreOverrideCursor()
     try:
         entry = masters.create(dlg.name.text(), copy_machine_settings_from=source)
-    except masters.MasterError as e:
-        QMessageBox.warning(main_window, "New Test Master", str(e))
+        if folder:
+            point_master_at(masters.folder_of(entry) / "config" / CONFIG_FILENAME, folder)
+    except (masters.MasterError, OSError) as e:
+        QMessageBox.warning(main_window, "New Master", str(e))
         return
-    main_window.logger.info(f"New master “{entry['name']}” → {masters.folder_of(entry)}")
+    main_window.logger.info(f"New master “{entry['name']}” → {masters.folder_of(entry)}"
+                            + (f", collection in {folder}" if folder else ""))
     main_window.rebuild_menu()            # list it in Master ▸ Masters
     _ask_restart(main_window, entry["name"],
-                 f"The master “{entry['name']}” is ready.")
+                 f"The master “{entry['name']}” is ready"
+                 + (f", with its collection in {folder}." if folder else "."))
 
 
 def _make_main(main_window) -> None:
@@ -130,14 +194,14 @@ def _make_main(main_window) -> None:
     answer = QMessageBox.question(
         main_window, "Make main master",
         f"Make “{name}” your main master?\n\n"
-        f"“{old}” stays available as a test master. Nothing is moved or deleted.")
+        f"“{old}” stays available as one of your masters. Nothing is moved or deleted.")
     if answer != QMessageBox.StandardButton.Yes:
         return
     masters.make_main(name)
     main_window.logger.info(f"Main master is now “{name}” (was “{old}”).")
     main_window.rebuild_menu()
     _ask_restart(main_window, name,
-                 "The window shows the change (no TEST label) after a restart.")
+                 "The window shows the change after a restart.")
 
 
 def _rename(main_window) -> None:
@@ -274,7 +338,7 @@ def masters_menu(main_window) -> dict:
             enabled=(lambda o=is_open: not o),
             tooltip="Open now" if is_open else "Close and reopen SpeciesViewer with this master")
     menu[f"{MenuSpec.separator()}_masters_0"] = None
-    menu["New Test Master…"] = MenuSpec(callback=lambda *_: _new_master(main_window))
+    menu["New Master…"] = MenuSpec(callback=lambda *_: _new_master(main_window))
     if not open_is_main:
         menu[f"Make “{masters.ACTIVE['name']}” the Main Master…"] = MenuSpec(
             callback=lambda *_: _make_main(main_window))

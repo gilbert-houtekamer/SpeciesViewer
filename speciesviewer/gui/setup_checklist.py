@@ -41,7 +41,8 @@ def _folder(path: str, missing_text: str):
 def master_collection_state():
     path = _config.get("master", "masterbiotadatabase", fallback="").strip()
     if not path:
-        return MISSING, "No collection yet — create a new one, or choose an existing one."
+        return MISSING, ("No collection yet. Create one with Master ▸ Masters ▸ "
+                         "Create Master Collection…, or choose an existing one.")
     if not (Path(path) / "metadata" / "active" / "data_pictures.csv").is_file():
         return MISSING, f"{path} — not a master collection (no metadata/active/ found)"
     return OK, path
@@ -125,7 +126,6 @@ class SetupChecklistDialog(QDialog):
         from settings.photolablocation import PhotoLabLocationDialog
         from settings.rawsettings import RawProcessingDialog
         from settings.reposettings import RepoSettingsDialog
-        from gui.master_switch import create_collection
         mw = self.main_window
 
         def repo(tab):
@@ -134,12 +134,11 @@ class SetupChecklistDialog(QDialog):
         # (title, needed for, check, [(button, action)]) — Gilbert's order.
         self.spec = [
             ("Master collection", "everything", master_collection_state,
-             [("Create…", lambda: create_collection(mw)),
-              ("Choose…", repo(RepoSettingsDialog.TAB_MASTER))]),
+             [("Choose…", repo(RepoSettingsDialog.TAB_MASTER))]),
             ("Website publishing", "publishing (optional)", website_state,
              [("Set up…", lambda: self._open(lambda: GlobalSettingsDialog(mw)))]),
-            ("Pictures folder", "trips", pictures_folder_state,
-             [("Choose…", repo(RepoSettingsDialog.TAB_TRIP))]),
+            ("Pictures folder", "unfiled days, trips", pictures_folder_state,
+             [("Choose…", repo(RepoSettingsDialog.TAB_PICTURES))]),
             ("Trips folder", "trips", trips_folder_state,
              [("Choose…", repo(RepoSettingsDialog.TAB_TRIP))]),
             ("Albums folder", "albums", albums_folder_state,
@@ -155,7 +154,7 @@ class SetupChecklistDialog(QDialog):
                 h = QLabel(head)
                 h.setStyleSheet(f"color: {theme.INK_FAINT};")
                 self.grid.addWidget(h, 0, col)
-        self.marks, self.texts, self.button_widgets = [], [], []
+        self.marks, self.texts = [], []
         for r, (title, needed, _check, actions) in enumerate(self.spec, start=1):
             mark = QLabel()
             mark.setStyleSheet("font-weight: bold; font-size: 15px;")
@@ -167,32 +166,24 @@ class SetupChecklistDialog(QDialog):
             self.grid.addWidget(text, r, 2)
             self.grid.addWidget(QLabel(needed), r, 3)
             row_buttons = QHBoxLayout()
-            made = []
             for label, action in actions:
                 b = QPushButton(label)
                 b.clicked.connect(lambda _=False, a=action: a())
                 row_buttons.addWidget(b)
-                made.append((label, b))
             row_buttons.addStretch()
             self.grid.addLayout(row_buttons, r, 4)
             self.marks.append(mark)
             self.texts.append(text)
-            self.button_widgets.append(made)
         self.refresh()
 
     def refresh(self):
-        for (title, _needed, check, _actions), mark, text, buttons in zip(
-                self.spec, self.marks, self.texts, self.button_widgets):
+        for (title, _needed, check, _actions), mark, text in zip(
+                self.spec, self.marks, self.texts):
             state, detail = check()
             symbol, colour = _MARK[state]
             mark.setText(symbol)
             mark.setStyleSheet(f"font-weight: bold; font-size: 15px; color: {colour};")
             text.setText(detail)
-            # One master, one collection: "Create…" only while there is none.
-            for label, b in buttons:
-                if label == "Create…":
-                    b.setEnabled(not _config.get("master", "masterbiotadatabase",
-                                                 fallback="").strip())
 
 
 def master_needs_setup() -> bool:

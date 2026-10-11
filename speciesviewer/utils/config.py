@@ -82,6 +82,7 @@ read_ini(_config, CONFIG_PATH)
 # which raises KeyError on a fresh config (a new user, a new master). Filling
 # them here once is the fix for all those reads; existing values are untouched.
 _ALWAYS_PRESENT = {
+    "Global": (),
     "master": ("masterbiotadatabase", "masterbiotawebroot"),
     "trip": ("tripbiotadatabase", "tripbiotawebroot"),
     "virttrip": ("virttripbiotadatabase", "virttripbiotawebroot"),

@@ -122,3 +122,34 @@ master (`Project.isMasterRepository()`). Tried in a scratch folder, no website:
   day the way a trip shows its days. Matters for the Days → Master route.
 - In the Master Species Viewer you can delete pictures (Gilbert deleted most of
   his 154 there, 2026-10-11) — but there is no day viewer for the master.
+
+## Built: collection as part of New Test Master (2026-10-11, awaiting test)
+
+Gilbert: creating the collection felt like configuration in the checklist,
+while it belongs to creating the master. New Test Master… now has "Also create
+a new, empty collection in this folder" (ticked by default) — one dialog, one
+restart. `engine/master_create.py` split: `make_collection` (touches no
+settings) + `create_master_collection` (open master, checklist) /
+`point_master_at` (a new master's settings file). Name and folder are checked
+before anything is made. `[Global]` joined the always-present config sections:
+a settings file holding only `[master]` would otherwise crash the start.
+
+## Review round (Gilbert, 2026-10-11)
+
+- "New Test Master" → **New Master**; all GUI text written TO the user, not
+  about "the new user" (standing rule from today). A second master may be a real
+  one — birds and plants — so no "TEST" label: the title shows the master's name.
+- The orange strip shows on a master's **first start only** (`masters.first_start`,
+  flag `started` in masters.json); no nag on every start of a master you keep.
+- Checklist: **no Create… button** — creating a collection is not configuration;
+  it lives in Master ▸ Masters (and in New Master…). The row's text says where.
+- **Pictures folder** row kept — Unfiled scans it and the GPS-log folder
+  defaults to `<pictures>/gpslogs` — "needed for: unfiled days, trips". Its two
+  fields moved from the Trip tab to a new **Pictures** tab in Repository Settings.
+
+## Idea, not planned: permanent and temporary masters
+
+Gilbert: maybe several "mains" one day — then the real distinction is
+**permanent** (a collection you keep: birds, plants) versus **temporary** (to
+try something), as a category the user can change. Today one master carries the
+"main" flag. Decide once more than one master has been used for real.
