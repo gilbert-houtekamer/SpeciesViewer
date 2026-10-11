@@ -1,7 +1,7 @@
 # Multiple masters on one machine — plan
 
 *0.4, step 5 prerequisite (backlog ch.20, "SpeciesViewer 0.4 — proposed order").
-Written 2026-10-11. Status: step 1 BUILT (utils/masters.py), awaiting test; steps 2–4 to do.*
+Written 2026-10-11. Status: step 1 SHIPPED 89550ee; step 2 built, awaiting test; steps 3–4 to do.*
 
 ## Why
 
@@ -112,9 +112,11 @@ Master
 Always visible which master you are in:
 - **window title** gets the master name for every master that is not main
   (`SpeciesViewer 0.4 — TEST: Test new user`);
-- a thin **coloured strip** under the menu bar for every master that is not
-  main, so a screenshot never leaves doubt. The main master shows nothing — no
-  change to today's look.
+- an orange **strip** under the menu bar for a master that is not main AND
+  whose publishing is not set up yet — an uncustomised test master. Once its
+  upload server/account/folder are filled in, the strip goes (Gilbert,
+  2026-10-11); the title still says TEST. **×** hides it for the session. The
+  main master shows nothing — no change to today's look.
 
 ## "New test master…" — two kinds
 

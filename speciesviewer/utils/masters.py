@@ -134,6 +134,12 @@ IS_MAIN = bool(ACTIVE.get("main"))
 IS_LEGACY_FOLDER = ACTIVE["folder"] in (".", "")
 
 
+def banner_text() -> str:
+    """What the window says about the master: "" for the main master (no
+    change to its look), otherwise a label naming the test master."""
+    return "" if IS_MAIN else f"TEST: {ACTIVE['name']}"
+
+
 def describe() -> str:
     """One line for the start-up log."""
     role = "main master" if IS_MAIN else "TEST master (not main)"

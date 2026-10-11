@@ -88,7 +88,13 @@ class MainWindow(QMainWindow):
         self.virttrip_table = None
         self.state_keys = None
         self.state_labels = None
-        self.setWindowTitle(f"{APP_NAME} {__version__}")
+        # A master that is not the main one says so in the title AND in a strip
+        # under the menu bar (below), so no screenshot leaves doubt which
+        # master was open. The main master looks exactly as before.
+        from utils import masters
+        _banner = masters.banner_text()
+        self.setWindowTitle(f"{APP_NAME} {__version__}"
+                            + (f" — {_banner}" if _banner else ""))
         # Create and attach status bar
         self.status_bar = QStatusBar()
         self.setStatusBar(self.status_bar)        
@@ -316,6 +322,28 @@ class MainWindow(QMainWindow):
 
         widget = QWidget()
         layout = QVBoxLayout(widget)
+        # The strip is for a test master that is still uncustomised: once its
+        # publishing is set up it is a master someone works in, and the title
+        # alone says which one it is. × hides it for this session only.
+        from utils import site_config
+        if _banner and not site_config.publishing_set_up():
+            strip = QWidget()
+            # Same strong orange in light and dark: it must not read as one of
+            # the theme's own panels (yellow work area, green log).
+            strip.setStyleSheet("background-color: #e8710a; color: white;"
+                                " font-weight: bold;")
+            strip_row = QHBoxLayout(strip)
+            strip_row.setContentsMargins(6, 2, 6, 2)
+            strip_label = QLabel(f"{_banner} — not your main master")
+            strip_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            strip_row.addWidget(strip_label, 1)
+            strip_close = QPushButton("✕")
+            strip_close.setFlat(True)
+            strip_close.setToolTip("Hide for this session")
+            strip_close.setStyleSheet("border: none; padding: 0 6px;")
+            strip_close.clicked.connect(strip.hide)
+            strip_row.addWidget(strip_close)
+            layout.addWidget(strip)
         layout.addWidget(self.vsplitter)
         widget.setLayout(layout)
         self.setCentralWidget(widget)
