@@ -12,6 +12,7 @@ Opened by itself at start-up while the open master has no collection.
 from __future__ import annotations
 
 import shutil
+import sys
 from pathlib import Path
 
 from PyQt6.QtWidgets import (QDialog, QGridLayout, QHBoxLayout, QLabel,
@@ -77,16 +78,18 @@ def exiftool_state():
                      "ExifTool — Locate… tells you where to get it.")
 
 
+# Windows only for now: there is no macOS or Linux download of SpeciesViewer
+# yet, so a how-to for them would be premature (Gilbert, 2026-10-11).
 EXIFTOOL_HOWTO = (
     "SpeciesViewer reads and writes picture data with ExifTool, free software "
-    "by Phil Harvey. Use the official version from exiftool.org:\n\n"
-    "Windows — download the Windows 64-bit package and unzip it. Rename "
-    "“exiftool(-k).exe” to “exiftool.exe” and keep the “exiftool_files” folder "
-    "beside it. Then choose that exiftool.exe here.\n\n"
-    "macOS — install the macOS package from exiftool.org; SpeciesViewer then "
-    "finds it by itself.\n\n"
-    "Linux — install it with your package manager (on Debian and Ubuntu: "
-    "libimage-exiftool-perl).")
+    "by Phil Harvey. SpeciesViewer comes with a tested version; choose another "
+    "one here only to use a newer version.\n\n"
+    "Use the official version from exiftool.org: download the Windows 64-bit "
+    "package and unzip it. Rename “exiftool(-k).exe” to “exiftool.exe” and keep "
+    "the “exiftool_files” folder beside it. Then choose that exiftool.exe here."
+    if sys.platform.startswith("win") else
+    "SpeciesViewer reads and writes picture data with ExifTool, free software "
+    "by Phil Harvey. Install the official version from exiftool.org.")
 
 
 def locate_exiftool(parent) -> None:

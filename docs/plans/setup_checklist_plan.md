@@ -179,3 +179,18 @@ both write routes and preview extraction, on the PATH and with a chosen copy.
   it calmly when the collection has never held a picture.
 - The pictures and colour labels of the test trip loaded correctly before any
   Read & Summarize — the exiftool lookup works in real use.
+
+## Built: the download ships the official exiftool (2026-10-11, tested by Gilbert)
+
+- Lookup order **chosen → shipped → PATH**: a copy chosen with Locate… wins, so
+  exiftool can be upgraded without a new SpeciesViewer (Gilbert). A choice is
+  stored per master — his SVv3 still runs Strawberry because he chose it there.
+- `tools/exiftool_pin.json` pins the shipped version: official Windows 64-bit
+  package 13.59, file name + SHA-256. `tools/svr_build_zip.py` finds the
+  download (build/vendor/, Downloads, or --exiftool-zip), refuses any other file
+  BEFORE building, unpacks it into `exiftool/` beside the .exe, renames
+  `exiftool(-k).exe`, and fails unless it reports the pinned version.
+- Tested: 13.59 read / write / preview on OM-1 II ORF; the unpacked download on a
+  PATH with no exiftool uses its own; Gilbert's Main shows "shipped with
+  SpeciesViewer".
+- Locate… text: Windows only — no macOS/Linux download yet, so no how-to for them.

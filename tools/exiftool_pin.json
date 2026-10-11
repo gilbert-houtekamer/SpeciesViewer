@@ -1,0 +1,7 @@
+{
+  "_why": "The exiftool shipped in the SpeciesViewer download. The official Windows 64-bit package from exiftool.org; tools/svr_build_zip.py refuses any file whose SHA-256 differs. To upgrade: download the new package, test it, update all three fields.",
+  "version": "13.59",
+  "zip": "exiftool-13.59_64.zip",
+  "sha256": "44b512b25af500724ba579d0a53c8fc5851628b692dd5e5d94ae4a15c2cba9ec",
+  "tested": "2026-10-11, read / write (persistent and one-off) / preview extraction on OM-1 Mark II ORF"
+}

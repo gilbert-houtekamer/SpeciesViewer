@@ -105,6 +105,11 @@ It is free software under the same terms as Perl itself: the Artistic License or
 General Public License. It is not derived from SpeciesViewer and SpeciesViewer is not derived
 from it; they communicate only through the command line.
 
+The Windows download of SpeciesViewer **includes** the official ExifTool package from
+exiftool.org, unchanged except for the rename its own instructions ask for
+(`exiftool(-k).exe` → `exiftool.exe`), in the `exiftool` folder beside `SpeciesViewer.exe`,
+with its own README. The version is pinned in `tools/exiftool_pin.json`.
+
 **DxO PhotoLab** is proprietary software that SpeciesViewer interoperates with by reading and
 writing `.dop` sidecar files. No DxO code is included or required to build SpeciesViewer.
 

@@ -1,8 +1,10 @@
 """Which exiftool SpeciesViewer runs — one answer for every caller.
 
 ONE JOB: the program to start, in this order:
-  1. shipped — an exiftool folder beside SpeciesViewer.exe in a packaged build;
-  2. chosen — [Global] exiftool_path, set with Setup Checklist ▸ exiftool ▸ Locate…;
+  1. chosen — [Global] exiftool_path, set with Setup Checklist ▸ exiftool ▸ Locate…;
+     FIRST, so a newer exiftool can be installed without a new SpeciesViewer;
+  2. shipped — the exiftool folder beside SpeciesViewer.exe in the download
+     (tools/svr_build_zip.py puts the pinned official version there);
   3. the PATH — by NAME: "exiftool.exe" on Windows, "exiftool" elsewhere.
 
 Step 3 must be exactly pyexiftool's own default (constants.DEFAULT_EXECUTABLE),
@@ -38,16 +40,16 @@ def chosen() -> Path | None:
 
 def exe() -> str:
     """What to start: a full path when shipped or chosen, else the name."""
-    found = shipped() or chosen()
+    found = chosen() or shipped()
     return str(found) if found else _EXE
 
 
 def describe() -> tuple[str | None, str]:
     """(the program that will run, or None; where it comes from) — for the
     Setup Checklist. For the PATH this is what Windows itself would start."""
-    if shipped():
-        return str(shipped()), "shipped with SpeciesViewer"
     if chosen():
         return str(chosen()), "chosen by you"
+    if shipped():
+        return str(shipped()), "shipped with SpeciesViewer"
     on_path = shutil.which(_EXE)
     return (on_path, "found on the PATH") if on_path else (None, "")
