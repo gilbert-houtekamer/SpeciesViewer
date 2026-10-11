@@ -93,8 +93,8 @@ class MainWindow(QMainWindow):
         # master was open. The main master looks exactly as before.
         from utils import masters
         _banner = masters.banner_text()
-        self.setWindowTitle(f"{APP_NAME} {__version__}"
-                            + (f" — {_banner}" if _banner else ""))
+        self._master_strip_label = None
+        self.refresh_master_banner()
         # Create and attach status bar
         self.status_bar = QStatusBar()
         self.setStatusBar(self.status_bar)        
@@ -334,9 +334,9 @@ class MainWindow(QMainWindow):
                                 " font-weight: bold;")
             strip_row = QHBoxLayout(strip)
             strip_row.setContentsMargins(6, 2, 6, 2)
-            strip_label = QLabel(f"{_banner} — not your main master")
-            strip_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            strip_row.addWidget(strip_label, 1)
+            self._master_strip_label = QLabel(f"{_banner} — not your main master")
+            self._master_strip_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            strip_row.addWidget(self._master_strip_label, 1)
             strip_close = QPushButton("✕")
             strip_close.setFlat(True)
             strip_close.setToolTip("Hide for this session")
@@ -812,6 +812,16 @@ class MainWindow(QMainWindow):
 
         self.yellow_builder.populate_tabs(self.yellow_tabs)
         self.yellow_tabs_built = True         
+
+    def refresh_master_banner(self):
+        """Title (and the strip, when shown) name the open master — again
+        after Master ▸ Masters ▸ Rename renamed it."""
+        from utils import masters
+        banner = masters.banner_text()
+        self.setWindowTitle(f"{APP_NAME} {__version__}"
+                            + (f" — {banner}" if banner else ""))
+        if self._master_strip_label is not None and banner:
+            self._master_strip_label.setText(f"{banner} — not your main master")
 
     def rebuild_menu(self):
         self.menuBar().clear()

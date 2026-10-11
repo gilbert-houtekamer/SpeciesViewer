@@ -154,6 +154,73 @@ def make_main(name: str) -> None:
     save(data)
 
 
+def rename(old: str, new: str) -> None:
+    """Change a master's display name. Its folder keeps its name. When `old`
+    is the master THIS process has open, the process follows (ACTIVE and
+    SV_MASTER) — otherwise the next batch step would ask for a master that no
+    longer exists, and stop."""
+    new = new.strip()
+    if not new:
+        raise MasterError("A master needs a name.")
+    data = load()
+    entry = find(data, old)
+    if any(m is not entry and m["name"].lower() == new.lower() for m in data["masters"]):
+        raise MasterError(f"A master named {new!r} already exists.")
+    entry["name"] = new
+    if data["active"] == old:
+        data["active"] = new
+    save(data)
+    if ACTIVE["name"] == old:
+        ACTIVE["name"] = new
+        os.environ[ENV_VAR] = new
+
+
+def trash_dir() -> Path:
+    return app_data_dir() / ".trash"
+
+
+def remove(name: str) -> Path:
+    """Zip a master's app-data folder to .trash, verify the zip, then delete
+    the folder and its entry. Returns the zip. Never touches the master's
+    DATA (pictures, CSVs) — only its settings, state and cache here.
+
+    Refused for the main master, and for the one that is open (here or as
+    the next start's). db/*.db is left out of the zip: it is rebuilt from the
+    CSVs and can be hundreds of MB. The pending-writes log beside it is kept."""
+    import shutil
+    import time
+    import zipfile
+    data = load()
+    entry = find(data, name)
+    if entry.get("main"):
+        raise MasterError(f"“{name}” is the main master. Make another master "
+                          "the main one first.")
+    if name in (ACTIVE["name"], data["active"]):
+        raise MasterError(f"“{name}” is open. Switch to another master first.")
+    folder = folder_of(entry)
+    if folder.resolve() == app_data_dir().resolve():
+        raise MasterError(f"“{name}” uses the shared app-data folder and "
+                          "cannot be removed this way.")
+    trash_dir().mkdir(parents=True, exist_ok=True)
+    zip_path = trash_dir() / f"master {_folder_name(name)} {time.strftime('%Y-%m-%d %H%M%S')}.zip"
+    files = [p for p in folder.rglob("*") if p.is_file()
+             and not (p.parent.name == "db" and p.suffix == ".db")] if folder.exists() else []
+    with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as z:
+        z.writestr("masters-entry.json", json.dumps(entry, indent=2, ensure_ascii=False))
+        for p in files:
+            z.write(p, p.relative_to(folder))
+    with zipfile.ZipFile(zip_path) as z:
+        bad = z.testzip()
+        if bad or len(z.namelist()) != len(files) + 1:
+            raise MasterError(f"The backup {zip_path} did not verify ({bad or 'file count'}); "
+                              "nothing was removed.")
+    data["masters"].remove(entry)
+    save(data)
+    if folder.exists():
+        shutil.rmtree(folder)
+    return zip_path
+
+
 def set_active(name: str) -> None:
     """Make `name` the master the NEXT start opens. The running process keeps
     its own (see INVARIANT)."""

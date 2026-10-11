@@ -28,7 +28,6 @@ import gui.unfiled_view as unfiled_view
 import os
 from settings.globalsettings import GlobalSettingsDialog
 from settings.lookfeel import LookFeelDialog
-from settings.reposettings import RepoSettingsDialog
 from settings.speciessettings import SpeciesSettingsDialog
 from settings.dbsettings import DatabaseSettingsDialog
 from settings.rawsettings import RawProcessingDialog
@@ -1729,9 +1728,6 @@ def build_menu_spec(main_window):
                 ),
                 "Look & Feel…": MenuSpec(
                     callback=lambda: LookFeelDialog(main_window).exec(),
-                ),
-                "Repository Settings": MenuSpec(
-                    callback=lambda: RepoSettingsDialog(main_window).exec(),
                 ),
                 "Species Settings": MenuSpec(
                     callback=lambda: SpeciesSettingsDialog(main_window).exec(),

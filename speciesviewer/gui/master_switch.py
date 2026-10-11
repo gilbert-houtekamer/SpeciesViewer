@@ -1,5 +1,5 @@
-"""Master ▸ Masters — switch between masters, add a test master, move the
-"main" flag (docs/plans/multiple_masters_plan.md, step 3).
+"""Master ▸ Masters — switch between masters, add, rename and remove one, move the
+"main" flag (docs/plans/multiple_masters_plan.md, steps 3-4).
 
 ONE JOB: the GUI over utils/masters.py. Every change that alters which master
 is open goes through a restart: the whole app caches the open master's state,
@@ -12,10 +12,11 @@ import os
 import subprocess
 import sys
 
-from PyQt6.QtWidgets import (QDialog, QDialogButtonBox, QLineEdit, QMessageBox,
-                             QRadioButton, QVBoxLayout)
+from PyQt6.QtWidgets import (QDialog, QDialogButtonBox, QInputDialog, QLineEdit,
+                             QMessageBox, QRadioButton, QVBoxLayout)
 
 from gui.menu import MenuSpec
+from settings.reposettings import RepoSettingsDialog
 from gui.widgets import wrapped
 from utils import masters
 
@@ -139,6 +140,58 @@ def _make_main(main_window) -> None:
                  "The window shows the change (no TEST label) after a restart.")
 
 
+def _rename(main_window) -> None:
+    names = [m["name"] for m in masters.load()["masters"]]
+    old, ok = QInputDialog.getItem(main_window, "Rename Master",
+                                   "Master to rename:", names,
+                                   names.index(masters.ACTIVE["name"]), False)
+    if not ok:
+        return
+    new, ok = QInputDialog.getText(main_window, "Rename Master",
+                                   f"New name for “{old}”:", text=old)
+    if not ok or new.strip() == old:
+        return
+    try:
+        masters.rename(old, new)
+    except masters.MasterError as e:
+        QMessageBox.warning(main_window, "Rename Master", str(e))
+        return
+    main_window.logger.info(f"Master “{old}” renamed to “{new.strip()}”.")
+    main_window.refresh_master_banner()
+    main_window.rebuild_menu()
+
+
+def _remove(main_window) -> None:
+    data = masters.load()
+    removable = [m["name"] for m in data["masters"]
+                 if not m.get("main") and m["name"] not in (masters.ACTIVE["name"], data["active"])]
+    if not removable:
+        QMessageBox.information(
+            main_window, "Remove Master",
+            "There is no master to remove. The main master and the open master "
+            "cannot be removed.")
+        return
+    name, ok = QInputDialog.getItem(main_window, "Remove Master",
+                                    "Master to remove:", removable, 0, False)
+    if not ok:
+        return
+    answer = QMessageBox.question(
+        main_window, "Remove Master",
+        f"Remove the master “{name}” from SpeciesViewer?\n\n"
+        "Its settings, trips list and other remembered state are zipped to the "
+        "trash first. Pictures and other data folders you chose for it are NOT "
+        "deleted.")
+    if answer != QMessageBox.StandardButton.Yes:
+        return
+    try:
+        zip_path = masters.remove(name)
+    except (masters.MasterError, OSError) as e:
+        QMessageBox.warning(main_window, "Remove Master", str(e))
+        return
+    main_window.logger.info(f"Master “{name}” removed; its settings are in {zip_path}")
+    main_window.rebuild_menu()
+
+
 def masters_menu(main_window) -> dict:
     """The Master ▸ Masters submenu, built from masters.json. The open master
     is ticked and greyed (you are in it); every other one switches to it."""
@@ -165,4 +218,11 @@ def masters_menu(main_window) -> dict:
     if not open_is_main:
         menu[f"Make “{masters.ACTIVE['name']}” the Main Master…"] = MenuSpec(
             callback=lambda *_: _make_main(main_window))
+    menu["Rename Master…"] = MenuSpec(callback=lambda *_: _rename(main_window))
+    menu["Remove Master…"] = MenuSpec(callback=lambda *_: _remove(main_window))
+    menu[f"{MenuSpec.separator()}_masters_1"] = None
+    # Moved here from File ▸ Settings: these folders belong to the OPEN master.
+    menu["Repository Settings…"] = MenuSpec(
+        callback=lambda *_: RepoSettingsDialog(main_window).exec(),
+        tooltip="Where this master's data, trips and albums live")
     return menu

@@ -24,7 +24,7 @@ segment.
 | Where it lives | Form | Written by |
 |---|---|---|
 | **Trip Web root** field, Select or Update Trip | `/trips/brazil2026` | you — **once, at create** (read-only afterwards) |
-| `sv_config_<host>.ini` `[trip] tripbiotawebroot` | `/trips/brazil2026` | that dialog, and File ▸ Settings ▸ Repository Settings |
+| `sv_config_<host>.ini` `[trip] tripbiotawebroot` | `/trips/brazil2026` | that dialog, and Master ▸ Masters ▸ Repository Settings |
 | `svconfig.ini` `[repository] BiotaWebRoot` | `/trips/brazil2026` | `generate_svconfig_ini()`, **regenerated before every batch run** |
 | `<trip>/trip.ini` `trip_name` **and** `web_slug` | `brazil2026` | `generate_trip_ini()` — `Path(webroot).name` |
 | `<master>/admin/trip_admin.csv`, column **6** | `brazil2026` | the four index writers below |
@@ -113,7 +113,7 @@ to remove"* and leaves the old row exactly where it was.
 
 Which is why **Trip Web root is read-only in update mode** (grey, with the
 reason in its tooltip). Create mode is where the slug is chosen. Renaming later
-is a deliberate visit to **File ▸ Settings ▸ Repository Settings**, followed by the repair
+is a deliberate visit to **Master ▸ Masters ▸ Repository Settings**, followed by the repair
 below — and it is worth avoiding: a slug that is already on the public web has
 been indexed by search engines and may sit in somebody's bookmarks.
 

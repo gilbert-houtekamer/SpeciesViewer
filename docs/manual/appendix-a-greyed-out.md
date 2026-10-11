@@ -165,7 +165,7 @@ Work down this list; the first "no" is almost always the answer.
 
 1. **Is anything active?** Look at the mode strip and the left column. Most
    greying is simply nothing selected in that scope.
-2. **Is a master configured?** *File ▸ Settings ▸ Repository Settings*. An empty
+2. **Is a master configured?** *Master ▸ Masters ▸ Repository Settings…*. An empty
    master path greys out the Master menu, half of To Master, and both Album
    creation items.
 3. **Is this a SmallMaster install?** Then Create Album and Retire Trip stay

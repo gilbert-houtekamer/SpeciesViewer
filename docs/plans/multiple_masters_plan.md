@@ -1,7 +1,7 @@
 # Multiple masters on one machine — plan
 
 *0.4, step 5 prerequisite (backlog ch.20, "SpeciesViewer 0.4 — proposed order").
-Written 2026-10-11. Status: steps 1–2 SHIPPED (89550ee, f69cfed); step 3 built (Master ▸ Masters), awaiting test; step 4 to do.*
+Written 2026-10-11. Status: steps 1–3 SHIPPED (89550ee, f69cfed, a8ea017); step 4 built (rename, remove, Repository Settings moved), awaiting test.*
 
 ## Why
 

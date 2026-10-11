@@ -9,12 +9,35 @@ What remains is what you do *with* and *to* the collection itself.
 
 | Item | Needs |
 |---|---|
+| Masters ▸ … | Nothing |
 | Edit Species List | A master |
 | Add Pictures to Master… | A master |
 | Species Viewer | A master |
 | Species Map | A master |
 | Species Without a Website Picture… | A master |
 | Maintain Master Database ▸ … | A master |
+
+---
+
+## Masters
+
+*Needs: nothing.*
+
+One computer can hold several masters: your real one and one or more **test
+masters** to try things in. Each has its own settings, its own trips and albums
+list and its own database cache, so working in a test master never touches
+another master. Exactly one master is the **main master**; any other one says
+`TEST: <name>` in the window title, and shows an orange strip under the menu
+bar until its publishing is set up (× hides the strip for the session).
+
+| Item | What it does |
+|---|---|
+| *the list of masters* | The open one is ticked. Click another to switch: SpeciesViewer saves, closes and starts again with it. |
+| New Test Master… | A name, and how it starts: **empty** — exactly what a new user sees — or with **this computer's settings** copied from the main master (PhotoLab, window sizes; no data folders, no website). |
+| Make "…" the Main Master… | Shown when the open master is not the main one. Moves the "main" flag; nothing is moved or deleted. |
+| Rename Master… | The name only; nothing on disk moves. |
+| Remove Master… | Not for the main or the open master. Its settings are zipped to the trash first; its pictures and data folders are **not** deleted. |
+| Repository Settings… | Where the open master's data lives: the master, the trips root, the albums root, the local pictures root. The single most consequential settings dialog — most "nothing is enabled" states trace back to a path here being empty. |
 
 ---
 

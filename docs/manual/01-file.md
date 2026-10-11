@@ -39,11 +39,10 @@ Fonts, colours, layout density — and which metadata fields the viewer cards
 show. Not merely cosmetic: a card set to show the fields you actually judge on
 makes culling faster.
 
-### Repository Settings
+### Repository Settings — moved
 
-Where the repositories are: the master, the trips root, the albums root, and the
-local pictures root. This is the single most consequential settings dialog —
-most "nothing is enabled" states trace back to a path here being empty.
+Now under [Master ▸ Masters ▸ Repository Settings…](06-master.md#masters): the
+folders it sets belong to the master that is open.
 
 ### Species Settings
 
