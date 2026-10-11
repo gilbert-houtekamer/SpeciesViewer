@@ -1,7 +1,7 @@
 # Website optional — SpeciesViewer without publishing
 
-*Opened 2026-10-11 from docs/plans/setup_checklist_plan.md. Status: QUESTION
-ONLY — nothing investigated, nothing built.*
+*Opened 2026-10-11 from docs/plans/setup_checklist_plan.md. Status: QUESTION;
+first findings below.*
 
 ## Why
 
@@ -29,3 +29,16 @@ question.
 An audit, report only: every place that reads the upload settings or uploads,
 what it does when they are empty, and which level it belongs to. Then decide
 per place: unavailable (greyed, with the reason), skipped, or local-only.
+
+## Findings so far
+
+1. **Create Trip / Create Master** (`batch/sv1MakeReposity.py`) — FIXED
+   2026-10-11: the local site is always made; the upload only when a website is
+   set up.
+2. **Add Pictures to Master fails at the commit** (`batch/sv7WriteCommit.py`) —
+   level 1, so it blocks the whole Days → Master route. Found by Gilbert,
+   2026-10-11, in an empty test master with 154 pictures: everything up to the
+   freeze works; `main()` then checks `connectivity.publish_reachable()` and
+   stops with "Publishing is not set up". Safe — it stops BEFORE
+   `commitProjectFiles`, so nothing reaches the master's CSVs. Same step serves
+   To Master for trips.

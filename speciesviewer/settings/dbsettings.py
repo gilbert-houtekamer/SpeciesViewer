@@ -414,6 +414,11 @@ class DatabaseSettingsDialog(QDialog):
                 "A snapshot of a broken master is not a backup — keeping it would "
                 "eventually push the last good one out of the rotation.\n\n"
                 "Press Check now to see what is wrong.")
+        elif res.get("skipped"):
+            self._last_check = res.get("report")
+            QMessageBox.information(
+                self, "Back up",
+                "Nothing to back up yet — this collection is still empty.")
         else:
             self._last_check = res.get("report")
             QMessageBox.information(

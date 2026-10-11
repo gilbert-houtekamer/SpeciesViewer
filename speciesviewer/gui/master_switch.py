@@ -215,6 +215,43 @@ def _restore(main_window) -> None:
     _ask_restart(main_window, entry["name"], f"The master “{entry['name']}” is back.")
 
 
+def _has_collection() -> bool:
+    from utils.config import _config
+    return bool(_config.get("master", "masterbiotadatabase", fallback="").strip())
+
+
+def _create_collection(main_window) -> None:
+    """Choose an empty folder, make it a master collection, restart into it."""
+    from pathlib import Path
+    from PyQt6.QtCore import Qt
+    from PyQt6.QtWidgets import QApplication, QFileDialog
+    from engine.master_create import CreateMasterError, check_folder, create_master_collection
+    chosen = QFileDialog.getExistingDirectory(
+        main_window, "Choose an EMPTY folder for the new master collection")
+    if not chosen:
+        return
+    folder = Path(chosen)
+    try:
+        check_folder(folder)
+    except CreateMasterError as e:
+        QMessageBox.warning(main_window, "Create Master Collection", str(e))
+        return
+    QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+    try:
+        create_master_collection(folder)
+    except Exception as e:
+        QApplication.restoreOverrideCursor()
+        main_window.logger.warning(f"Create Master Collection failed: {e}")
+        QMessageBox.warning(main_window, "Create Master Collection",
+                            f"The collection could not be created:\n{e}\n\n"
+                            "This master's settings are unchanged.")
+        return
+    QApplication.restoreOverrideCursor()
+    _ask_restart(main_window, masters.ACTIVE["name"],
+                 f"The master collection is ready in {folder}.\n"
+                 "SpeciesViewer needs a restart to open it.")
+
+
 def masters_menu(main_window) -> dict:
     """The Master ▸ Masters submenu, built from masters.json. The open master
     is ticked and greyed (you are in it); every other one switches to it."""
@@ -248,6 +285,12 @@ def masters_menu(main_window) -> dict:
         enabled=lambda: bool(masters.trashed_masters()),
         tooltip="Bring back a removed master from the trash")
     menu[f"{MenuSpec.separator()}_masters_1"] = None
+    # One master, one collection: offered only while this master has none.
+    menu["Create Master Collection…"] = MenuSpec(
+        callback=lambda *_: _create_collection(main_window),
+        enabled=lambda: not _has_collection(),
+        tooltip="Start a new, empty collection in an empty folder "
+                "(only while this master has none)")
     # Moved here from File ▸ Settings: these folders belong to the OPEN master.
     menu["Repository Settings…"] = MenuSpec(
         callback=lambda *_: RepoSettingsDialog(main_window).exec(),

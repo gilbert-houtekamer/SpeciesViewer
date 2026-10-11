@@ -74,6 +74,9 @@ class Report:
     findings: list[Finding] = field(default_factory=list)
     counts: dict = field(default_factory=dict)
     seconds: float = 0.0
+    # A collection that has never held a picture (just created). Empty tables
+    # are then the truth, not the 2026-07-14 wipe — see _check_locked.
+    empty_collection: bool = False
 
     @property
     def errors(self) -> list[Finding]:
@@ -88,6 +91,8 @@ class Report:
         return not self.errors
 
     def summary(self) -> str:
+        if self.empty_collection and not self.errors:
+            return "a new, empty collection"
         if self.errors:
             return f"{len(self.errors)} problem(s), {len(self.warnings)} warning(s)"
         if self.warnings:
@@ -151,6 +156,21 @@ def _check_locked(db, con, act, rep: "Report", t0: float) -> "Report":
         "species.csv": con.execute("SELECT COUNT(*) FROM species").fetchone()[0],
     }
 
+    # A NEW collection is empty, and that is not an error. It is told apart from
+    # the 2026-07-14 wipe (CSV emptied, DB rebuilt from it — both agree at zero)
+    # by what is on DISK: a master that ever held a picture has files under
+    # biota/. Only then are empty tables a disaster; with no picture files
+    # anywhere there is nothing to have lost. (next() stops at the first file,
+    # so a full master costs one directory step.)
+    root = act.parent.parent
+    pictures_on_disk = next((p for p in (root / "biota").rglob("*") if p.is_file()),
+                            None) is not None
+    rep.empty_collection = (
+        not pictures_on_disk
+        and db_counts["data_pictures.csv"] == 0 and db_counts["data_files.csv"] == 0
+        and _csv_rows(act / "data_pictures.csv") == 0
+        and _csv_rows(act / "data_files.csv") == 0)
+
     # 1. TWO KINGS: the CSV and the DB must hold the same number of rows.
     for name, n_db in db_counts.items():
         n_csv = _csv_rows(act / name)
@@ -161,7 +181,7 @@ def _check_locked(db, con, act, rep: "Report", t0: float) -> "Report":
             rep.findings.append(Finding(
                 "error", f"{name}: CSV and database disagree",
                 f"{n_csv} rows in the CSV, {n_db} in the database"))
-        if n_db == 0 and name != "species.csv":
+        if n_db == 0 and name != "species.csv" and not rep.empty_collection:
             rep.findings.append(Finding("error", f"{name}: the database table is EMPTY"))
     if db_counts["species.csv"] == 0 and db_counts["data_pictures.csv"] > 0:
         rep.findings.append(Finding(
@@ -271,6 +291,10 @@ def make_backup(db, master_root, *, force: bool = False) -> dict:
     REFUSES when the structural checks fail: a snapshot of a broken master is not a
     backup, it is a time bomb — rotation would quietly push the last good one out."""
     rep = check(db, master_root)
+    if rep.empty_collection and not rep.errors:
+        logger.info("master backup skipped — the collection is still empty; "
+                    "nothing to back up yet.")
+        return {"ok": True, "skipped": True, "report": rep}
     if rep.errors and not force:
         for f in rep.errors:
             logger.error(f"master backup REFUSED — {f.what}. {f.detail}")

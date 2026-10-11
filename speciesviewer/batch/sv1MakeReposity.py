@@ -123,8 +123,11 @@ def main(args, config):
         # falls back to the live master.
         engine.species_baseline.write_baseline(MyProject.getMasterRepository(), NEW_DB_TREE)
 
-    blog = engine.bloglib.Blog(MyProject)   
-    blog.updateIndexPage()
+    # The blog index belongs to a TRIP; a master has no blog of its own.
+    is_master = MyProject.isMasterRepository()
+    if not is_master:
+        blog = engine.bloglib.Blog(MyProject)
+        blog.updateIndexPage()
     # create intro page, already in good location
     MyProject.setLanguage('nl')
     MyProject.makeIntro('intro','nl')
@@ -153,7 +156,13 @@ def main(args, config):
     copyMissingLinkPages("biota/fungi", exist_ok=True)
     copyMissingLinkPages("summaries/all biota species", exist_ok=True)    
 
-    if WEB_TREE != "":
+    # The local web/ tree above is always made; the server copy only when a
+    # website is set up — publishing is optional (docs/plans/website_optional_plan.md).
+    from utils import site_config
+    if WEB_TREE != "" and not site_config.publishing_set_up():
+        logger.info("sv1MakeReposity: no website set up — created locally only; "
+                    "nothing uploaded.")
+    if WEB_TREE != "" and site_config.publishing_set_up():
         password = config.get("websettings","Sftppwd").strip("'")
         sftp = engine.sftplib.Sftp(password=password)
         # Connect to SFTP
@@ -195,7 +204,7 @@ def main(args, config):
         towebdir = createdpath + '/biota/'
         sftp.put_r_portable(fromdir, towebdir, preserve_mtime=True)
         # project info
-        if not MyProject.isMasterRepository():
+        if not is_master:
             tripname = Path(MyProject.getBiotaWebRoot()).name
             blog.uploadBlogIndex(sftp)          
             try:

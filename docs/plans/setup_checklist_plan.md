@@ -88,5 +88,34 @@ master (`Project.isMasterRepository()`). Tried in a scratch folder, no website:
 - the upload part is already skipped when the web root is empty — but
   `generate_svconfig_ini(master_mode=True)` falls back to `/nature/` and returns
   early when no master is configured, which is exactly a new user's situation;
-- `species.csv` is created as a **0-byte file** (`empty_species.csv` has no
-  header). Check against the species.csv rules before relying on it.
+- `species.csv` gets the correct header (`empty_species.csv` = `SPECIES_FIELDS`,
+  just without a final newline — which is why a line count said 0).
+
+## Built: Create Master Collection (2026-10-11, tested by Gilbert)
+
+- `batch/sv1MakeReposity.py`: the master path finished — no blog index for a
+  master; no upload while no website is set up (also lets **Create Trip** work
+  without a website, where it used to fail on connecting).
+- `engine/master_create.py`: empty or new folder only (refuses a folder with
+  files — the module copies empty CSVs over whatever is there); sets the open
+  master's database, read-only off; puts the setting back if creation fails.
+- Master ▸ Masters ▸ **Create Master Collection…** — greyed while this master
+  already has a collection (one master, one collection).
+- `db/master_health.py`: a collection that never held a picture (empty tables,
+  CSVs agree, **no files under `biota/`**) is "a new, empty collection" — the
+  daily backup skips quietly instead of three red REFUSED lines on a new user's
+  first start. The 2026-07-14 guard stands: empty tables with pictures on disk
+  are still an error and still refuse the backup (tested both ways).
+
+## Further findings
+
+- **The starter `trip.ini` is personal and stale** (`dist/installation files/`):
+  Gilbert's South-Africa trip, `c:/laptop/…`, and without `fromdate`/`todate`/
+  `oneblog`. Create Trip writes its own, so it is not used there — but it ships
+  in the ZIP. `Trip.write_TripAdmin` takes its columns from the FIRST trip, so a
+  trip.ini without those fields fails on the first trip of a new master.
+- **`tests/` cannot run**: `conftest.py` imports `sview`, a module that no
+  longer exists. Nothing covers repository creation.
+- **The master has no day view** (Gilbert, 2026-10-11): after adding a day
+  straight into the master (level 1, no trip), there is no way to look at that
+  day the way a trip shows its days. Matters for the Days → Master route.
