@@ -40,6 +40,7 @@ import engine.statemachine
 import engine.exifcache as exifcache
 from utils.ini_io import read_ini
 from utils.runtime_files import svconfig_path
+from utils.exiftool_path import exe as exiftool_exe
 
 # What a day folder may contribute to the trip data: pictures, video, and the
 # sidecars that belong to one. From the ONE table (utils/raw_extensions.py).
@@ -142,6 +143,7 @@ def main(args, config):
     # locale.getpreferredencoding() (cp1252 on Windows), so even when exiftool
     # outputs UTF-8 we'd see mojibake (e.g. ü → Ã¼). Both are needed.
     with exiftool.ExifToolHelper(
+        executable=exiftool_exe(),
         logger=logging.getLogger("speciesviewer"),
         common_args=["-G", "-charset", "utf8", "-charset", "filename=utf8"],
         encoding="utf-8",

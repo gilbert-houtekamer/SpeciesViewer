@@ -32,6 +32,7 @@ import tempfile
 import time
 import logging
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from utils.exiftool_path import exe as exiftool_exe
 
 logger = logging.getLogger("speciesviewer")
 
@@ -389,6 +390,7 @@ def _read_chunk(paths, fields):
     first chunk on the calling thread, so no process is spawned needlessly."""
     import exiftool
     with exiftool.ExifToolHelper(
+            executable=exiftool_exe(),
             common_args=COMMON_ARGS, encoding="utf-8", check_execute=False) as et:
         return et.get_metadata(paths, params=fields)
 
@@ -460,6 +462,7 @@ def rescan(root, cache_path, chunk=2000, workers="auto"):
         # per-group progress lines below are the feedback.
         group_size = max(chunk, n_workers * 1000)
         with exiftool.ExifToolHelper(
+                executable=exiftool_exe(),
                 common_args=COMMON_ARGS,
                 encoding="utf-8", check_execute=False) as et:
             for i in range(0, total, group_size):

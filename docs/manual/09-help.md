@@ -25,7 +25,7 @@ yet — the first time you start SpeciesViewer, or in a new master without one.
 | Pictures folder | unfiled days, trips — and the GPS-log folder inside it | ✗ |
 | Trips folder | trips | ✗ |
 | Albums folder | albums | ✗ |
-| exiftool | reading pictures — must be on the PATH | ✗ |
+| exiftool | reading pictures — found on the PATH, or **Locate…** a copy (download from exiftool.org) | ✗ |
 | Decode Quality | the 100% view; works on defaults | · |
 | DxO PhotoLab | editing; optional | – |
 

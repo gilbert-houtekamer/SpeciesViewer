@@ -35,6 +35,7 @@ from utils.sidecar_policy import (
     color_rating_to_xmp_enabled, color_rating_to_dop_enabled,
 )
 from utils.raw_extensions import RAW, DXO_RAW, bare, is_video, SELF_DESCRIBING, HEIC
+from utils.exiftool_path import exe as exiftool_exe
 
 _DXO_RAW_EXTS = bare(DXO_RAW)  # canonical table — see utils/raw_extensions.py
 
@@ -528,7 +529,7 @@ class RatingEditorCollection(PictureCollection):
                 for _k, _f, p in targets:
                     fh.write(p + "\n")
             out = subprocess.run(
-                ["exiftool", "-j", "-q", "-charset", "filename=utf8",
+                [exiftool_exe(), "-j", "-q", "-charset", "filename=utf8",
                  "-XMP:Rating", "-XMP:Label", "-@", af],
                 capture_output=True, text=True, encoding="utf-8", timeout=300).stdout
             for r in (_json.loads(out) if out.strip() else []):

@@ -51,6 +51,7 @@ from pathlib import Path
 
 from utils.disk_space import check_free_space
 from utils.raw_extensions import RAW, SELF_DESCRIBING
+from utils.exiftool_path import exe as exiftool_exe
 
 UNKNOWN_DATE_DIR = "unknown-date"
 
@@ -597,7 +598,7 @@ def _read_capture_datetimes(files, log, progress_cb=None) -> dict[str, datetime]
         def _worker():
             nonlocal done
             with exiftool.ExifToolHelper(
-                common_args=COMMON_ARGS, encoding="utf-8", check_execute=False,
+                executable=exiftool_exe(), common_args=COMMON_ARGS, encoding="utf-8", check_execute=False,
             ) as et:
                 while True:
                     try:

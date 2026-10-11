@@ -69,11 +69,36 @@ def albums_folder_state():
 
 
 def exiftool_state():
-    found = shutil.which("exiftool")
-    if found:
-        return OK, found
+    from utils.exiftool_path import describe
+    path, where = describe()
+    if path:
+        return OK, f"{path} ({where})"
     return MISSING, ("Not found. SpeciesViewer reads and writes picture data with "
-                     "exiftool (exiftool.org); put it on the PATH and restart.")
+                     "exiftool — download it from exiftool.org, then Locate… it.")
+
+
+def locate_exiftool(parent) -> None:
+    """Choose an exiftool program; keep it only if it answers with a version."""
+    import subprocess
+    from PyQt6.QtWidgets import QFileDialog, QMessageBox
+    from utils.config import persist_config
+    chosen, _ = QFileDialog.getOpenFileName(parent, "Locate exiftool")
+    if not chosen:
+        return
+    try:
+        out = subprocess.run([chosen, "-ver"], capture_output=True, text=True, timeout=20)
+        version = out.stdout.strip()
+        if out.returncode != 0 or not version:
+            raise RuntimeError(out.stderr.strip() or "no version reported")
+    except Exception as e:
+        QMessageBox.warning(parent, "Locate exiftool",
+                            f"{chosen} does not answer like exiftool:\n{e}")
+        return
+    _config.set("Global", "exiftool_path", chosen)
+    persist_config()
+    QMessageBox.information(parent, "Locate exiftool",
+                            f"exiftool {version} will be used from now on. "
+                            "Restart SpeciesViewer to use it everywhere.")
 
 
 def decode_quality_state():
@@ -143,7 +168,8 @@ class SetupChecklistDialog(QDialog):
              [("Choose…", repo(RepoSettingsDialog.TAB_TRIP))]),
             ("Albums folder", "albums", albums_folder_state,
              [("Choose…", repo(RepoSettingsDialog.TAB_ALBUM))]),
-            ("exiftool", "reading pictures", exiftool_state, []),
+            ("exiftool", "reading pictures", exiftool_state,
+             [("Locate…", lambda: (locate_exiftool(self), self.refresh()))]),
             ("Decode Quality", "the 100% view", decode_quality_state,
              [("Change…", lambda: self._open(lambda: RawProcessingDialog(mw)))]),
             ("DxO PhotoLab", "editing (optional)", photolab_state,

@@ -16,6 +16,7 @@ import json
 import ast
 import pdb  # For debugging
 from utils.raw_extensions import DXO_RAW, RAW, RAW_OR_HEIC, VIDEO, bare
+from utils.exiftool_path import exe as exiftool_exe
 
 
 logger = logging.getLogger("speciesviewer")
@@ -305,7 +306,7 @@ class FilePicture:
         # decode stdout as UTF-8 instead of the Windows local code page.
         try:
             result = subprocess.run(
-                ['exiftool', '-charset', 'filename=utf8', '-charset', 'utf8',
+                [exiftool_exe(), '-charset', 'filename=utf8', '-charset', 'utf8',
                  '-j', '-XMP:Subject', str(filepath)],
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,

@@ -48,3 +48,10 @@ per place: unavailable (greyed, with the reason), skipped, or local-only.
    Note: the pictures reach the master's `biota/` in an EARLIER step; a failed
    commit leaves them there without rows until the commit is re-run (existing
    design, with or without a website).
+
+## Idea: a Test button on the website settings (Gilbert, 2026-10-11)
+
+In Global Settings ▸ Website and publishing: **Test** — log in with the account
+and look for the website folder, then say what failed in plain words. Connection
+status only checks that the server answers; a mistyped account or folder is what
+actually fails, and today that shows up only at the first publish.

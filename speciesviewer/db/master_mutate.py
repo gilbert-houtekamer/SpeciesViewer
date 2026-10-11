@@ -45,6 +45,7 @@ from datetime import date, datetime
 from pathlib import Path
 
 from utils.paths import to_fs_path
+from utils.exiftool_path import exe as exiftool_exe
 
 logger = logging.getLogger("speciesviewer")
 
@@ -443,7 +444,7 @@ def _exif_batch(paths: list[Path]) -> dict:
             for p in paths:
                 fh.write(str(p) + "\n")
         out = subprocess.run(
-            ["exiftool", "-j", "-q", "-charset", "filename=utf8", "-charset", "utf8",
+            [exiftool_exe(), "-j", "-q", "-charset", "filename=utf8", "-charset", "utf8",
              "-ImageSize", "-XMP:Rating", "-XMP:Label", "-XMP:Subject",
              "-EXIF:DateTimeOriginal", "-@", af],
             capture_output=True, text=True, encoding="utf-8", timeout=600)
@@ -573,7 +574,7 @@ def _read_exif_row(path: Path, master_root: Path, rel: str, upn: str) -> dict:
     row["UniquePictureName"] = upn
     try:
         out = subprocess.run(
-            ["exiftool", "-j", "-charset", "filename=utf8", "-charset", "utf8",
+            [exiftool_exe(), "-j", "-charset", "filename=utf8", "-charset", "utf8",
              "-ImageSize", "-XMP:Rating", "-XMP:Label", "-XMP:Subject",
              "-EXIF:DateTimeOriginal", str(path)],
             capture_output=True, text=True, encoding="utf-8", timeout=30)

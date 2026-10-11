@@ -6,6 +6,7 @@ import tempfile
 import threading
 from pathlib import Path
 from typing import Iterable, Union
+from utils.exiftool_path import exe as exiftool_exe
 
 logger = logging.getLogger("speciesviewer")
 
@@ -60,6 +61,7 @@ def _get_writer():
         return _writer
     import exiftool
     _writer = exiftool.ExifToolHelper(
+        executable=exiftool_exe(),
         common_args=["-charset", "utf8", "-charset", "filename=utf8"],
         encoding="utf-8", check_execute=False)
     _writer.run()
@@ -126,7 +128,7 @@ def exiftool_write(
             for arg in args:
                 tmp.write(arg + "\n")
         cmd = [
-            "exiftool",
+            exiftool_exe(),
             "-charset", "utf8",
             "-charset", "filename=utf8",
             "-@", tmp_path,
@@ -185,7 +187,7 @@ def exiftool_write_batch(items, *, overwrite_original: bool = True) -> int:
                     tmp.write("-overwrite_original\n")
                 tmp.write(filepath + "\n")
                 tmp.write("-execute\n")
-        cmd = ["exiftool", "-charset", "utf8", "-charset", "filename=utf8",
+        cmd = [exiftool_exe(), "-charset", "utf8", "-charset", "filename=utf8",
                "-@", tmp_path]
         proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                               text=True, encoding="utf-8")
@@ -216,7 +218,7 @@ def run_exiftool_files(option_args, files, *, pre_args=None, timeout=None):
         with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as f:
             for token in list(option_args) + files:
                 f.write(token + "\n")
-        cmd = (["exiftool"] + list(pre_args or [])
+        cmd = ([exiftool_exe()] + list(pre_args or [])
                + ["-charset", "utf8", "-charset", "filename=utf8", "-@", arg_path])
         return subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                               text=True, encoding="utf-8", timeout=timeout)

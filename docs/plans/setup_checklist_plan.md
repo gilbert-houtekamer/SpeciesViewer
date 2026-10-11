@@ -153,3 +153,14 @@ Gilbert: maybe several "mains" one day — then the real distinction is
 **permanent** (a collection you keep: birds, plants) versus **temporary** (to
 try something), as a category the user can change. Today one master carries the
 "main" flag. Decide once more than one master has been used for real.
+
+## Built: one exiftool lookup (2026-10-11, tested by Gilbert in a test trip)
+
+`utils/exiftool_path.exe()`: shipped copy (packaged build) → chosen
+(`[Global] exiftool_path`, Setup Checklist ▸ exiftool ▸ **Locate…**, checked with
+`-ver` before it is kept) → the PATH by name. All 18 call sites in 10 files use
+it — the packaged ZIP now only has to put exiftool in `exiftool/` beside the
+.exe. ⚠ Found while testing: the PATH fallback must be `exiftool.exe` on Windows
+(pyexiftool's own default) — a bare `exiftool` resolved to Strawberry's .BAT
+wrapper and the long-running exiftool hung on its first read. Tested: read,
+both write routes and preview extraction, on the PATH and with a chosen copy.

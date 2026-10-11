@@ -30,6 +30,7 @@ import logging
 import re
 import threading
 from pathlib import Path
+from utils.exiftool_path import exe as exiftool_exe
 
 logger = logging.getLogger("speciesviewer")
 
@@ -49,6 +50,7 @@ def _get_helper():
         return _helper
     import exiftool
     _helper = exiftool.ExifToolHelper(
+        executable=exiftool_exe(),
         common_args=["-charset", "filename=utf8"],
         encoding="utf-8", check_execute=False)
     _helper.run()

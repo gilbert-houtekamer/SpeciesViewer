@@ -18,6 +18,7 @@ from engine import COLUMN_NAMES, SELECTED_FIELDS
 from engine.specieslib import Level
 import engine.projectlib
 import engine.breadcrumb
+from utils.exiftool_path import exe as exiftool_exe
 
 logger = logging.getLogger("speciesviewer")
 
@@ -1705,7 +1706,7 @@ def addOneSpeciesJPG(MyProject, jpgname, textCreated, templatehtml):
         if not MyProject.getSkipJPGs():
             shutil.copy(sourcestr, targetstr)
             if species is not None and isObscure(MyProject, species):
-                result = subprocess.run(['exiftool', '-GPS:all=', '-overwrite_original', targetstr],
+                result = subprocess.run([exiftool_exe(), '-GPS:all=', '-overwrite_original', targetstr],
                                         stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
                 if '1 image files updated' in result.stdout:
                     logger.info(f"🔒 GPS stripped from species for which the location must be hidden (obscured): {os.path.basename(targetstr)}")

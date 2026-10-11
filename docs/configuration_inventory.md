@@ -112,7 +112,7 @@ there once, renaming the old copy `<name>.moved-to-appdata`.
 
 | Section | Key examples | Purpose |
 |---------|-------------|---------|
-| `[Global]` | `config_version`, `dxo_path`, `debug_tools`, `photolab_handover_delay_s`, `end_of_list_sound` | App-wide defaults. `photolab_handover_delay_s` (default 5, hand-edit only): seconds a running PhotoLab gets to re-read the folder before *Open in PhotoLab* writes the held crop/exposure edits to the `.dop`. `end_of_list_sound` (default yes, hand-edit only): the soft tick when the Editor is at the first/last picture |
+| `[Global]` | `config_version`, `dxo_path`, `exiftool_path` (optional — set by Setup Checklist ▸ Locate…; empty = shipped copy, else the PATH; see `utils/exiftool_path.py`), `debug_tools`, `photolab_handover_delay_s`, `end_of_list_sound` | App-wide defaults. `photolab_handover_delay_s` (default 5, hand-edit only): seconds a running PhotoLab gets to re-read the folder before *Open in PhotoLab* writes the held crop/exposure edits to the `.dop`. `end_of_list_sound` (default yes, hand-edit only): the soft tick when the Editor is at the first/last picture |
 | `[Master]` | `masterbiotadatabase`, `masterbiotawebroot`, `readonly` | Path to the master collection |
 | `[Trip]` | `tripbiotadatabase`, `tripbiotawebroot` | Active trip: database path and **web slug** |
 | `[VirtTrip]` | `virttripbiotadatabase`, `virttripbiotawebroot` | Active album |
