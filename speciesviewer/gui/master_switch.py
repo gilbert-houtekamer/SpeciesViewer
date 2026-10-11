@@ -220,7 +220,7 @@ def _has_collection() -> bool:
     return bool(_config.get("master", "masterbiotadatabase", fallback="").strip())
 
 
-def _create_collection(main_window) -> None:
+def create_collection(main_window) -> None:
     """Choose an empty folder, make it a master collection, restart into it."""
     from pathlib import Path
     from PyQt6.QtCore import Qt
@@ -287,7 +287,7 @@ def masters_menu(main_window) -> dict:
     menu[f"{MenuSpec.separator()}_masters_1"] = None
     # One master, one collection: offered only while this master has none.
     menu["Create Master Collection…"] = MenuSpec(
-        callback=lambda *_: _create_collection(main_window),
+        callback=lambda *_: create_collection(main_window),
         enabled=lambda: not _has_collection(),
         tooltip="Start a new, empty collection in an empty folder "
                 "(only while this master has none)")

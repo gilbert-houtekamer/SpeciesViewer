@@ -155,6 +155,12 @@ def start_main():
         # Same off-screen guard the per-dialog geometry already gets.
         clamp_to_visible_screen(main_window)
 
+        # A master without a collection can do almost nothing (a new user, a
+        # new test master): show what to set up instead of a wall of grey.
+        from gui.setup_checklist import master_needs_setup, show_checklist
+        if master_needs_setup():
+            show_checklist(main_window)
+
         # main_window.init_panels()  # ✅ Safe moment — QApplication fully live
 
     # Show the splash for at least MIN_SPLASH_MS (so it never just flashes),

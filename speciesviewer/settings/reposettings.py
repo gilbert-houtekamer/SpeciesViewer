@@ -18,7 +18,9 @@ class RepoSettingsDialog(QDialog):
     that has to be reachable.
     """
 
-    def __init__(self, parent):
+    TAB_MASTER, TAB_TRIP, TAB_ALBUM = 0, 1, 2
+
+    def __init__(self, parent, tab: int = TAB_MASTER):
         super().__init__(parent)
         self.setWindowTitle("Repositories")
         # Fits a 768-high laptop screen with room to spare; the tabs keep each
@@ -102,6 +104,7 @@ class RepoSettingsDialog(QDialog):
         layout.addWidget(browse_virttrips_root_btn)
         layout.addStretch()
         tabs.addTab(album_tab, "Album")
+        tabs.setCurrentIndex(tab)   # the Setup checklist opens the tab it is about
 
         # Save sits OUTSIDE the tabs: it writes every page, and it must stay
         # visible whichever tab is open.

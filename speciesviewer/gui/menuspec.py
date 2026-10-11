@@ -2009,6 +2009,12 @@ def build_menu_spec(main_window):
                  showsubdirectory=False),
         },
         "Help": {
+            "Setup Checklist…": MenuSpec(
+                callback=lambda *_: __import__(
+                    "gui.setup_checklist", fromlist=["show_checklist"]
+                ).show_checklist(main_window),
+                tooltip="What is set up, what is missing, and what is optional",
+            ),
             "Connection status…": MenuSpec(
                 callback=lambda: __import__(
                     "gui.connection_status", fromlist=["ConnectionStatusDialog"]

@@ -1,7 +1,8 @@
 # Setup checklist — first run for a new user
 
 *0.4, follows the zero-data simulation (docs/plans/multiple_masters_plan.md).
-Skeleton: Gilbert, 2026-10-11. Status: DESIGN — nothing built.*
+Skeleton: Gilbert, 2026-10-11. Status: checklist window SHIPPED (gui/setup_checklist.py),
+tested by Gilbert 2026-10-11.*
 
 ## Who it is for
 
@@ -119,3 +120,5 @@ master (`Project.isMasterRepository()`). Tried in a scratch folder, no website:
 - **The master has no day view** (Gilbert, 2026-10-11): after adding a day
   straight into the master (level 1, no trip), there is no way to look at that
   day the way a trip shows its days. Matters for the Days → Master route.
+- In the Master Species Viewer you can delete pictures (Gilbert deleted most of
+  his 154 there, 2026-10-11) — but there is no day viewer for the master.

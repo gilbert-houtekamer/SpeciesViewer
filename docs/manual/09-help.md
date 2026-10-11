@@ -1,11 +1,36 @@
 # 9. Help
 
-Two items. Small, but the first one earns its place.
+Three items. Small, but the first two earn their place.
 
 | Item | Needs |
 |---|---|
+| Setup Checklist… | |
 | Connection status… | |
 | About | |
+
+---
+
+## Setup Checklist…
+
+What SpeciesViewer needs, and what is optional — one row per setting, each with
+a mark and a button that opens the dialog for it. The marks are read from the
+real settings every time, so the window also answers *"why is this menu grey?"*
+long after day one. It opens by itself when the open master has no collection
+yet (a new user, a new test master).
+
+| Row | Needed for | Mark when missing |
+|---|---|---|
+| Master collection | everything — **Create…** a new one, or **Choose…** an existing one | ✗ |
+| Website publishing | publishing blogs and pages; optional | – |
+| Pictures folder | trips | ✗ |
+| Trips folder | trips | ✗ |
+| Albums folder | albums | ✗ |
+| exiftool | reading pictures — must be on the PATH | ✗ |
+| Decode Quality | the 100% view; works on defaults | · |
+| DxO PhotoLab | editing; optional | – |
+
+With only the master collection set up you can already copy days off a card,
+add them to the master and browse it — no website needed.
 
 ---
 
