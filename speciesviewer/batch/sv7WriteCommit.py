@@ -198,16 +198,26 @@ def main(args, config):
     MyProject.initMasterAndTrip(config, inittrip=True)
     
     logger.info(f"sv7WriteCommit: Commit project {MyProject.ProjectName()} on repository.")
-    import engine.connectivity as connectivity
-    if not connectivity.publish_reachable():
-        raise SVException(connectivity.publish_unreachable_msg())
-    
+    # The website is optional (docs/plans/website_optional_plan.md): without
+    # one the master is updated on disk only. With one, the server must answer
+    # BEFORE anything is committed — a half-published commit is the worse state.
+    from utils import site_config
+    website = site_config.publishing_set_up()
+    if website:
+        import engine.connectivity as connectivity
+        if not connectivity.publish_reachable():
+            raise SVException(connectivity.publish_unreachable_msg())
+
     if checkFrozenData(MyProject):
     # move "approved" files to the active directory
         commitProjectFiles(MyProject)
-        
+
         # update the website
-        putRecursiveTreeWeb(MyProject, config)
+        if website:
+            putRecursiveTreeWeb(MyProject, config)
+        else:
+            logger.info("sv7WriteCommit: no website set up — the master is "
+                        "updated on this computer only; nothing uploaded.")
         putRecursiveTreeDisk(MyProject)
         # TODO rewrite the Blog with active links to species
 

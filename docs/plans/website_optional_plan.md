@@ -41,4 +41,10 @@ per place: unavailable (greyed, with the reason), skipped, or local-only.
    freeze works; `main()` then checks `connectivity.publish_reachable()` and
    stops with "Publishing is not set up". Safe — it stops BEFORE
    `commitProjectFiles`, so nothing reaches the master's CSVs. Same step serves
-   To Master for trips.
+   To Master for trips. FIXED 2026-10-11, retested by Gilbert in his test master: the
+   reachability check and the upload run only when a website is set up; the
+   CSV commit and the local copy of the day's pages always. Tested on a copy of
+   his test master: 0 → 154 pictures, 507 files, 7 species.
+   Note: the pictures reach the master's `biota/` in an EARLIER step; a failed
+   commit leaves them there without rows until the commit is re-run (existing
+   design, with or without a website).
