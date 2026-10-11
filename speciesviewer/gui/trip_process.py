@@ -406,6 +406,13 @@ class TripCreationDialog(QDialog):
             self.status_label.setText("❌ Enter a folder name first.")
             return
 
+        # Not set = Path("") = the CURRENT folder, which exists — the trip was then
+        # created wherever SpeciesViewer happened to be started (it appeared in
+        # the source tree, 2026-10-11). Refuse and say where to set it.
+        if not get_trips_root().strip():
+            self.status_label.setText(
+                "❌ Choose a Trips folder first: Help ▸ Setup Checklist ▸ Trips folder.")
+            return
         trips_parent = Path(get_trips_root())
         if not trips_parent.is_dir():
             self.status_label.setText(f"❌ Cannot find trips parent directory: {trips_parent}")

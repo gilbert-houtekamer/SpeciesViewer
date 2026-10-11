@@ -68,7 +68,9 @@ class StateMachine:
         return
  
     def getUTF8(self, state, ansistring):
-        workstr = state.get("lastrunmessages", ansistring)
+        # A missing message (a damaged or older file) reads as empty: the state
+        # file must never stop SpeciesViewer from starting.
+        workstr = state.get("lastrunmessages", ansistring, fallback="")
         try:
             workstr = workstr.encode('latin1').decode('utf-8')          # we should validate this upon input
             workstr = workstr.replace("<female>", "♀")
@@ -88,26 +90,29 @@ class StateMachine:
         if os.path.exists(statemachine):
             # create a separete config instance
             state = configparser.ConfigParser()
-            state.read(statemachine)
+            # UTF-8 with the legacy fallback — files written before the fix in
+            # writeState are cp1252 (utils/ini_io, the rule for every .ini).
+            from utils.ini_io import read_ini
+            read_ini(state, statemachine)
             # code state
             # selectspecies = state.get("SpeciesViewer","version")
-            self.Taskstate["MakeRepository"] = [state.getboolean("state","sv1MakeRepository"), 
+            self.Taskstate["MakeRepository"] = [state.getboolean("state", "sv1MakeRepository", fallback=False), 
                             self.getUTF8(state, "sv1MakeRepositoryMessage"), 
                             ["ReadDirExif"], []]       
-            self.Taskstate["ReadDirExif"] = [state.getboolean("state","sv2ReadDirExif"), 
+            self.Taskstate["ReadDirExif"] = [state.getboolean("state", "sv2ReadDirExif", fallback=False), 
                             self.getUTF8(state, "sv2ReadDirExifMessage"), 
                             ["ReadDirExif", "WritePictures"], ["MakeRepository"]]
-            self.Taskstate["WritePictures"] = [state.getboolean("state","sv3WritePictures"),
+            self.Taskstate["WritePictures"] = [state.getboolean("state", "sv3WritePictures", fallback=False),
                             self.getUTF8(state,"sv3WritePicturesMessage"),
                             ["ReadDirExif", "WritePictures", "WriteBlog"], ["ReadDirExif"]]
-            self.Taskstate["WriteBlog"] = [state.getboolean("state","sv4WriteBlog"),
+            self.Taskstate["WriteBlog"] = [state.getboolean("state", "sv4WriteBlog", fallback=False),
                             self.getUTF8(state,"sv4WriteBlogMessage"),
                             ["ReadDirExif", "WritePictures", "WriteBlog"], ["ReadDirExif", "WritePictures"]]
-            self.Taskstate["Freeze"] = [state.getboolean("state","sv6Freeze"),
+            self.Taskstate["Freeze"] = [state.getboolean("state", "sv6Freeze", fallback=False),
                             self.getUTF8(state,"sv6FreezeMessage"),
                             ["ReadDirExif", "WritePictures", "WriteBlog", "Freeze", "WriteCommit"],
                             ["ReadDirExif", "WritePictures"]]
-            self.Taskstate["WriteCommit"] = [state.getboolean("state","sv7WriteCommit"),
+            self.Taskstate["WriteCommit"] = [state.getboolean("state", "sv7WriteCommit", fallback=False),
                             self.getUTF8(state,"sv7WriteCommitMessage"),
                             ["ReadDirExif", "WritePictures"], ["ReadDirExif", "WritePictures", "Freeze"]]
         else:
@@ -154,9 +159,17 @@ class StateMachine:
         }    
 
         os.makedirs(self.Directory, exist_ok=True)
-        with open(statemachine, 'w') as statefile:
+        # UTF-8 and atomic. The platform default (cp1252 on Windows) cannot hold
+        # "▸"; a step message with one ("Choose where … File ▸ Settings") raised
+        # halfway through the write, left a truncated file and took the app
+        # down — and every start after that crashed reading it (2026-10-11).
+        # Writing a temporary file and swapping it in means a failed write can
+        # never leave half a file behind.
+        tmp = statemachine + ".tmp"
+        with open(tmp, 'w', encoding='utf-8') as statefile:
             statefile.write('# This is an automatically generated file to track state for SpeciesViewer\n')
             state.write(statefile)
+        os.replace(tmp, statemachine)
         return
     
     def stateOKtorun(self, statetotest):

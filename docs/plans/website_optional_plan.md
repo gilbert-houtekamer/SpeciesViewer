@@ -275,3 +275,47 @@ Insects link, intro lepidoptera double space, the d:\code\pictureEXIF comment.
 Crawl now: 119 local URLs, 5 "broken" = the two master pages a new collection
 lacks (biota overview, master blog index — later) + one JavaScript false
 positive.
+
+## Gilbert's final check (2026-10-11): a crash, then no start
+
+New master "SVlocal" with a collection, no website choice made. Write Blog
+stopped — correctly — with "Choose where SpeciesViewer publishes … File ▸
+Settings ▸ …". Then the app crashed, and every start after that crashed on
+`NoOptionError: sv4writeblogmessage`.
+
+Cause (old): `StateMachine.writeState` wrote statemachine.ini in the platform
+encoding (cp1252); "▸" raised halfway through the write → truncated file → app
+down; `readState` then crashed on the missing option at every start.
+Fixed: written UTF-8 and atomically (tmp + replace); read through
+`ini_io.read_ini`; a missing option reads as empty/False. Tested on a copy of
+his damaged file (reads), a "▸" round trip, and a simulated failed write (old
+file intact).
+
+Also: the checklist now opens at start while ANY required row is ✗ — master
+collection, website choice, exiftool — not only the collection. He found the
+missing website choice from a failing step instead.
+
+## Where we stopped (2026-10-11, late) — start here next session
+
+Gilbert's test in master **SVlocal** (collection C:	emp\SVlocal, website "on
+this computer", trip C:\SVtest\Trips
+ajaar): SpeciesViewer starts again, Write
+Blog works, the blog shows in the browser. Two things still wrong:
+
+1. **"Trips" link → /nature/tripindex-nl.html 404.** First check whether
+   Trips ▸ **5. Manage Trip Publication** was run — only that step makes the trip
+   index (the overview's "Publish Trip" button publishes DAYS; look-alike, to be
+   renamed). If it was run and the page is still missing, reproduce with the
+   headless end-to-end (fresh LOCALAPPDATA, website=local, collection → trip →
+   sv2/sv3 → sv4 → sv6/sv7 → svr4 → crawl): in that run the page DID exist.
+2. **Banner broken in that blog** ("banner" alt text). The blog page asks for
+   `/trips/najaar/includes web/keerkringvogel.jpg`; check that
+   `putSharedWebAssets` ran (log: "Supplied … missing picture(s)") for SVlocal's
+   website folder (%LOCALAPPDATA%\SpeciesViewer\masters\SVlocal\website).
+
+Test data is messy (najaar was re-created several times across masters SVv3 and
+SVlocal). Prefer a FRESH master + trip over debugging old records.
+
+Waiting on Gilbert: may the stray `D:\code\SpeciesViewer
+ajaar\` (two
+placeholder JPGs, made by Create Folder before its fix) be deleted?

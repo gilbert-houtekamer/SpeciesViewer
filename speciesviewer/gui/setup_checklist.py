@@ -249,7 +249,13 @@ class SetupChecklistDialog(QDialog):
 
 
 def master_needs_setup() -> bool:
-    return master_collection_state()[0] == MISSING
+    """True while a REQUIRED row is ✗ — the master collection, where the
+    website goes, exiftool. Without them nothing gets far; the checklist then
+    opens at start instead of the user finding out from a failing step
+    (Write Blog in a new master, 2026-10-11). Trips/albums folders are not
+    required: they only unlock their own menus."""
+    return any(check()[0] == MISSING
+               for check in (master_collection_state, website_state, exiftool_state))
 
 
 def show_checklist(main_window) -> None:
