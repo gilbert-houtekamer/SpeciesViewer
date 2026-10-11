@@ -297,7 +297,7 @@ missing website choice from a failing step instead.
 
 ## Where we stopped (2026-10-11, late) — start here next session
 
-Gilbert's test in master **SVlocal** (collection C:	emp\SVlocal, website "on
+Gilbert's test in master **SVlocal** (collection C:/temp/SVlocal, website "on
 this computer", trip C:\SVtest\Trips
 ajaar): SpeciesViewer starts again, Write
 Blog works, the blog shows in the browser. Two things still wrong:
