@@ -184,3 +184,10 @@ Collected while making an empty test master start at all (2026-10-11):
    panel to show…"* — meaningless to a new user. Open.
 4. Start-up warning *"Publishing is not set up…"* — correct, and points at the
    right dialog. Keep.
+5. **exiftool comes from the PATH** — on Gilbert's machine via Strawberry Perl
+   (`C:\Strawberry\perl\site\bin\exiftool.bat`). A new user has none. The rough
+   ZIP (`python tools/svr_build_zip.py` → `build/SpeciesViewer-<version>-windows.zip`,
+   138 MB) relies on the PATH; the finished packaging must ship exiftool.
+6. The packaged `SpeciesViewer.exe`, unpacked into a fresh folder with an empty
+   app-data folder, starts and runs (headless smoke test, 2026-10-11) — same
+   two warnings as above, nothing new.
