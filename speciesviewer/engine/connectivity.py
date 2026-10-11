@@ -77,7 +77,12 @@ def check_all(timeout: float = 6.0) -> dict:
 
 def publish_reachable(timeout: float = 6.0) -> bool:
     """True if the SFTP publish server answers — the real dependency for blog /
-    website / commit. Website slowness is irrelevant here."""
+    website / commit. Website slowness is irrelevant here.
+    Publishing to THIS computer needs no server and no network — True. Only
+    this check: GBIF, place names and translation keep their own."""
+    from utils import site_config
+    if site_config.is_local():
+        return True
     _label, host, port, _note = endpoints()["publish"]
     return probe(host, port, timeout)["ok"]
 

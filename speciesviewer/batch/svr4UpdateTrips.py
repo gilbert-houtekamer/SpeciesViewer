@@ -77,6 +77,10 @@ def main(args, config):
     # even without Dropbox sync of the master.
     pwd = config.get("websettings","Sftppwd").strip("'")
     sftp = trip.openSFTP(pwd)
+    # The trip index lives on the MASTER's part of the site — make sure that part
+    # exists (intro, stylesheet) before listing the trip there.
+    from batch.sv7WriteCommit import ensureSiteSkeletons
+    ensureSiteSkeletons(trip.mp, sftp)
     trip.uploadTrip(sftp)
     trip.uploadTripAdmin(sftp, trip.getTripAdminWeb())
     sftp.disconnect()

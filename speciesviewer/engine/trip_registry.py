@@ -450,7 +450,7 @@ def upload_status_shard(local_csv, web_root, pwd, hostname=None, username=None):
         logger.warning("trip_registry: no sftp password configured; skipping upload")
         return None
     try:
-        sftp = sftplib.Sftp(hostname=hostname, username=username, password=pwd)
+        sftp = sftplib.open_site(hostname=hostname, username=username, password=pwd)
         sftp.connect()
     except Exception as e:
         logger.warning(f"trip_registry: SFTP connect failed: {e}")
@@ -461,7 +461,7 @@ def upload_status_shard(local_csv, web_root, pwd, hostname=None, username=None):
         # Create the status/ subdir if missing (ensure_remote_dir mishandles
         # absolute roots; makedirs takes the absolute path directly).
         try:
-            sftp.connection.makedirs(remote_dir)
+            sftp.makedirs(remote_dir)
         except Exception:
             pass  # already exists, or will surface on the upload
         sftp.upload(local_csv, remote)
@@ -491,7 +491,7 @@ def download_status_shards(web_root, pwd, dest_dir, hostname=None, username=None
         logger.warning("trip_registry: no sftp password; cannot download shards")
         return []
     try:
-        sftp = sftplib.Sftp(hostname=hostname, username=username, password=pwd)
+        sftp = sftplib.open_site(hostname=hostname, username=username, password=pwd)
         sftp.connect()
     except Exception as e:
         logger.warning(f"trip_registry: SFTP connect failed: {e}")

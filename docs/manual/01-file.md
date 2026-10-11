@@ -33,6 +33,16 @@ The machine-wide basics, and the home of the **Enable debug functionality**
 checkbox that reveals *File ▸ Developer Tools*. That flag is read when the menu
 is built, so **toggling it takes effect after a restart**.
 
+**Website and publishing** — SpeciesViewer makes a website of your pictures
+(species pages, blogs). Choose where it goes:
+
+- **On this computer** — nothing is uploaded; SpeciesViewer shows the website
+  in your browser at `http://127.0.0.1:8765/` while it runs. Each master has its
+  own, in its settings folder. Name lookups (GBIF), place names and translation
+  still use the internet.
+- **On my web server** — fill in the website address, upload server, account,
+  password and the website's folder on the server, as your web host gave them.
+
 ### Look & Feel…
 
 Fonts, colours, layout density — and which metadata fields the viewer cards

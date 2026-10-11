@@ -39,6 +39,55 @@ def getUTF8(tripconfig, group, ansistring):
         pass  # too bad, we tried
     return workstr
 
+def publish_skeleton(sftp, repo_dir, web_root):
+    """Publish a repository's site skeleton — the folders, intro pages, the
+    summaries placeholder, 'includes web' and the placeholder pages under
+    biota/ — from its LOCAL web/ folder (made when the repository was created)
+    to `web_root` on the site. Returns the site path. Used by Create, and by
+    ensure_skeleton for a site part that never got it."""
+    existingpath = sftp.remotePrefix()
+    for directory in web_root.strip('/').split('/'):
+        try:
+            sftp.safeMkdir(existingpath + '/' + directory)
+        except Exception as e:
+            print(f"Directory {directory} already exists or cannot be created: {e}")
+        existingpath += '/' + directory
+    createdpath = existingpath
+    for sub in ('/biota', '/summaries', '/biotablog', '/admin', '/includes web'):
+        sftp.safeMkdir(createdpath + sub)
+    web = os.path.join(repo_dir, "web")
+    sftp.upload(os.path.join(web, "intro-nl.html"), createdpath + "/intro-nl.html")
+    sftp.upload(os.path.join(web, "intro-en.html"), createdpath + "/intro-en.html")
+    sftp.upload(os.path.join(web, "intro-link-nl.html"), createdpath + "/summaries/all biota species-nl.html")
+    sftp.upload(os.path.join(web, "intro-link-en.html"), createdpath + "/summaries/all biota species-en.html")
+    sftp.put_r_portable(os.path.join(web, "includes web") + "/", createdpath + '/includes web/', preserve_mtime=True)
+    sftp.put_r_portable(os.path.join(web, "biota") + "/", createdpath + '/biota/', preserve_mtime=True)
+    return createdpath
+
+
+def ensure_skeleton(sftp, repo_dir, web_root) -> bool:
+    """Make sure the site part at `web_root` has its skeleton; publish it from
+    `repo_dir` if not. True when it had to be supplied.
+
+    Create used to be the only step that published a skeleton, so a site part
+    created before a website was chosen — or after a switch between this
+    computer and a server — never got one: no /nature/intro-nl.html, no trip
+    intro (Gilbert, 2026-10-11). One listing decides; a complete site costs
+    nothing more."""
+    web_root = (web_root or "").strip()
+    if not web_root or not os.path.isfile(os.path.join(repo_dir, "web", "intro-nl.html")):
+        return False
+    try:
+        present = "intro-nl.html" in set(sftp.listdir(sftp.remotePrefix() + web_root.rstrip("/")))
+    except Exception:
+        present = False
+    if present:
+        return False
+    publish_skeleton(sftp, repo_dir, web_root)
+    logger.info(f"Site skeleton supplied for {web_root} (from {repo_dir}).")
+    return True
+
+
 def main(args, config):
     MY_GHEXIF_DIR = str(Path(__file__).resolve().parent.parent / "dist")
     NEW_DB_TREE = config.get("repository","BiotaDatabase")    # "e:/test3/SpeciesViewDB/"
@@ -159,58 +208,34 @@ def main(args, config):
     # The local web/ tree above is always made; the server copy only when a
     # website is set up — publishing is optional (docs/plans/website_optional_plan.md).
     from utils import site_config
+    if config.get("utilities", "build_only", fallback="no").strip().lower() == "yes":
+        # Create Master Collection: build the pages, publish nothing — the site
+        # may belong to another master. The first publish supplies the skeleton.
+        WEB_TREE = ""
     if WEB_TREE != "" and not site_config.publishing_set_up():
         logger.info("sv1MakeReposity: no website set up — created locally only; "
                     "nothing uploaded.")
     if WEB_TREE != "" and site_config.publishing_set_up():
         password = config.get("websettings","Sftppwd").strip("'")
-        sftp = engine.sftplib.Sftp(password=password)
+        sftp = engine.sftplib.open_site(password=password)
         # Connect to SFTP
         sftp.connect()
         location_cache = os.path.join(MyProject.getRepositoryPath(), 'admin/FTPcache.json')
         sftp.openFTPCache(location_cache)
-        # 
-        def createWebTree(path):
-            directories = path.strip('/').split('/')
-            existingpath = sftp.remotePrefix()
-
-            for directory in directories:
-                try:
-                    sftp.safeMkdir(existingpath + '/' + directory)
-                except Exception as e:
-                    print(f"Directory {directory} already exists or cannot be created: {e}")
-                existingpath += '/' + directory
-            return existingpath
-        
-        createdpath = createWebTree(WEB_TREE)
-        
-        sftp.safeMkdir(createdpath + '/biota')
-        sftp.safeMkdir(createdpath + '/summaries')
-        sftp.safeMkdir(createdpath + '/biotablog')
-        sftp.safeMkdir(createdpath + '/admin')
-        sftp.safeMkdir(createdpath + '/includes web')
-        # copy intro-nl.html and uk version
-        sftp.upload(os.path.join(NEW_DB_TREE, "web/intro-nl.html"), createdpath + "/intro-nl.html")
-        sftp.upload(os.path.join(NEW_DB_TREE, "web/intro-en.html"), createdpath + "/intro-en.html") 
-        # summary species
-        sftp.upload(os.path.join(NEW_DB_TREE, "web/intro-link-nl.html"), createdpath + "/summaries/all biota species-nl.html")
-        sftp.upload(os.path.join(NEW_DB_TREE, "web/intro-link-en.html"), createdpath + "/summaries/all biota species-en.html")                    
-        # install used files
-        fromdir = os.path.join(NEW_DB_TREE, "web/includes web/")
-        towebdir = createdpath + '/includes web/'
-        sftp.put_r_portable(fromdir, towebdir, preserve_mtime=True)
-        # dead links
-        fromdir = os.path.join(NEW_DB_TREE, "web/biota/")
-        towebdir = createdpath + '/biota/'
-        sftp.put_r_portable(fromdir, towebdir, preserve_mtime=True)
+        createdpath = publish_skeleton(sftp, NEW_DB_TREE, WEB_TREE)
         # project info
         if not is_master:
             tripname = Path(MyProject.getBiotaWebRoot()).name
             blog.uploadBlogIndex(sftp)          
             try:
                 trip = MyProject.Trip.getTrip(tripname)
-                sftp.upload(os.path.join(NEW_DB_TREE, trip['trip_banner']), createdpath + '/' + trip['trip_banner'])
-                sftp.upload(os.path.join(NEW_DB_TREE, trip['trip_picture']), createdpath + '/' + trip['trip_picture'])
+                # Only images the trip actually names: an empty name would "upload"
+                # the trip folder itself (and fail). Without them the pages use
+                # the site's default banner from 'includes web'.
+                for key in ('trip_banner', 'trip_picture'):
+                    name = (trip.get(key) or '').strip()
+                    if name:
+                        sftp.upload(os.path.join(NEW_DB_TREE, name), createdpath + '/' + name)
             except:
                 logger.warning(f"sv1MakeReposity: you did not customize trip.ini and/or not added banner (2000x270) or picture (600x450).")
                 logger.warning(f"Be sure to also FTP them to {createdpath} on the web server.")

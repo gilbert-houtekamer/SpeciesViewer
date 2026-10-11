@@ -117,7 +117,7 @@ there once, renaming the old copy `<name>.moved-to-appdata`.
 | `[Trip]` | `tripbiotadatabase`, `tripbiotawebroot` | Active trip: database path and **web slug** |
 | `[VirtTrip]` | `virttripbiotadatabase`, `virttripbiotawebroot` | Active album |
 | `[project]` | `picturedirectory` | The day folder currently being worked on |
-| `[websettings]` | `Sftppwd`, `base_url` | **The credential.** Why this file never leaves the machine |
+| `[websettings]` | `Sftppwd`, `base_url`, `sftp_host`, `sftp_user`, `sftp_remote_root`, `contact_email`, `publish_target` (`local` / `server`; empty = not chosen — a setup with server fields filled counts as `server`), `local_port` (optional, default 8765) | **The credential.** Why this file never leaves the machine. The local website itself lives in `<master folder>/website` (app-data), served by `utils/local_web.py` |
 | `[translate]` | `google_api_key` | **A second credential.** Google Cloud Translation API key (restricted to that API). When set, translation asks Google's official service first; without it the free Google page and MyMemory are used. Hand-edit with the app closed; each machine needs its own entry |
 | `[fullres]` | `algorithm`, `fbdd`, `bright`, `denoise`, `scale` | RAW decode quality for the 100% view |
 | `[preview]` | `max_long_edge` (3200), `quality` (90) | Size the embedded camera previews are normalised to. `0` = keep whatever the camera embedded |

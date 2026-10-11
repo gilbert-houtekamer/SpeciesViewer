@@ -130,6 +130,8 @@ def start_main():
         from utils import site_config
         if not site_config.publishing_set_up():
             main_window.logger.warning(site_config.NOT_SET_UP_MSG)
+        from utils import local_web
+        local_web.ensure_started()     # the local website, when that is the choice
         if _config.get("Global", "debug_tools", fallback="no") == "yes":
             print(f"✅ Logging configured, logger assigned: {main_window.logger}")
 

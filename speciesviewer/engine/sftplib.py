@@ -19,6 +19,18 @@ def _remote_already_absent(e):
             or "no such file" in str(e).lower())
 
 
+def open_site(password="", hostname=None, username=None):
+    """The ONE place that picks where the website goes: the web server (Sftp)
+    or this computer (engine.localsite.LocalSite), per site_config's choice.
+    Both have the same methods, so every publishing step works unchanged.
+    (docs/plans/website_optional_plan.md)"""
+    from utils import site_config
+    if site_config.is_local():
+        from engine.localsite import LocalSite
+        return LocalSite(site_config.local_root())
+    return Sftp(password=password, hostname=hostname, username=username)
+
+
 class Sftp:
     FTPCache = {}
     FTPhits = 0
@@ -218,6 +230,10 @@ class Sftp:
             except Exception as e:
                 logger.warning(f"FTP upload skipped '{localpath}': {e}")
     
+    def makedirs(self, remote_path):
+        """Create a remote directory and its parents (LocalSite has the same)."""
+        self.connection.makedirs(remote_path)
+
     def safeMkdir(self, remotepath):
         try:
             self.connection.mkdir(remotepath)

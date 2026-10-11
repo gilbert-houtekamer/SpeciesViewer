@@ -65,6 +65,13 @@ class Trip:
         try:
             self.master_repository_disk = config.get("master","MasterBiotaDatabase")
             self.mp.setMasterRepository(self.master_repository_disk)
+            # The master's web root comes from THIS run's settings — the current
+            # master is the truth; trip.ini only remembers what it was when the
+            # trip was made (readTrip fills it from there only if this is empty).
+            # A stale or empty copy sent every "Trips" link into the trip itself:
+            # /trips/<trip>/tripindex-nl.html (found 2026-10-11).
+            self.master_repository_web = config.get("master", "MasterBiotaWebRoot",
+                                                    fallback="").strip()
             web_root = self.mp.getBiotaWebRoot()
             self.tripname = Path(web_root).name
             # Derive the URL prefix (/trips/ or /virttrips/) from the web root so
@@ -343,8 +350,9 @@ class Trip:
 
     def openSFTP(self, pwd):
         MyProject = self.mp
-        if MyProject.online:        
-            sftp = engine.sftplib.Sftp(password=pwd)
+        from utils import site_config     # the local website needs no network
+        if MyProject.online or site_config.is_local():        
+            sftp = engine.sftplib.open_site(password=pwd)
             # Connect to SFTP
             sftp.connect()
         else:

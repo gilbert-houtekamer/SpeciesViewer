@@ -141,3 +141,137 @@ of work." Because of finding 3, two routes:
 3. Create Trip: image, banner and web root optional without a website.
 4. The local viewer (route A), and "open the blog" using it.
 5. Gilbert's **Test** button on the website settings.
+
+## Direction change (Gilbert, 2026-10-11): always publish — to a server OR to this computer
+
+Instead of teaching ~10 places to SKIP publishing, SpeciesViewer always
+publishes: to the web server, or to a **local website** — a folder with exactly
+the live site's layout, shown by a small web server inside SpeciesViewer on
+`http://127.0.0.1:<port>/`. All publishing code stays as it is; only the
+destination changes. This replaces steps 1–2 and 4 of the order above.
+
+Decisions:
+1. **Where:** per master in app-data — `<master folder>/website` (C: is far
+   faster than D:/E:; each master its own site; out of Dropbox).
+2. **The choice is required:** the user picks *this computer* or *my web server*
+   in Global Settings ▸ Website and publishing; the Setup Checklist shows ✗ until
+   chosen. An existing setup with server fields filled counts as "server".
+3. **No upload cache for the local destination.** `admin/FTPcache.json` records
+   what the SERVER has; local copies must never be written there (a later server
+   publish would then skip files it never received). A local copy is cheap.
+4. **Later — local first:** with a web server, publish locally first as a
+   preview (first runs of a new trip), then to the server.
+
+Corrections from Gilbert's test: blog pages opened as plain files mostly work —
+even the link to the large picture; only the banner broke (its path did not
+match). Offline mode is by design (culling without network; GBIF and place-name
+lookups then do not work) — not touched.
+
+Separate item: **GBIF server configurable** — there are more GBIF servers.
+
+How it is built:
+- `engine/localsite.py` — the 14 methods of `engine/sftplib.Sftp`, as file copies
+  under the local root; `remotePrefix()` = that root; the FTP-cache methods do
+  nothing.
+- One place picks the destination (`open_site()`), used by the 9 places that now
+  construct `Sftp(...)`.
+- `site_config`: the choice (`publish_target`), "set up" = local, or server with
+  its fields; the website address in local mode = the local server's address;
+  the server check passes without a network in local mode.
+- `utils/local_web.py` — the local web server (localhost only), started with the
+  app in local mode.
+
+**Built 2026-10-11, awaiting Gilbert's test:** `engine/localsite.py`,
+`engine/sftplib.open_site()` (all 9 places), `site_config.publish_target /
+is_local / local_root / local_port`, `utils/local_web.py`, the required choice
+in Global Settings and the Setup Checklist. A new master collection gets web
+root `/nature/` (the local site needs the live layout). Tested: the local
+destination's semantics (copied/skipped, deletes refused outside the site,
+FTPcache untouched); a real commit of Gilbert's test day publishing 26 files
+locally, served over HTTP (intro, overview, stylesheet, a deep species page
+→ 200); an old setup with server fields counts as "server".
+Watch: the deepest local pages are ~200 characters — inside Windows' 260 limit,
+but not by much. Open: a trip without a web root would publish into the site
+root — Create Trip should always give one (`/trips/<trip>`).
+
+⚠ **Local publishing is not offline** (Gilbert): GBIF names, place names and
+translation still need the internet. The local destination changes only WHERE
+pages go; it must not touch `Project.online` or any lookup's own reachability
+check. Only the publish-server check is skipped in local mode.
+
+## Gilbert's test of the local website (2026-10-11): it works
+
+Blog, trip species overview and species pages served from
+`http://127.0.0.1:8765/…`, with styling, pictures and links. Missing: the
+banner (`/trips/najaar/includes web/keerkringvogel.jpg`) — the trip was created
+before a destination was chosen, and only repository creation ever wrote the
+shipped pictures in `includes web`. Same gap for ANY change of destination
+(none → local, local → server).
+
+Fix — self-healing instead of an "initialize" step: `putSharedWebAssets`
+(sv7, now also called from Write Blog) lists the site's `includes web` once and
+supplies the shipped pictures that are MISSING; a site that has them transfers
+nothing extra (the reason they were never re-sent: ~14 MB). Tested on the local
+destination: first publish supplies 13 pictures + 3 text files, second sends
+nothing.
+
+Next finding (same test): `/trips/najaar/tripindex-nl.html` → 404. The test trip
+recorded `master_repository_web = ""` and no `trip_name`/`web_slug`: it was
+created while SVv3's master web root was empty, and without a trip web root.
+Root cause partly mine: the "core sections and keys always present" fix of this
+morning made `[master] masterbiotawebroot` exist-but-empty, so the ~20 readers'
+`fallback="/nature/"` never applied. Fixed in one place (`utils/config.py`: an
+empty master web root reads as `/nature/`), and Create Trip now refuses an empty
+web root ("the trip needs a web root — for example /trips/<folder>"). A trip
+records what was true when it was made: the test trip keeps its empty fields —
+make a new one to test the trip index.
+
+Retest with a re-created najaar (Gilbert): trip.ini now correct, but the blog's
+Links sidebar still pointed at `/trips/najaar/tripindex-nl.html` (its breadcrumb
+correctly at `/nature/…`). `Trip.__init__` never set `master_repository_web`; it
+was only copied from trip.ini when empty, and `masterWebRoot()` then fell back
+to the TRIP's root. Fixed: `Trip` takes it from the run's settings
+(`[master] MasterBiotaWebRoot`); trip.ini only as fallback. Also: Create Trip
+"uploaded" an empty trip image/banner name = the trip folder itself (two
+warnings, on the server route too) — empty names are now skipped.
+The trip index itself is made by **Publish Trip** (and Manage Site Publication)
+only — by design, a trip is listed once it is published.
+
+## End-to-end run, headless (2026-10-11) — instead of more retests on a broken test trip
+
+Gilbert: "we are now debugging a situation that cannot exist" — the test trip
+and SVv3 carried records from before today's fixes. So: a fresh new user,
+website on this computer: Create Master Collection → trip (trip.ini as the
+dialog writes it + sv1) → Read & Summarize (10 ORF + 14 JPG of 2026-10-10) →
+Write Blog → Publish Day → list the trip (svr4, Trips ▸ 5. Manage Trip
+Publication) → local server → crawl every local link from the main pages.
+All steps OK; `/nature/tripindex-nl.html` exists.
+
+Fixed on the way:
+- **Site skeletons were only ever published by Create** (`/nature/intro-nl.html`
+  etc. missing whenever the destination came later). `sv1.publish_skeleton` /
+  `ensure_skeleton` + `sv7.ensureSiteSkeletons` — called by the commit, Write
+  Blog and the trip listing — supply the trip's AND the master's skeleton when
+  missing (one listing decides).
+- **New master's starter pages linked to the site's top level** (built with an
+  empty web root). Now built with `/nature/` but not published at creation
+  (`[utilities] build_only`): New Master makes a collection for a master that is
+  not open. Crawl: 37 broken → 13.
+
+Remaining 13, none caused by the new flow:
+- **Template bugs, also on the live site:** `tripindex-nl/en.html` → `trip
+  index-nl.html` (space); `allspecies-en.html` Insects →
+  `insecta-en/insecta.html`; `intro-nl/en.html` → `022 %20lepidoptera` (double
+  space); `vogelsoortpage-nl/en.html` carries `d:\code\pictureEXIF\…` in an
+  HTML comment (invisible, but a personal path in every species page).
+- **Master pages a new collection lacks:** `/nature/biota/biota-nl.html`,
+  `/nature/biotablog/blog index-nl.html` (linked from the trip index).
+- Crawler false positives: a JavaScript snippet, the commented-out path.
+- **Look-alike:** the trip overview's "Publish Trip" button publishes all DAYS;
+  listing the trip in the trip index is Trips ▸ 5. Manage Trip Publication.
+
+Template bugs fixed (Gilbert agreed): trip index "trip index" link, allspecies-en
+Insects link, intro lepidoptera double space, the d:\code\pictureEXIF comment.
+Crawl now: 119 local URLs, 5 "broken" = the two master pages a new collection
+lacks (biota overview, master blog index — later) + one JavaScript false
+positive.

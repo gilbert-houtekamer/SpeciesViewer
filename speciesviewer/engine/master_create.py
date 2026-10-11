@@ -49,20 +49,30 @@ def make_collection(folder) -> None:
     check_folder(folder)
     folder.mkdir(parents=True, exist_ok=True)
     cfg = configparser.ConfigParser()
-    cfg["repository"] = {"BiotaDatabase": str(folder), "BiotaWebRoot": "",
+    # The starter pages are BUILT with the web root they will live under (else
+    # their links lose /nature/ and point at the site's top level — found by
+    # crawling the local website, 2026-10-11), but NOT published here: New Master
+    # makes a collection for a master that is not the open one, whose website is
+    # elsewhere. The first publish supplies them (sv7WriteCommit.ensureSiteSkeletons).
+    web_root = collection_settings(folder)["masterbiotawebroot"]
+    cfg["repository"] = {"BiotaDatabase": str(folder), "BiotaWebRoot": web_root,
                          "ReferenceSpecies": str(folder / "metadata" / "active" / "species.csv")}
-    cfg["master"] = {"MasterBiotaDatabase": "", "MasterBiotaWebRoot": ""}
+    cfg["master"] = {"MasterBiotaDatabase": "", "MasterBiotaWebRoot": web_root}
     cfg["project"] = {"PictureDirectory": ""}
     cfg["websettings"] = {"Sftppwd": ""}
+    cfg["utilities"] = {"build_only": "yes"}
     sv1MakeReposity.main(None, cfg)
     logger.info(f"New master collection created in {folder}.")
 
 
 # What a master's settings say about its own collection. readonly "no": a
 # collection you just made is yours to edit (the default "yes" is for a machine
-# that holds only part of someone's master).
+# that holds only part of someone's master). Web root "/nature/": the site
+# layout SpeciesViewer assumes elsewhere (utils/batch_config's fallback) — the
+# master's pages need their own place on the website, local or on a server,
+# so trips (/trips/<trip>/) cannot collide with them.
 def collection_settings(folder) -> dict:
-    return {"masterbiotadatabase": str(folder), "masterbiotawebroot": "",
+    return {"masterbiotadatabase": str(folder), "masterbiotawebroot": "/nature/",
             "readonly": "no"}
 
 

@@ -571,7 +571,7 @@ def _clear_virttrip_blogs(virttrip_root, web_root, pwd, logger):
     if pwd and web_root:
         try:
             import engine.sftplib as sftplib
-            s = sftplib.Sftp(password=pwd)
+            s = sftplib.open_site(password=pwd)
             s.connect()
             remote = s.remotePrefix() + web_root.rstrip("/") + "/biotablog"
             s.rmtree(remote)

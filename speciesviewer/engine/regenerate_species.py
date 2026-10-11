@@ -171,7 +171,7 @@ def _upload_species(MyProject, config, target_path, progress_cb):
         return 0
     assets_dir = _stage_web_assets(MyProject)
     password = config.get("websettings", "Sftppwd", fallback="").strip("'")
-    sftp = engine.sftplib.Sftp(password=password)
+    sftp = engine.sftplib.open_site(password=password)
     location_cache = os.path.join(MyProject.getRepositoryPath(), "admin", "FTPcache.json")
     sftp.openFTPCache(location_cache)
     sftp.connect()

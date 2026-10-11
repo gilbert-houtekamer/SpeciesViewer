@@ -178,7 +178,7 @@ class AlbumDeleteDialog(QDialog):
         password = (_config.get("websettings", "Sftppwd", fallback="") or "").strip("'")
         sftp = None
         try:
-            sftp = engine.sftplib.Sftp(password=password)
+            sftp = engine.sftplib.open_site(password=password)
             sftp.connect()
             target = album_delete.remote_web_target(info["web_root"], sftp.remotePrefix())
             if target:

@@ -153,7 +153,8 @@ def main(args, config):
         logger.info(f"""Created summary blog in "{MyProject.getBiotaBlogWeb() + blog.getBlogDay() + '/'}" in Dutch and English versions.""")
         blog.updateIndexPage()
 
-    if MyProject.online:
+    from utils import site_config     # the local website needs no network
+    if MyProject.online or site_config.is_local():
         location_cache = os.path.join(MyProject.getRepositoryPath(), 'admin/FTPcache.json')
         sftp.openFTPCache(location_cache)
         if empty:
@@ -167,8 +168,12 @@ def main(args, config):
             blog.uploadBlog(sftp)
         # The banner every blog page shows, and the trip picture. Cached, so
         # this sends nothing once the site has them.
-        from batch.sv7WriteCommit import putTripImages
+        from batch.sv7WriteCommit import putTripImages, putSharedWebAssets, ensureSiteSkeletons
+        ensureSiteSkeletons(MyProject, sftp)
         putTripImages(MyProject, sftp)
+        # The pages need the site's stylesheet and default banner too — not only
+        # after Publish Day. Nothing is sent when the site already has them.
+        putSharedWebAssets(MyProject, sftp)
         # Always push the rebuilt index + admin so the removed day drops off the site.
         blog.uploadBlogIndex(sftp)
         blog.uploadBlogAdmin(sftp)

@@ -50,10 +50,17 @@ def master_collection_state():
 
 
 def website_state():
+    """Required: where the website goes — this computer, or a web server."""
     from utils import site_config
-    if site_config.publishing_set_up():
-        return OK, site_config.sftp_host()
-    return OPTIONAL, "Not set up — only needed to publish blogs and pages on the web."
+    target = site_config.publish_target()
+    if target == site_config.LOCAL:
+        return OK, f"On this computer — {site_config.site_base()}/"
+    if target == site_config.SERVER:
+        if site_config.publishing_set_up():
+            return OK, f"On your web server — {site_config.sftp_host()}"
+        return MISSING, ("Web server chosen, but the server, account or website "
+                         "folder is not filled in yet.")
+    return MISSING, "Choose where your website goes: on this computer, or on your web server."
 
 
 def pictures_folder_state():
@@ -189,8 +196,8 @@ class SetupChecklistDialog(QDialog):
         self.spec = [
             ("Master collection", "everything", master_collection_state,
              [("Choose…", repo(RepoSettingsDialog.TAB_MASTER))]),
-            ("Website publishing", "publishing (optional)", website_state,
-             [("Set up…", lambda: self._open(lambda: GlobalSettingsDialog(mw)))]),
+            ("Website", "species pages, blogs", website_state,
+             [("Choose…", lambda: self._open(lambda: GlobalSettingsDialog(mw)))]),
             ("Pictures folder", "unfiled days, trips", pictures_folder_state,
              [("Choose…", repo(RepoSettingsDialog.TAB_PICTURES))]),
             ("Trips folder", "trips", trips_folder_state,

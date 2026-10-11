@@ -425,8 +425,11 @@ class Blog:
     
     def openSFTP(self, pwd):
         MyProject = self.mp
-        if MyProject.online:        
-            sftp = engine.sftplib.Sftp(password=pwd)
+        # The local website needs no network; a server does. (Project.online
+        # itself stays "is the network up" — translation and lookups use it.)
+        from utils import site_config
+        if MyProject.online or site_config.is_local():        
+            sftp = engine.sftplib.open_site(password=pwd)
             # Connect to SFTP
             sftp.connect()
         else:

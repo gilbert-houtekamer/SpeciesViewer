@@ -21,7 +21,7 @@ yet — the first time you start SpeciesViewer, or in a new master without one.
 | Row | Needed for | Mark when missing |
 |---|---|---|
 | Master collection | everything — create one with *Master ▸ Masters ▸ Create Master Collection…*, or **Choose…** an existing one | ✗ |
-| Website publishing | publishing blogs and pages; optional | – |
+| Website | species pages and blogs — choose *on this computer* or *on your web server* | ✗ |
 | Pictures folder | unfiled days, trips — and the GPS-log folder inside it | ✗ |
 | Trips folder | trips | ✗ |
 | Albums folder | albums | ✗ |

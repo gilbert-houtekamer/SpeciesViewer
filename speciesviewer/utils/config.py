@@ -98,6 +98,14 @@ for _section, _keys in _ALWAYS_PRESENT.items():
         if not _config.has_option(_section, _key):
             _config.set(_section, _key, "")
 
+# The master's web root is never empty: about twenty readers ask for it with
+# fallback="/nature/", and the line above made the key always PRESENT — so an
+# empty value no longer reached that fallback. A trip created in such a master
+# recorded master_repository_web = "" and its "Trips" link pointed into the trip
+# (found 2026-10-11). "/nature/" is the layout those fallbacks already assume.
+if not _config.get("master", "masterbiotawebroot").strip():
+    _config.set("master", "masterbiotawebroot", "/nature/")
+
 # ✅ Centralized write function
 def persist_config():
     with open(CONFIG_PATH, 'w', encoding='utf-8') as f:

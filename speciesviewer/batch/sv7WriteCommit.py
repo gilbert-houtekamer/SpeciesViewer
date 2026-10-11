@@ -84,12 +84,20 @@ SHARED_WEB_ASSETS = ("animals.css", "leaflet.css", "leaflet.js")
 
 
 def putSharedWebAssets(MyProject, sftp):
-    """Refresh '<site>/includes web/' with the shipped stylesheet + map library.
+    """Refresh '<site>/includes web/' with the shipped stylesheet + map library,
+    and supply any shipped picture (category images, the default banner) the
+    site does not have yet.
 
-    cachedUpload compares a CRC of the content for non-JPGs, so this transfers
-    nothing at all once a site is current, and exactly the changed file after a
-    stylesheet fix. A missing remote 'includes web' heals itself: cachedUpload
-    creates the parent and retries."""
+    cachedUpload compares a CRC of the content for non-JPGs, so the text assets
+    transfer nothing at all once a site is current, and exactly the changed file
+    after a stylesheet fix. A missing remote 'includes web' heals itself:
+    cachedUpload creates the parent and retries.
+
+    The pictures (~14 MB) are only sent when MISSING — one listing of the
+    folder decides. They used to be written only when a repository was created,
+    so a site that got a NEW destination later (a trip made before a website
+    was chosen; a switch between this computer and a server) had no banner.
+    (Gilbert, 2026-10-11.) A site that has them transfers nothing extra."""
     src_dir = Path(__file__).parent.parent / "dist" / "includes web"
     target = sftp.remotePrefix() + MyProject.getBiotaWebRoot() + "includes web"
     sent = 0
@@ -100,10 +108,33 @@ def putSharedWebAssets(MyProject, sftp):
             continue
         if not sftp.cachedUpload(str(src), target + "/" + name, preserve_mtime=True):
             sent += 1
+    try:
+        on_site = set(sftp.listdir(target))
+    except Exception:
+        on_site = set()
+    missing = [p for p in sorted(src_dir.iterdir())
+               if p.is_file() and p.name not in SHARED_WEB_ASSETS and p.name not in on_site]
+    for src in missing:
+        sftp.upload(str(src), target + "/" + src.name)
+    if missing:
+        logger.info(f"Supplied {len(missing)} missing picture(s) to the site's 'includes web'.")
     if sent:
         logger.info(f"Refreshed {sent} shared web asset(s) (stylesheet / map library).")
     else:
         logger.info("Shared web assets (stylesheet / map library) were already current.")
+
+
+def ensureSiteSkeletons(MyProject, sftp):
+    """Make sure this repository's part of the site AND the master's part have
+    their skeleton (intro pages, summaries, 'includes web', placeholder pages);
+    supply what is missing from the repositories' own web/ folders. Create used
+    to be the only step that published one. See sv1MakeReposity.ensure_skeleton."""
+    from batch.sv1MakeReposity import ensure_skeleton
+    from engine.websupport import masterWebRoot
+    ensure_skeleton(sftp, MyProject.getRepositoryPath(), MyProject.getBiotaWebRoot())
+    if not MyProject.isMasterRepository():
+        ensure_skeleton(sftp, MyProject.getMasterRepository(),
+                        masterWebRoot(MyProject, ""))
 
 
 def putTripImages(MyProject, sftp):
@@ -142,13 +173,14 @@ def putTripImages(MyProject, sftp):
 
 def putRecursiveTreeWeb(MyProject, config):
     password = config.get("websettings","Sftppwd").strip("'")
-    sftp = engine.sftplib.Sftp(password=password)
+    sftp = engine.sftplib.open_site(password=password)
     location_cache = os.path.join(MyProject.getRepositoryPath(), 'admin/FTPcache.json')
     sftp.openFTPCache(location_cache)
     # Connect to SFTP
     sftp.connect()
     fromdisk = MyProject.ReviewFrozen()
     toweb = sftp.remotePrefix() + MyProject.getBiotaWebRoot()
+    ensureSiteSkeletons(MyProject, sftp)
     putSharedWebAssets(MyProject, sftp)
     putTripImages(MyProject, sftp)
     sftp.put_r_portable(os.path.join(fromdisk, 'biota/'), toweb + 'biota/', preserve_mtime=True)

@@ -601,6 +601,15 @@ class TripCreationDialog(QDialog):
         else:
             self.root_field.clear_hint()
 
+        # The web root is the trip's address on its website — on this computer or
+        # on a server, SpeciesViewer always publishes. Empty, the trip records no
+        # name or web address and its pages land at the top of the site (found
+        # 2026-10-11). The folder pick pre-fills /trips/<folder>; keep it filled.
+        if not Path(trip_name.strip()).name:
+            folder = os.path.basename(os.path.normpath(trip_root))
+            return self._refuse_save(
+                f"the trip needs a web root — for example /trips/{folder}")
+
         # ⚠ The Trip Root field opens pre-filled with the trip you are working on,
         # and "Create Folder" (which re-points it at a NEW folder) is a separate
         # step that nothing forces you to take. Fill this form top to bottom on a

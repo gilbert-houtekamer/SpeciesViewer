@@ -32,9 +32,43 @@ _SECTION = "websettings"
 PROJECT_URL = "https://github.com/gilbert-houtekamer/SpeciesViewer"
 
 NOT_SET_UP_MSG = (
-    "Publishing is not set up on this computer yet. Fill in the upload server, "
-    "account and website folder in File ▸ Settings ▸ Global Settings "
-    "(Website and publishing).")
+    "Choose where SpeciesViewer publishes your website — on this computer, or "
+    "on your web server: File ▸ Settings ▸ Global Settings (Website and "
+    "publishing).")
+
+# Where the website goes (docs/plans/website_optional_plan.md). The user must
+# choose; "" = not chosen yet.
+LOCAL, SERVER = "local", "server"
+LOCAL_PORT_DEFAULT = 8765
+
+
+def publish_target() -> str:
+    """LOCAL, SERVER, or "" when not chosen. A setup from before the choice
+    existed, with its server fields filled, counts as SERVER."""
+    chosen = _get("publish_target").lower()
+    if chosen in (LOCAL, SERVER):
+        return chosen
+    if sftp_host() and sftp_user() and sftp_remote_root():
+        return SERVER
+    return ""
+
+
+def is_local() -> bool:
+    return publish_target() == LOCAL
+
+
+def local_root():
+    """The local website: per master, in app-data (fast local disk, each
+    master its own site, never in Dropbox)."""
+    from utils.masters import ACTIVE_DIR
+    return ACTIVE_DIR / "website"
+
+
+def local_port() -> int:
+    try:
+        return int(_get("local_port") or LOCAL_PORT_DEFAULT)
+    except ValueError:
+        return LOCAL_PORT_DEFAULT
 
 
 def _get(key: str) -> str:
@@ -42,9 +76,12 @@ def _get(key: str) -> str:
 
 
 def publishing_set_up() -> bool:
-    """True when server, account and website folder are all filled in — the
-    minimum for an upload to go to a known place."""
-    return bool(sftp_host() and sftp_user() and sftp_remote_root())
+    """True when the website has a known destination: this computer, or a
+    server with server, account and website folder filled in."""
+    target = publish_target()
+    if target == LOCAL:
+        return True
+    return target == SERVER and bool(sftp_host() and sftp_user() and sftp_remote_root())
 
 
 def sftp_host() -> str:
@@ -60,8 +97,11 @@ def sftp_remote_root() -> str:
 
 
 def site_base() -> str:
-    """The public site root, e.g. 'https://example.org' — no trailing slash.
-    A bare host in the config still yields a real URL; "" when not set."""
+    """The site root, e.g. 'https://example.org' — no trailing slash. For the
+    local website it is the local server's address. A bare host in the config
+    still yields a real URL; "" when not set."""
+    if is_local():
+        return f"http://127.0.0.1:{local_port()}"
     base = _get("base_url").rstrip("/")
     if base and not base.startswith("http"):
         base = "https://" + base
