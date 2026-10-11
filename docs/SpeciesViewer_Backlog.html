@@ -2127,13 +2127,20 @@ better than before even if 0.4 stops there:</p>
     and the largest ch.19 loose end at the same time.</li>
   <li><strong>De-personalise</strong>: the OSM User-Agent and the ten hard-coded site details move
     into configuration.</li>
-  <li><strong>The second master</strong> &mdash; the zero-data simulation. Its findings decide what
-    first run needs; do not design that before it.</li>
+  <li><strong>Several masters on one machine</strong> (11 Oct) &mdash; <em>Master &#9656; Masters</em>:
+    switch (restart), new test master, a movable &ldquo;main&rdquo; flag; a test master never touches the
+    main one. Plan: <code>docs/plans/multiple_masters_plan.md</code>.</li>
+  <li><strong>A first, rough ZIP</strong> (11 Oct) &mdash; one folder with <code>SpeciesViewer.exe</code>,
+    unpacked into a fresh folder and started outside VS Code. Only rough: no exiftool arrangement, no
+    README. It is the vehicle for the next step, because a test master in the development setup is
+    still a machine with Python and VS Code on it.</li>
+  <li><strong>The second master</strong> &mdash; the zero-data simulation, run from that ZIP in an empty
+    test master. Its findings decide what first run needs; do not design that before it.</li>
   <li><strong>ch.19 tidying</strong>, one item per commit: dead modules (verify, then delete),
     <code>cached_dates_for_new</code>, the trip-root fallback, the Read-SD-card dialog out of
     <code>trip_process.py</code>.</li>
   <li><strong>Identity</strong>: About box rendering <code>NOTICE.md</code>; the icon.</li>
-  <li><strong>Packaging</strong> (PyInstaller one-folder ZIP, exiftool arrangement), README,
+  <li><strong>Packaging</strong>, finished: the rough ZIP made complete (exiftool arrangement), README,
     repository clean-up, publish.</li>
 </ol>
 

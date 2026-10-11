@@ -1,7 +1,7 @@
 # Multiple masters on one machine — plan
 
 *0.4, step 5 prerequisite (backlog ch.20, "SpeciesViewer 0.4 — proposed order").
-Written 2026-10-11. Status: step 1 SHIPPED 89550ee; step 2 built, awaiting test; steps 3–4 to do.*
+Written 2026-10-11. Status: steps 1–2 SHIPPED (89550ee, f69cfed); step 3 built (Master ▸ Masters), awaiting test; step 4 to do.*
 
 ## Why
 
@@ -140,8 +140,14 @@ Neither copies the main master's `state/` or `db/`.
 3. **Master menu:** switch (restart), New test master (both kinds).
 4. **Move Repository Settings** under it. Rename/remove last.
 
-Then step 5 of the 0.4 order — the zero-data simulation — is: *Master ▸ New
-test master ▸ Empty*, restart, and write down everything that breaks.
+Then a **first rough ZIP** (added to the 0.4 order, 2026-10-11), and step 5 —
+the zero-data simulation — is: unpack the ZIP into a fresh folder, *Master ▸
+Masters ▸ New Test Master ▸ Start empty*, and write down everything that breaks.
+
+**Restart and VS Code.** VS Code's launcher (F5 *and* Ctrl+F5) puts the app in
+a Windows job that kills all its children when it ends; the restart therefore
+starts the new process with CREATE_BREAKAWAY_FROM_JOB (the launcher allows it).
+A packaged build (`sys.frozen`) restarts the .exe itself.
 
 ## Not in scope
 

@@ -70,6 +70,7 @@ import batch.svv4BuildWebsite
 import batch.svv7ExportVirtualTrip
 import engine.exifcache as exifcache
 from utils.ini_io import read_ini
+from gui.master_switch import masters_menu
 
 
 def build_menu_spec(main_window):
@@ -1913,6 +1914,9 @@ def build_menu_spec(main_window):
         # directly, view it, and keep it healthy. The trip→master merge lives in
         # the To Master menu; Publish Species Names is shared with it.
         "Master": {
+            # Which master is open, and switching to another (restart).
+            "Masters": masters_menu(main_window),
+            f"{MenuSpec.separator()}_master_switch": None,
             "Edit Species List": edit_master_species,
             f"{MenuSpec.separator()}_master_0": None,
             "Add Pictures to Master…": add_pictures_to_master_item,

@@ -110,6 +110,50 @@ def add(name: str) -> dict:
     return entry
 
 
+# Sections that describe a COLLECTION (where its data lives, where it is
+# published, what is open in it) rather than this computer. "Copy machine
+# settings" leaves these out, so a new master never points at another
+# master's data or website.
+COLLECTION_SECTIONS = ("master", "trip", "virttrip", "project", "repository",
+                       "Repositories", "websettings", "currentpictures",
+                       "gpslogs", "addmaster", "utilities")
+
+
+def create(name: str, copy_machine_settings_from: Path | None = None) -> dict:
+    """Register a new master (not main, not active). With
+    `copy_machine_settings_from` (the main master's sv_config file) its config
+    starts as a copy of that file minus COLLECTION_SECTIONS — DxO path,
+    exiftool workers, window sizes, but no paths to data and no website.
+    Without it, the config is created empty on first start, exactly as for a
+    brand-new user. Never copies state/ or db/."""
+    entry = add(name)
+    if copy_machine_settings_from:
+        import configparser
+        from utils.ini_io import read_ini
+        src = configparser.ConfigParser()   # same parser settings as utils.config
+        read_ini(src, copy_machine_settings_from)
+        for section in COLLECTION_SECTIONS:
+            src.remove_section(section)
+        dest = folder_of(entry) / "config" / Path(copy_machine_settings_from).name
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        with open(dest, "w", encoding="utf-8") as f:
+            src.write(f)
+    return entry
+
+
+def main_master(data: dict) -> dict:
+    return next(m for m in data["masters"] if m.get("main"))
+
+
+def make_main(name: str) -> None:
+    """Move the "main" flag to `name`. Exactly one master is main, always."""
+    data = load()
+    target = find(data, name)
+    for m in data["masters"]:
+        m["main"] = m is target
+    save(data)
+
+
 def set_active(name: str) -> None:
     """Make `name` the master the NEXT start opens. The running process keeps
     its own (see INVARIANT)."""
