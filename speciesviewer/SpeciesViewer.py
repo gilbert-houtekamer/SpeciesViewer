@@ -122,6 +122,8 @@ def start_main():
         _main_window = MainWindow()
         main_window = _main_window
         main_window.logger = init_logger(main_window.green_log_box)           # ✅ Set up logging
+        from utils import masters
+        main_window.logger.info(masters.describe())  # which master — first line, always
         from utils.config import MIGRATION_NOTES
         for note in MIGRATION_NOTES:          # settings moved out of the repo root
             main_window.logger.info(note)

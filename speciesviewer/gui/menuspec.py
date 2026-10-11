@@ -78,9 +78,11 @@ def build_menu_spec(main_window):
     module_config = configparser.ConfigParser()
     read_ini(module_config, svconfig_path())
 
+    # fallback "": with no master configured generate_svconfig_ini writes no
+    # file — the same empty paths as "no active trip", which the gating handles.
     sm = StateMachine(
-        module_config.get("repository", "BiotaDatabase"),
-        module_config.get("project", "PictureDirectory"),
+        module_config.get("repository", "BiotaDatabase", fallback=""),
+        module_config.get("project", "PictureDirectory", fallback=""),
         readState=True
     )
 

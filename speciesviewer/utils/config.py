@@ -4,17 +4,20 @@ import platform
 import shutil
 from pathlib import Path
 from utils.ini_io import read_ini
-from utils.cache_paths import app_data_dir
+from utils import masters
 
 # 🖥️ Get machine name
 MACHINE_NAME = platform.node().lower()
 
 # 📁 Per-machine files live in the per-OS app-data folder, never in the source
-# tree (docs/plans/config_out_of_repo.md):
+# tree (docs/plans/config_out_of_repo.md), in the ACTIVE MASTER's folder
+# (utils/masters.py — each master has its own; the first master's is the
+# app-data folder itself):
 #   config/  settings — what you would set up again on a new machine
 #   state/   remembered state — what the app re-learns by being used
 # The repository root is where they used to live; it is only read once, to
-# migrate, and is the fallback when the app-data folder cannot be created.
+# migrate, and is the fallback when the app-data folder cannot be created —
+# both only for the master that existed before masters.json.
 LEGACY_DIR = Path(__file__).resolve().parent.parent.parent  # utils → speciesviewer → repo root
 CONFIG_FILENAME = f"sv_config_{MACHINE_NAME}.ini"
 
@@ -24,11 +27,15 @@ MIGRATION_NOTES = []
 
 
 def _app_dir(sub):
-    d = app_data_dir() / sub
+    d = masters.ACTIVE_DIR / sub
     try:
         d.mkdir(parents=True, exist_ok=True)
         return d
     except OSError as e:
+        if not masters.IS_LEGACY_FOLDER:
+            # A newer master has no repo-root files to fall back on; the repo
+            # root would be the legacy master's — refuse rather than mix.
+            raise
         MIGRATION_NOTES.append(f"⚠ Could not create {d} ({e}); using {LEGACY_DIR}")
         return LEGACY_DIR
 
@@ -44,7 +51,7 @@ def _migrate(name, new_dir):
     and the rename means a hand-edit of the old file cannot silently go to a
     file nobody reads any more. Does nothing once the new file exists."""
     old, new = LEGACY_DIR / name, new_dir / name
-    if new_dir == LEGACY_DIR or new.exists() or not old.is_file():
+    if not masters.IS_LEGACY_FOLDER or new_dir == LEGACY_DIR or new.exists() or not old.is_file():
         return
     try:
         shutil.copy2(old, new)
@@ -69,6 +76,26 @@ if not os.path.exists(CONFIG_PATH):
 # UTF-8 both ways — persist_config writes UTF-8, so anything else here would
 # corrupt accented paths on a machine whose locale is not UTF-8 (Windows).
 read_ini(_config, CONFIG_PATH)
+
+# 🧱 INVARIANT: these sections and keys always exist — empty meaning "not set
+# up yet". Code all over reads them as _config["trip"]["tripbiotadatabase"],
+# which raises KeyError on a fresh config (a new user, a new master). Filling
+# them here once is the fix for all those reads; existing values are untouched.
+_ALWAYS_PRESENT = {
+    "master": ("masterbiotadatabase", "masterbiotawebroot"),
+    "trip": ("tripbiotadatabase", "tripbiotawebroot"),
+    "virttrip": ("virttripbiotadatabase", "virttripbiotawebroot"),
+    "project": ("picturedirectory",),
+    "layout": (),
+    "utilities": (),
+    "avibase": (),
+}
+for _section, _keys in _ALWAYS_PRESENT.items():
+    if not _config.has_section(_section):
+        _config.add_section(_section)
+    for _key in _keys:
+        if not _config.has_option(_section, _key):
+            _config.set(_section, _key, "")
 
 # ✅ Centralized write function
 def persist_config():

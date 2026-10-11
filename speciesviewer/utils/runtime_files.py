@@ -19,7 +19,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from utils.cache_paths import app_data_dir
+from utils.masters import ACTIVE_DIR
 
 # Shared by writer and reader — a literal typed twice is a silent breakage
 # (the writer publishes, the reader finds nothing and quietly opens the site root).
@@ -31,8 +31,9 @@ def runtime_path(name: str) -> Path:
     """Absolute path to the per-machine runtime file `name`, creating its
     directory. Lives beside the caches under the per-OS app-data dir
     (%LOCALAPPDATA%/SpeciesViewer on Windows, ~/Library/Application Support
-    on macOS) — local, never Dropbox, never the source tree."""
-    d = app_data_dir() / "runtime"
+    on macOS) — local, never Dropbox, never the source tree. Per master
+    (utils/masters.py): svconfig.ini carries that master's paths."""
+    d = ACTIVE_DIR / "runtime"
     d.mkdir(parents=True, exist_ok=True)
     return d / name
 

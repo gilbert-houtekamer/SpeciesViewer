@@ -160,8 +160,16 @@ def _app_data_dir() -> Path:
     return app_data_dir()
 
 
+def _db_dir() -> Path:
+    """The ACTIVE master's db/ folder (utils/masters.py). Per master, because
+    the pending-writes log belongs to one master: shared, a switch would
+    replay one master's queued writes into another's CSVs."""
+    from utils.masters import ACTIVE_DIR
+    return ACTIVE_DIR / "db"
+
+
 def db_path() -> Path:
-    return _app_data_dir() / "db" / "master.db"
+    return _db_dir() / "master.db"
 
 
 def wal_jsonl_path() -> Path:
@@ -171,7 +179,7 @@ def wal_jsonl_path() -> Path:
     An entry is appended (intent-first, fsync'd) before each master write hits
     SQLite; the checkpoint worker rewrites the affected master CSV from the DB
     and truncates the log once the canonical CSV has caught up."""
-    return _app_data_dir() / "db" / "master.wal.jsonl"
+    return _db_dir() / "master.wal.jsonl"
 
 
 def _opt_str(v) -> str | None:
@@ -314,7 +322,7 @@ class MasterDB:
         # master.db / master.wal.jsonl exactly as before.
         self.master_root = str(master_root)
         if cache_name:
-            base = _app_data_dir() / "db"
+            base = _db_dir()
             self._db_path = base / f"{cache_name}.db"
             self._jsonl_path = base / f"{cache_name}.wal.jsonl"
         else:
