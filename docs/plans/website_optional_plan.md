@@ -55,3 +55,12 @@ In Global Settings ▸ Website and publishing: **Test** — log in with the acco
 and look for the website folder, then say what failed in plain words. Connection
 status only checks that the server answers; a mistyped account or folder is what
 actually fails, and today that shows up only at the first publish.
+
+3. **Create Trip asks for a trip image and a web banner** (Gilbert, 2026-10-11,
+   in a test master without a website): both show "✗ Missing path input"; the
+   starter images in `dist/includes web/` (`tripimage.jpg`, `tripbanner.jpg`)
+   are not offered as defaults. The trip is created anyway, with "please review
+   the warning". Both are only used on the website — without one they should
+   be optional, with the starter images as default.
+4. **Create Trip accepts a trip without a web root.** Fine without a website;
+   with one, publishing needs it. Decide: required only when a website is set up.

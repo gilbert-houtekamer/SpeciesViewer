@@ -74,15 +74,41 @@ def exiftool_state():
     if path:
         return OK, f"{path} ({where})"
     return MISSING, ("Not found. SpeciesViewer reads and writes picture data with "
-                     "exiftool — download it from exiftool.org, then Locate… it.")
+                     "ExifTool — Locate… tells you where to get it.")
+
+
+EXIFTOOL_HOWTO = (
+    "SpeciesViewer reads and writes picture data with ExifTool, free software "
+    "by Phil Harvey. Use the official version from exiftool.org:\n\n"
+    "Windows — download the Windows 64-bit package and unzip it. Rename "
+    "“exiftool(-k).exe” to “exiftool.exe” and keep the “exiftool_files” folder "
+    "beside it. Then choose that exiftool.exe here.\n\n"
+    "macOS — install the macOS package from exiftool.org; SpeciesViewer then "
+    "finds it by itself.\n\n"
+    "Linux — install it with your package manager (on Debian and Ubuntu: "
+    "libimage-exiftool-perl).")
 
 
 def locate_exiftool(parent) -> None:
-    """Choose an exiftool program; keep it only if it answers with a version."""
+    """Explain where to get exiftool, then choose it; keep it only if it
+    answers with a version."""
     import subprocess
+    from PyQt6.QtCore import QUrl
+    from PyQt6.QtGui import QDesktopServices
     from PyQt6.QtWidgets import QFileDialog, QMessageBox
     from utils.config import persist_config
-    chosen, _ = QFileDialog.getOpenFileName(parent, "Locate exiftool")
+    box = QMessageBox(QMessageBox.Icon.Information, "Locate exiftool", EXIFTOOL_HOWTO,
+                      parent=parent)
+    website = box.addButton("Open exiftool.org", QMessageBox.ButtonRole.ActionRole)
+    choose = box.addButton("Choose exiftool…", QMessageBox.ButtonRole.AcceptRole)
+    box.addButton(QMessageBox.StandardButton.Cancel)
+    box.exec()
+    if box.clickedButton() is website:
+        QDesktopServices.openUrl(QUrl("https://exiftool.org"))
+        return
+    if box.clickedButton() is not choose:
+        return
+    chosen, _ = QFileDialog.getOpenFileName(parent, "Choose exiftool")
     if not chosen:
         return
     try:

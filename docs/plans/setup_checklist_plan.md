@@ -164,3 +164,18 @@ it — the packaged ZIP now only has to put exiftool in `exiftool/` beside the
 (pyexiftool's own default) — a bare `exiftool` resolved to Strawberry's .BAT
 wrapper and the long-running exiftool hung on its first read. Tested: read,
 both write routes and preview extraction, on the PATH and with a chosen copy.
+
+## Findings from Gilbert's test trip (2026-10-11)
+
+- **Shipping exiftool is allowed and decided:** ExifTool is under the same terms
+  as Perl (Artistic License or GPL; NOTICE.md). The ZIP carries the official
+  Windows package from exiftool.org — the version we know — not Strawberry's.
+  Locate… now first explains where to get it, per system (Windows: unzip,
+  rename `exiftool(-k).exe` → `exiftool.exe`, keep `exiftool_files` beside it).
+- **Red warning on a new master's first trip:** "Species baseline … yielded 0
+  species — refusing to write an empty baseline". Correct guard (an empty
+  baseline would make every species look new), but for a brand-new collection
+  the master simply has no species yet — same pattern as the backup fix: say
+  it calmly when the collection has never held a picture.
+- The pictures and colour labels of the test trip loaded correctly before any
+  Read & Summarize — the exiftool lookup works in real use.
