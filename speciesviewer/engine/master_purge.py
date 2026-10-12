@@ -151,7 +151,19 @@ def plan(name: str) -> dict:
     folders = ([out["collection"]] if out["collection"] else []) + out["trips"] + out["albums"]
     out["sizes"] = {str(f): folder_size(f) for f in folders}
     out["size"] = sum(out["sizes"].values())
+    # Picture files in each folder's biota/ — COPIES for a trip, but the
+    # master's collection is the backup: once the originals are cleared from
+    # the pictures folder, its copies are the only ones (2026-10-12).
+    out["pictures_in"] = {str(f): picture_count(f) for f in folders}
     return out
+
+
+def picture_count(folder) -> int:
+    from utils.raw_extensions import PICTURE
+    biota = Path(folder) / "biota"
+    if not biota.is_dir():
+        return 0
+    return sum(1 for p in biota.rglob("*") if p.is_file() and p.suffix.lower() in PICTURE)
 
 
 def delete(p: dict) -> list[str]:

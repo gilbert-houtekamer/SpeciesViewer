@@ -271,7 +271,6 @@ def _remove(main_window) -> None:
         return
     # What "also delete its data" would delete — read from THAT master's own
     # settings, shown before anything happens (docs/plans/force_delete_plan.md B).
-    from PyQt6.QtWidgets import QCheckBox
     from engine import master_purge
     from engine.force_delete import human
     try:
@@ -279,36 +278,68 @@ def _remove(main_window) -> None:
     except Exception as e:
         main_window.logger.info(f"Remove Master: could not list {name}'s data: {e}")
         data_plan = None
-    box = QMessageBox(QMessageBox.Icon.Question, "Remove Master",
-                      f"Remove the master “{name}” from SpeciesViewer?\n\n"
-                      "Its settings, remembered state and website on this computer "
-                      "are zipped to the trash first.",
-                      QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-                      main_window)
-    box.setDefaultButton(QMessageBox.StandardButton.No)
-    data_cb = None
-    if data_plan and (data_plan["collection"] or data_plan["trips"] or data_plan["albums"]):
+    # Fool-proof (Gilbert half-read an unticked checkbox, 2026-10-12): the
+    # choice is IN the buttons — "settings only" or "with its data (size)" —
+    # and deleting data is confirmed once more, with the size and "no backup".
+    has_data = bool(data_plan and (data_plan["collection"] or data_plan["trips"]
+                                   or data_plan["albums"]))
+    text = (f"Remove the master “{name}” from SpeciesViewer.\n\n"
+            "Settings only: its settings, remembered state and website on this "
+            "computer are zipped to the trash; its collection, trips and albums "
+            "stay on disk.")
+    master_pictures = 0
+    if has_data:
+        def _line(kind, f):
+            n = data_plan["pictures_in"].get(str(f), 0)
+            what = (f", {n} pictures" if kind == "collection" else f", copies of {n} pictures") if n else ""
+            return f"• {kind} {f} ({human(data_plan['sizes'][str(f)])}{what})"
         lines = []
         if data_plan["collection"]:
-            c = data_plan["collection"]
-            lines.append(f"• collection {c} ({human(data_plan['sizes'][str(c)])})")
-        for f in data_plan["trips"]:
-            lines.append(f"• trip {f} ({human(data_plan['sizes'][str(f)])})")
-        for f in data_plan["albums"]:
-            lines.append(f"• album {f} ({human(data_plan['sizes'][str(f)])})")
+            lines.append(_line("collection", data_plan["collection"]))
+            master_pictures = data_plan["pictures_in"].get(str(data_plan["collection"]), 0)
+        lines += [_line("trip", f) for f in data_plan["trips"]]
+        lines += [_line("album", f) for f in data_plan["albums"]]
         kept = []
-        if data_plan["pictures"]:
-            kept.append(f"its pictures ({data_plan['pictures']})")
         if data_plan["other_trips"]:
             kept.append(f"{len(data_plan['other_trips'])} trip(s)/album(s) of other "
                         "masters in the same folders")
         kept += [f"{p} — {why}" for p, why in data_plan["skipped"]]
-        box.setInformativeText(
-            "With the box ticked, also deleted — no backup:\n" + "\n".join(lines)
-            + ("\n\nNot deleted: " + "; ".join(kept) + "." if kept else ""))
-        data_cb = QCheckBox(f"Also delete this master's data — {human(data_plan['size'])}")
-        box.setCheckBox(data_cb)
-    if box.exec() != QMessageBox.StandardButton.Yes:
+        # "Its data" made Gilbert think of his pictures and ratings: say what
+        # these are — SpeciesViewer's own files — and what is never touched.
+        text += ("\n\nWith SpeciesViewer's files: ALSO deleted, permanently, no "
+                 "backup — the lists, blog texts and web pages SpeciesViewer made "
+                 "for this master, and the pictures it copied into them:\n"
+                 + "\n".join(lines)
+                 + (f"\n\nNever touched: your pictures folder ({data_plan['pictures']}) "
+                    "— the pictures and what is stored with them: ratings, species "
+                    "names, landscape codes." if data_plan["pictures"] else
+                    "\n\nNever touched: your pictures folder — the pictures and what "
+                    "is stored with them: ratings, species names, landscape codes.")
+                 + ("\nAlso kept: " + "; ".join(kept) + "." if kept else ""))
+    box = QMessageBox(QMessageBox.Icon.Question, "Remove Master", text,
+                      QMessageBox.StandardButton.NoButton, main_window)
+    settings_btn = box.addButton("Remove settings only",
+                                 QMessageBox.ButtonRole.AcceptRole)
+    data_btn = (box.addButton(f"Remove with SpeciesViewer's files — {human(data_plan['size'])}",
+                              QMessageBox.ButtonRole.DestructiveRole)
+                if has_data else None)
+    cancel_btn = box.addButton(QMessageBox.StandardButton.Cancel)
+    box.setDefaultButton(cancel_btn)
+    box.exec()
+    clicked = box.clickedButton()
+    if clicked not in (settings_btn, data_btn) or clicked is None:
+        return
+    with_data = clicked is data_btn
+    only_copies = (f"\n\nThis master holds {master_pictures} pictures. If you removed "
+                   "them from your pictures folder after adding them to the master, "
+                   "these are the ONLY copies." if master_pictures else "")
+    if with_data and QMessageBox.warning(
+            main_window, "Remove Master",
+            f"Delete {human(data_plan['size'])} of SpeciesViewer's files for "
+            f"“{name}” permanently?\n\nThere is no backup. Your pictures folder is "
+            f"not touched.{only_copies}",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No) != QMessageBox.StandardButton.Yes:
         return
     try:
         zip_path = masters.remove(name)
@@ -316,7 +347,7 @@ def _remove(main_window) -> None:
         QMessageBox.warning(main_window, "Remove Master", str(e))
         return
     main_window.logger.info(f"Master “{name}” removed; its settings are in {zip_path}")
-    if data_cb is not None and data_cb.isChecked():
+    if with_data:
         report = master_purge.delete(data_plan)
         # With shared folders the deleted trips/albums were in THIS master's
         # lists too; the panels read the folders once at start, so re-read.
