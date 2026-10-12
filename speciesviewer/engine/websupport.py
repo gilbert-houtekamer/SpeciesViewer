@@ -748,8 +748,11 @@ def formatToken(tokenno, MyProject, species_param, file, picture):
         elif tokenno == 47:
             return MyProject.getBlogDateFromPictures() + '/' + getSmallJPG(file['File:FileName'])   #BUGBUG        
         elif tokenno == 48:
-            workstr = BiotaWebRoot + "includes web/keerkringvogel.jpg"
-            return workstr      
+            # Only the trip index uses this, and that page is the MASTER's: its
+            # banner must not follow whichever trip was open when it was
+            # regenerated — deleting that trip's pages broke it (2026-10-12).
+            workstr = masterWebRoot(MyProject, BiotaWebRoot) + "includes web/keerkringvogel.jpg"
+            return workstr
         elif tokenno == 49: # banner, now by kingdom, but could be more specific
             if not MyProject.isMasterRepository():
                 try:

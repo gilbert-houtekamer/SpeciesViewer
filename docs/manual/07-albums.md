@@ -189,10 +189,17 @@ without a master is a query with nothing to query.
 
 ### Delete Album…
 
-*Needs: an active album.*
+Lists every album (it opens on the active one). **The master and your pictures
+are untouched** — that is the whole point of an album: it is cheap to delete
+and can be rebuilt from the same date range. Tick what goes:
 
-Deletes the active album. **The master is untouched** — that is the whole point of
-an album: it is cheap to delete and can be rebuilt from the same date range.
+- **SpeciesViewer's files** — the album's folder, with its size. A backup zip
+  in `.trash` only when you tick *Keep a backup zip*.
+- **The row on the trip list**, and **the published pages** `/trips/<name>/` —
+  only on a computer that owns the website: a website **on this computer**, or
+  a website on a server from the computer with the **full master**. On a laptop
+  with a read-only copy of the master they are not offered: deleting a laptop's
+  copy there would remove what your big computer published.
 
-It is zipped to `.trash` first, so a mistaken delete is recoverable. The delete
-renames before removing, and retries on Dropbox locks.
+The same dialog as *Trips ▸ Advanced ▸ Delete Trip Completely*, for albums. The
+delete renames before removing, and retries on Dropbox locks.

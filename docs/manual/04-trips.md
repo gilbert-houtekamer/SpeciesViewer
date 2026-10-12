@@ -361,6 +361,29 @@ how pages are built (not something that affects you day to day).
 > The pictures in `CurrentPictures` are never touched by either action — only the
 > data and pages the pipeline generated from them.
 
+### Delete Trip Completely…
+
+For a trip that never became a real one — a test, a mistake, or a copy that
+now lives on your other computer. The normal end of a trip is
+[To Master ▸ Retire](05-to-master.md).
+
+The dialog lists every trip it knows — folders on this computer **and** names
+on the website's trip list, so a trip whose folder is already gone can still be
+removed. Pick one and tick what goes:
+
+- **SpeciesViewer's files** — the trip's folder, with its size. A backup zip in
+  `.trash` only when you tick *Keep a backup zip*.
+- **The row on the trip list**, and **the published pages** `/trips/<name>/` —
+  only on a computer that owns the website: a website **on this computer**, or
+  a website on a server from the computer with the **full master**. On a laptop
+  with a read-only copy of the master they are not offered: deleting a laptop's
+  copy there would remove what your big computer published.
+
+Never touched: your pictures (the report says where they are) and the master.
+A trip of another master in the same Trips folder is shown grey — open that
+master to delete it. A trip an album was made from keeps its web address and
+trip-list row: they belong to the album.
+
 ### Advanced ▸ Legacy
 
 The individual pipeline steps, from before they were merged into

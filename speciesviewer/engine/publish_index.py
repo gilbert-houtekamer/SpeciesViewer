@@ -150,6 +150,43 @@ def unadvertise(config, kind: str = "album") -> str:
     if not trip_row:
         raise SVException(f"Could not read trip information from {os.path.basename(ini_path)}.")
     name = trip_row.get("trip_name", "").strip()
+    return _remove_row(config, trip, name, kind, starttime)
+
+
+def unadvertise_name(config, name: str, kind: str = "trip") -> str:
+    """Remove the row called `name` from the trip index — WITHOUT its folder.
+
+    For a trip whose folder is already gone (deleted by hand, or on another
+    computer): unadvertise() finds the name by reading the folder's ini, which
+    then cannot work (docs/plans/force_delete_plan.md). The index pages are
+    regenerated as if from /trips/<name>/, which is all the page needs to know
+    where the trips live."""
+    from engine import SVException
+    import engine.projectlib
+
+    starttime = time.time()
+    name = (name or "").strip()
+    if not name:
+        raise SVException("No trip name given — nothing to remove from the index.")
+    master_db  = config.get("master", "MasterBiotaDatabase", fallback="")
+    master_web = config.get("master", "MasterBiotaWebRoot",  fallback="/nature/")
+    if not master_db or not os.path.isdir(master_db):
+        raise SVException(f"Master database not found: {master_db!r}")
+    logger.info(f"unadvertise {kind} by name: {name}")
+    project = engine.projectlib.Project(master_db, "", f"/trips/{name}/")
+    project.initMasterAndTrip(config, inittrip=False)
+    project.master_biota_web_root = master_web
+    trip = project.Trip
+    trip.master_repository_web = master_web
+    trip.trip_dict = {}      # Trip.trip_dict is CLASS-level: never inherit another run's rows
+    load_admin_base(trip, config)
+    return _remove_row(config, trip, name, kind, starttime)
+
+
+def _remove_row(config, trip, name, kind, starttime) -> str:
+    """Drop `name` from the loaded index, regenerate the index pages, upload
+    them with trip_admin.csv. Shared by unadvertise() and unadvertise_name()."""
+    from engine import SVException
 
     removed = trip.removeTrip(name)
     if not removed:

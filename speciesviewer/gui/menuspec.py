@@ -1065,9 +1065,13 @@ def build_menu_spec(main_window):
         import gui.trip_finder_view as tf
         tf.show(main_window, _config)
 
+    def _delete_trip_completely():
+        from gui.force_delete_dialog import DeleteTripDialog
+        DeleteTripDialog(main_window).exec()
+
     def _delete_album():
-        from gui.album_delete_dialog import AlbumDeleteDialog
-        AlbumDeleteDialog(main_window).exec()
+        from gui.force_delete_dialog import DeleteAlbumDialog
+        DeleteAlbumDialog(main_window).exec()
 
     def _manage_album_publication():
         from gui.publish_dialog import AlbumPublishDialog
@@ -1891,6 +1895,12 @@ def build_menu_spec(main_window):
                 "Manage Blogs": manage_blogs,
                 "Reset Trip": empty_trip_data,
                 "Recreate Trip": recreate_trip,
+                # For a trip that never became a real one; the normal end of a
+                # trip is To Master ▸ Retire (docs/plans/force_delete_plan.md).
+                "Delete Trip Completely…": MenuSpec(
+                    callback=_delete_trip_completely,
+                    title="Delete Trip Completely…",
+                ),
                 f"{MenuSpec.separator()}_adv0": None,
                 "Legacy": {
                     "Read Directory": read_dir,
@@ -1994,8 +2004,9 @@ def build_menu_spec(main_window):
             "Delete Album…": MenuSpec(
                 callback=lambda: _delete_album(),
                 title="Delete Album…",
-                enabled=has_active_album,
-                tooltip="Delete the active album (backed up first; the master is untouched)",
+                # Lists every album, so it does not need one to be open.
+                tooltip="Delete an album — its folder, trip-list row and pages "
+                        "(the master and your pictures are untouched)",
             ),
         },
         "Utilities": {
