@@ -53,7 +53,7 @@ def make_collection(folder) -> None:
     # their links lose /nature/ and point at the site's top level — found by
     # crawling the local website, 2026-10-11), but NOT published here: New Master
     # makes a collection for a master that is not the open one, whose website is
-    # elsewhere. The first publish supplies them (sv7WriteCommit.ensureSiteSkeletons).
+    # elsewhere. engine.site_init supplies them once that master has a website.
     web_root = collection_settings(folder)["masterbiotawebroot"]
     cfg["repository"] = {"BiotaDatabase": str(folder), "BiotaWebRoot": web_root,
                          "ReferenceSpecies": str(folder / "metadata" / "active" / "species.csv")}

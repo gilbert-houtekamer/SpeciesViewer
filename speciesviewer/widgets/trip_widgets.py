@@ -11,6 +11,10 @@ from utils.gui_config import load_gui_cache, add_recent_gui_project
 from gui import theme
 
 _ASSETS = str(Path(__file__).resolve().parent.parent / "assets")
+# What the website shows for a trip or album without its own picture / banner.
+_SITE_DEFAULTS = Path(__file__).resolve().parent.parent / "dist" / "includes web"
+DEFAULT_TRIP_PICTURE = str(_SITE_DEFAULTS / "tripimage.jpg")
+DEFAULT_TRIP_BANNER = str(_SITE_DEFAULTS / "keerkringvogel.jpg")
 
 
 def _nearest_existing_dir(path: str) -> str:
@@ -80,9 +84,13 @@ def _preview_box(expected_size, max_w=440, max_h=132):
 
 
 class ImageFileFieldQt(QWidget):
-    def __init__(self, label, expected_size, root_field, icon_path=_ASSETS):
+    def __init__(self, label, expected_size, root_field, icon_path=_ASSETS,
+                 default_file=None):
         super().__init__()
         self.expected_size = expected_size
+        # The picture the website shows when this field is left empty. Empty
+        # is then a valid choice, not an error.
+        self.default_file = default_file
         self.root_field = root_field  # QLineEdit or similar widget with .text()
         self.icon_path = icon_path
 
@@ -134,6 +142,13 @@ class ImageFileFieldQt(QWidget):
     def validate(self) -> bool:
         relative_path = self.field.text().strip()
         root_path = self.root_field.get_text()
+
+        if not relative_path and self.default_file:
+            self.status_icon.setText("")
+            self.status_icon.setToolTip("")
+            self.show_hint("Empty — the default picture is used.", error=False)
+            self._show_preview(self.default_file)
+            return True
 
         if not relative_path or not root_path:
             return self._invalidate("Missing path input.")
@@ -209,7 +224,9 @@ class ImageFileFieldQt(QWidget):
     def get_filename(self):
         return os.path.basename(self.field.text().strip())                
 
-    def show_hint(self, message: str):
+    def show_hint(self, message: str, error: bool = True):
+        colour = "red" if error else theme.INK_FAINT
+        self.hint_label.setStyleSheet(f"color: {colour}; font-size: 9pt;")
         self.hint_label.setText(message)
         self.hint_label.setVisible(True)
 

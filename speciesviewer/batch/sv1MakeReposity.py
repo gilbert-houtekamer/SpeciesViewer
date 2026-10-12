@@ -62,6 +62,17 @@ def publish_skeleton(sftp, repo_dir, web_root):
     sftp.upload(os.path.join(web, "intro-link-en.html"), createdpath + "/summaries/all biota species-en.html")
     sftp.put_r_portable(os.path.join(web, "includes web") + "/", createdpath + '/includes web/', preserve_mtime=True)
     sftp.put_r_portable(os.path.join(web, "biota") + "/", createdpath + '/biota/', preserve_mtime=True)
+    # A master's empty trip index — never over a real one on the site.
+    index_pages = [n for n in ("tripindex-nl.html", "tripindex-en.html")
+                   if os.path.isfile(os.path.join(web, n))]
+    if index_pages:
+        try:
+            on_site = set(sftp.listdir(createdpath))
+        except Exception:
+            on_site = set()
+        for name in index_pages:
+            if name not in on_site:
+                sftp.upload(os.path.join(web, name), createdpath + "/" + name)
     return createdpath
 
 
@@ -203,14 +214,24 @@ def main(args, config):
     copyMissingLinkPages("biota/animalia/arthropoda/insecta/022 lepidoptera", exist_ok=True)
     copyMissingLinkPages("biota/plantae", exist_ok=True)
     copyMissingLinkPages("biota/fungi", exist_ok=True)
-    copyMissingLinkPages("summaries/all biota species", exist_ok=True)    
+    copyMissingLinkPages("summaries/all biota species", exist_ok=True)
+    # biota/biota-*.html only appears once a repository has pictures, yet the
+    # trip index links to it ("nature", "(Trip soorten)").
+    copyMissingLinkPages("biota", exist_ok=True)
+    if is_master:
+        # The master owns the trip index; a new master had none, so the
+        # site's Trips link was a 404 until a trip was advertised (Gilbert,
+        # 2026-10-12).
+        from engine.triplib import write_trip_index
+        for language in ('nl', 'en'):
+            write_trip_index(MyProject, language, os.path.join(NEW_DB_TREE, "web"))
 
     # The local web/ tree above is always made; the server copy only when a
     # website is set up — publishing is optional (docs/plans/website_optional_plan.md).
     from utils import site_config
     if config.get("utilities", "build_only", fallback="no").strip().lower() == "yes":
         # Create Master Collection: build the pages, publish nothing — the site
-        # may belong to another master. The first publish supplies the skeleton.
+        # may belong to another master. engine.site_init supplies the skeleton.
         WEB_TREE = ""
     if WEB_TREE != "" and not site_config.publishing_set_up():
         logger.info("sv1MakeReposity: no website set up — created locally only; "

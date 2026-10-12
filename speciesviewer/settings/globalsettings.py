@@ -128,8 +128,20 @@ class GlobalSettingsDialog(QDialog):
         persist_config()
         from utils import local_web
         local_web.ensure_started()            # switching to "this computer" shows it at once
+        # A website that was just set up gets its starter pages now, not at the
+        # first publish (Gilbert, 2026-10-12). A site that has them: nothing sent.
+        from PyQt6.QtCore import Qt
+        from PyQt6.QtWidgets import QApplication
+        from engine.site_init import initialize_site
+        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+        try:
+            supplied = initialize_site(password=self.webpassword_field.text().strip())
+        finally:
+            QApplication.restoreOverrideCursor()
 
-        QMessageBox.information(self, "Success", "✅ Global settings updated")
+        QMessageBox.information(
+            self, "Success", "✅ Global settings updated"
+            + ("\n\nYour website now has its starting pages." if supplied else ""))
         self.close()
 
         logger = logging.getLogger("speciesviewer")

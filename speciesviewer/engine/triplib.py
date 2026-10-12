@@ -100,7 +100,12 @@ class Trip:
     def getTripAdminWeb(self):
         return self.getMasterBiotaWebRoot() + 'includes web/trip_admin.csv'
     def getTripBanner(self):          # the web address where the file can be found
-        return os.path.join(self.mp.getBiotaWebRoot() , self.trip_dict[self.tripname]['trip_banner'])
+        # No banner of its own = the site's default one, never the trip folder
+        # itself (a broken banner on every trip page).
+        name = (self.trip_dict[self.tripname].get('trip_banner') or '').strip()
+        if not name:
+            name = "includes web/keerkringvogel.jpg"
+        return self.mp.getBiotaWebRoot() + name
     # def getTripPicture(self, tripname):         # the web address where the picture can be found
     #     return os.path.join(self.mp.getBiotaWebRoot() , self.trip_dict[tripname]['trip_name'], self.trip_dict[tripname]['trip_picture'])
     # def getTripName(self, tripname):
@@ -327,26 +332,8 @@ class Trip:
 
     # create updated index page
     def updateTripIndexPage(self, language):
-        MyProject = self.mp
-        MyProject.breadcrumb.clearBreadCrumb()
+        write_trip_index(self.mp, language, self.getMasterRepository())
 
-        # read all lines from the HTML template
-        if language.lower() == 'nl': 
-            MyProject.breadcrumb.addBCsimple("/nature/intro-nl.html", "Natuur")
-            MyProject.breadcrumb.addBCsimple("/nature/tripindex-nl.html", "Trips")
-        else: 
-            MyProject.breadcrumb.addBCsimple("/nature/intro-en.html", "Nature")
-            MyProject.breadcrumb.addBCsimple("/nature/tripindex-en.html", "Trips")
-
-        triptemplate = MyProject.getTemplateLines("tripindex-" + language + ".html")
-        with open((os.path.join(self.getMasterRepository(), "tripindex-" + language + ".html")).lower(), "w", encoding='UTF-8') as fileTripIndex:
-            for templateline in triptemplate:
-                line = getTemplateOutputString(MyProject, None, '', '', templateline.rstrip('\n'))
-                print(line, file=fileTripIndex)
-            fileTripIndex.close()
-
-        logger.info(f'Trip index written to {os.path.join(self.getMasterRepository(), "tripindex-" + language + ".html")}.')
-        return
 
     def openSFTP(self, pwd):
         MyProject = self.mp
@@ -380,3 +367,28 @@ class Trip:
         sftp.upload(fromfile, toweb)
         print(f'Uploaded {fromfile} to {path}')
         return
+
+
+def write_trip_index(MyProject, language, folder):
+    """Write tripindex-<language>.html into `folder`. With no trip loaded
+    (MyProject.Trip None — a brand-new master) the page says there are no
+    trips yet, so the site's Trips link never 404s."""
+    MyProject.breadcrumb.clearBreadCrumb()
+
+    # read all lines from the HTML template
+    if language.lower() == 'nl': 
+        MyProject.breadcrumb.addBCsimple("/nature/intro-nl.html", "Natuur")
+        MyProject.breadcrumb.addBCsimple("/nature/tripindex-nl.html", "Trips")
+    else: 
+        MyProject.breadcrumb.addBCsimple("/nature/intro-en.html", "Nature")
+        MyProject.breadcrumb.addBCsimple("/nature/tripindex-en.html", "Trips")
+
+    triptemplate = MyProject.getTemplateLines("tripindex-" + language + ".html")
+    with open(os.path.join(folder, "tripindex-" + language + ".html"), "w", encoding='UTF-8') as fileTripIndex:
+        for templateline in triptemplate:
+            line = getTemplateOutputString(MyProject, None, '', '', templateline.rstrip('\n'))
+            print(line, file=fileTripIndex)
+        fileTripIndex.close()
+
+    logger.info(f'Trip index written to {os.path.join(folder, "tripindex-" + language + ".html")}.')
+    return

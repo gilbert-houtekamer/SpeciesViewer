@@ -132,6 +132,9 @@ def start_main():
             main_window.logger.warning(site_config.NOT_SET_UP_MSG)
         from utils import local_web
         local_web.ensure_started()     # the local website, when that is the choice
+        if site_config.is_local():     # a server is checked on Settings ▸ Save, not every start
+            from engine.site_init import initialize_site
+            initialize_site()          # starter pages of a new master / trip
         if _config.get("Global", "debug_tools", fallback="no") == "yes":
             print(f"✅ Logging configured, logger assigned: {main_window.logger}")
 

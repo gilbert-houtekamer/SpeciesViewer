@@ -1,4 +1,5 @@
 import os
+import html
 import posixpath
 import shutil
 import subprocess
@@ -1196,6 +1197,13 @@ def formatToken(tokenno, MyProject, species_param, file, picture):
                 soorten = 'Trip species'
                 title = 'Title'                
             workstr = ''
+            # A new master has no trips yet, and unadvertising the last one
+            # empties the list: say so, instead of a page that ends mid-air.
+            trip_dict = MyProject.Trip.trip_dict if MyProject.Trip is not None else {}
+            if not trip_dict:
+                if language == 'nl':
+                    return '<p>Er zijn nog geen trips gepubliceerd.</p>\n'
+                return '<p>No trips have been published yet.</p>\n'
             # Every trip lives beside the active one, so the folder that holds
             # them is the active repository's parent ('/trips/kreta/' -> '/trips').
             # This page is the master's, but it is regenerated while a trip or
@@ -1203,6 +1211,9 @@ def formatToken(tokenno, MyProject, species_param, file, picture):
             # ever runs from the master itself the parent is '/', and silently
             # emitting '/braakman' would be worse than saying so.
             trips_folder = webParent(BiotaWebRoot)
+            # A trip without its own picture gets the site's default one —
+            # never an <img> pointing at the trip folder (a broken image).
+            default_picture = masterWebRoot(MyProject, BiotaWebRoot) + "includes web/tripimage.jpg"
             if trips_folder in ("", "/"):
                 # '/nature/' -> '/', i.e. the master itself: there is no sibling
                 # folder to hang the trips off.
@@ -1219,7 +1230,7 @@ def formatToken(tokenno, MyProject, species_param, file, picture):
                     return datetime.strptime(val, '%Y-%m-%d')
                 except ValueError:
                     return datetime.min
-            sorted_items = sorted(MyProject.Trip.trip_dict.items(),
+            sorted_items = sorted(trip_dict.items(),
                                   key=lambda x: _todate_key(x[1]),
                                   reverse=True)
 
@@ -1232,9 +1243,12 @@ def formatToken(tokenno, MyProject, species_param, file, picture):
                 if trip['trip_name'] == "":
                     workstr += '          <p>(picture not found)</p>\n'
                 else:
+                    picture = (trip.get("trip_picture") or "").strip()
+                    src = TripWebRoot + '/' + picture if picture else default_picture
+                    tip = html.escape(trip["title_" + language], quote=True)
                     workstr += f'          <a href="'  + TripWebRoot + '/biotablog/blog index-' + language + '.html"><img\n'
-                    workstr += '            src="' + TripWebRoot + '/' + trip["trip_picture"]  + '"\n'  
-                    workstr += '            class="w3-border" style="padding:8px;max-width:100%" title="Click to open "' + trip["title_" + language] + '""></a>\n'
+                    workstr += '            src="' + src + '" alt="' + tip + '"\n'
+                    workstr += '            class="w3-border" style="padding:8px;max-width:100%" title="' + tip + '"></a>\n'
                 workstr += '      </div>\n'
                 workstr += '      <div class="w3-col" style="width:75%">\n'
                 workstr += '        <div class="content" style="margin-left:10px">\n'
