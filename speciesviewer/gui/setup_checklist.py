@@ -16,12 +16,13 @@ import sys
 from pathlib import Path
 
 from PyQt6.QtWidgets import (QDialog, QGridLayout, QHBoxLayout, QLabel,
-                             QPushButton, QVBoxLayout)
+                             QMessageBox, QPushButton, QVBoxLayout)
 
 from gui import theme
 from gui.widgets import wrapped
+from utils import default_folders
 from utils.config import (_config, get_currentpictures_root, get_trips_root,
-                          get_virttrips_root)
+                          get_virttrips_root, persist_config)
 
 # Marks: done, needed and missing, optional and not set up, works on defaults.
 OK, MISSING, OPTIONAL, DEFAULT = "ok", "missing", "optional", "default"
@@ -42,8 +43,9 @@ def _folder(path: str, missing_text: str):
 def master_collection_state():
     path = _config.get("master", "masterbiotadatabase", fallback="").strip()
     if not path:
-        return MISSING, ("No collection yet. Create one with Master ▸ Masters ▸ "
-                         "Create Master Collection…, or choose an existing one.")
+        return MISSING, ("No collection yet. Suggested: "
+                         f"{default_folders.master_folder()} — or choose an "
+                         "existing one.")
     if not (Path(path) / "metadata" / "active" / "data_pictures.csv").is_file():
         return MISSING, f"{path} — not a master collection (no metadata/active/ found)"
     return OK, path
@@ -65,15 +67,52 @@ def website_state():
 
 def pictures_folder_state():
     return _folder(get_currentpictures_root(),
-                   "Not chosen — where your working copies live, e.g. D:\\CurrentPictures.")
+                   "Not chosen — where your pictures are kept, one folder per "
+                   f"year. Suggested: {default_folders.pictures_folder()}")
 
 
 def trips_folder_state():
-    return _folder(get_trips_root(), "Not chosen — where your trips are kept.")
+    return _folder(get_trips_root(), "Not chosen — where SpeciesViewer keeps "
+                   f"your trips. Suggested: {default_folders.trips_folder()}")
 
 
 def albums_folder_state():
-    return _folder(get_virttrips_root(), "Not chosen — where your albums are kept.")
+    return _folder(get_virttrips_root(), "Not chosen — where SpeciesViewer keeps "
+                   f"your albums. Suggested: {default_folders.albums_folder()}")
+
+
+# The folder rows' "Use suggested": (config section, key, default folder).
+_FOLDER_KEYS = {
+    "Pictures folder": ("currentpictures", "rootdirectory", default_folders.pictures_folder),
+    "Trips folder": ("trip", "tripsrootdirectory", default_folders.trips_folder),
+    "Albums folder": ("virttrip", "virttriprootdirectory", default_folders.albums_folder),
+}
+
+
+# What each row with a suggestion has set today ("" = nothing).
+_CURRENT = {
+    "Master collection": lambda: _config.get("master", "masterbiotadatabase", fallback=""),
+    "Pictures folder": get_currentpictures_root,
+    "Trips folder": get_trips_root,
+    "Albums folder": get_virttrips_root,
+}
+
+
+def use_suggested_folder(parent, title: str) -> bool:
+    """Create the suggested folder for a checklist row and save it as the
+    setting. True when done."""
+    section, key, default = _FOLDER_KEYS[title]
+    folder = default()
+    try:
+        folder.mkdir(parents=True, exist_ok=True)
+    except OSError as e:
+        QMessageBox.warning(parent, title, f"{folder} could not be created:\n{e}")
+        return False
+    if not _config.has_section(section):
+        _config.add_section(section)
+    _config.set(section, key, str(folder))
+    persist_config()
+    return True
 
 
 def exiftool_state():
@@ -216,7 +255,7 @@ class SetupChecklistDialog(QDialog):
                 h = QLabel(head)
                 h.setStyleSheet(f"color: {theme.INK_FAINT};")
                 self.grid.addWidget(h, 0, col)
-        self.marks, self.texts = [], []
+        self.marks, self.texts, self.suggest_buttons = [], [], []
         for r, (title, needed, _check, actions) in enumerate(self.spec, start=1):
             mark = QLabel()
             mark.setStyleSheet("font-weight: bold; font-size: 15px;")
@@ -232,16 +271,46 @@ class SetupChecklistDialog(QDialog):
                 b = QPushButton(label)
                 b.clicked.connect(lambda _=False, a=action: a())
                 row_buttons.addWidget(b)
+            # The recommendation as one click — shown only while the row is ✗.
+            suggest = None
+            if title in _FOLDER_KEYS:
+                suggest = QPushButton("Use suggested")
+                suggest.setToolTip(f"Create {_FOLDER_KEYS[title][2]()} and use it.")
+                suggest.clicked.connect(lambda _=False, t=title: self._use_suggested(t))
+            elif title == "Master collection":
+                suggest = QPushButton("Create suggested")
+                suggest.setToolTip(f"Create a new master collection in "
+                                   f"{default_folders.master_folder()}.")
+                suggest.clicked.connect(self._create_suggested_master)
+            if suggest is not None:
+                row_buttons.addWidget(suggest)
+            self.suggest_buttons.append(suggest)
             row_buttons.addStretch()
             self.grid.addLayout(row_buttons, r, 4)
             self.marks.append(mark)
             self.texts.append(text)
         self.refresh()
 
+    def _use_suggested(self, title):
+        if use_suggested_folder(self, title):
+            self.main_window.rebuild_menu()       # its menus are no longer grey
+        self.refresh()
+
+    def _create_suggested_master(self):
+        from gui.master_switch import create_collection
+        create_collection(self.main_window, folder=default_folders.master_folder())
+        self.refresh()
+
     def refresh(self):
-        for (title, _needed, check, _actions), mark, text in zip(
-                self.spec, self.marks, self.texts):
+        for (title, _needed, check, _actions), mark, text, suggest in zip(
+                self.spec, self.marks, self.texts, self.suggest_buttons):
             state, detail = check()
+            if suggest is not None:
+                # Only when NOTHING is set: a set folder that is missing (an
+                # unplugged drive) or a wrong collection is not fixed by
+                # quietly pointing somewhere else.
+                configured = _CURRENT[title]().strip()
+                suggest.setVisible(state == MISSING and not configured)
             symbol, colour = _MARK[state]
             mark.setText(symbol)
             mark.setStyleSheet(f"font-weight: bold; font-size: 15px; color: {colour};")

@@ -104,7 +104,7 @@ class Trip:
         # itself (a broken banner on every trip page).
         name = (self.trip_dict[self.tripname].get('trip_banner') or '').strip()
         if not name:
-            name = "includes web/keerkringvogel.jpg"
+            name = "includes web/tripbanner.jpg"     # the trip default (terns)
         return self.mp.getBiotaWebRoot() + name
     # def getTripPicture(self, tripname):         # the web address where the picture can be found
     #     return os.path.join(self.mp.getBiotaWebRoot() , self.trip_dict[tripname]['trip_name'], self.trip_dict[tripname]['trip_picture'])

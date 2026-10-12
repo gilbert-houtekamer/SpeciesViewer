@@ -51,6 +51,36 @@ the scaffold button.
 In practice you often create a trip *before* you travel — placeholder dates, a
 stub blog, no pictures yet — and let it fill in as the journey happens.
 
+**One name, the rest suggested.** The first tab, *Name & Folders*, asks for a
+trip name and the dates. From the name `Spain`, starting in 2026, it suggests:
+
+| What | Suggested | |
+|---|---|---|
+| SpeciesViewer's files | `<Trips folder>\spaindb` | the trip's own data and web pages |
+| Your pictures | `<Pictures folder>\2026\2026 Spain` | the day folders go inside |
+| Web address | `…/trips/spain` | lowercase, accents dropped, spaces become `-` |
+
+The year is the trip's **start** year, not today's. Each folder follows the name
+until you change it; **↺** brings the suggestion back. Each line says what will
+happen: *will be created*, *⚠ exists, 3 day folders — this trip will use them*
+(a pictures folder often exists first, when the card was copied before the trip
+was made), or a red ✗ that blocks Create:
+
+- the folder for SpeciesViewer's files already holds something;
+- the web name is already used — by a trip folder, an album, or a trip on your
+  website's trip list. The message says which. A web address can never change
+  later, so this is checked before anything is made.
+
+**Check Range…** sits beside the dates: what the master already holds for them,
+and which trips or albums overlap (never the trip itself).
+
+**Create Trip** makes both folders, copies the default trip picture and banner
+into the trip (replace them later on the *Images* tab), sets both titles to the
+name, and builds the trip. Afterwards the button reads *Created ✓*.
+
+The descriptions on *Trip Text* take links: **Ctrl+K** or right-click ▸
+*Insert link…*.
+
 > **Why two entries and not one screen.** Each dialog can write to exactly one
 > place: *Create* only into a folder it makes itself, *Select or Update* only
 > into the trip you pick. Keeping them apart means creating a new trip can never

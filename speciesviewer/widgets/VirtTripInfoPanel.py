@@ -175,6 +175,11 @@ class VirtTripInfoPanel(QWidget):
 
         self._refresh_highlights()
 
+    def item_count(self) -> int:
+        """Real albums only — the "(No albums found)" placeholder row has no folder."""
+        return sum(1 for i in range(self.tree.topLevelItemCount())
+                   if self.tree.topLevelItem(i).data(0, _PATH_ROLE))
+
     def rebuild(self, sort_mode=None):
         """Re-enumerate the virttrips root and refresh the tree (e.g. after
         creation). sort_mode=None keeps the panel's current mode."""

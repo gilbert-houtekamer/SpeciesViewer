@@ -284,17 +284,20 @@ def _has_collection() -> bool:
     return bool(_config.get("master", "masterbiotadatabase", fallback="").strip())
 
 
-def create_collection(main_window) -> None:
-    """Choose an empty folder, make it a master collection, restart into it."""
+def create_collection(main_window, folder=None) -> None:
+    """Choose an empty folder (or take `folder`: the Setup Checklist's
+    suggestion), make it a master collection, restart into it."""
     from pathlib import Path
     from PyQt6.QtCore import Qt
     from PyQt6.QtWidgets import QApplication, QFileDialog
     from engine.master_create import CreateMasterError, check_folder, create_master_collection
-    chosen = QFileDialog.getExistingDirectory(
-        main_window, "Choose an EMPTY folder for the new master collection")
-    if not chosen:
-        return
-    folder = Path(chosen)
+    if folder is None:
+        chosen = QFileDialog.getExistingDirectory(
+            main_window, "Choose an EMPTY folder for the new master collection")
+        if not chosen:
+            return
+        folder = chosen
+    folder = Path(folder)
     try:
         check_folder(folder)
     except CreateMasterError as e:

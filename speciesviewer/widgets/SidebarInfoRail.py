@@ -66,6 +66,9 @@ class SidebarInfoRail(QWidget):
         self._url_label = QLabel("")
         self._url_label.setWordWrap(True)
         self._url_label.setStyleSheet(_FONT)
+        # A link: one click opens the website in the browser (Gilbert, 2026-10-12).
+        self._url_label.setOpenExternalLinks(True)
+        self._url_label.setToolTip("Open your website in the browser")
         layout.addWidget(self._url_label)
 
         layout.addSpacing(10)
@@ -95,8 +98,8 @@ class SidebarInfoRail(QWidget):
         mw = self.main_window
         trip_panel = getattr(mw, "trip_panel", None)
         virttrip_panel = getattr(mw, "virttrip_panel", None)
-        trips = trip_panel.tree.topLevelItemCount() if trip_panel else 0
-        albums = virttrip_panel.tree.topLevelItemCount() if virttrip_panel else 0
+        trips = trip_panel.item_count() if trip_panel else 0
+        albums = virttrip_panel.item_count() if virttrip_panel else 0
         try:
             days = len(days_registry.load_days())
         except Exception:
@@ -107,5 +110,13 @@ class SidebarInfoRail(QWidget):
 
         self._repo_label.setText(str(_config["master"]["masterbiotadatabase"]))
         from utils import site_config
-        self._url_label.setText(f"{site_config.site_host()}/{_config['master']['masterbiotawebroot'].lstrip('/')}")
+        web_root = _config['master']['masterbiotawebroot'].strip('/') + '/'
+        shown = f"{site_config.site_host()}/{web_root}"
+        base = site_config.site_base()
+        if base and site_config.publishing_set_up():
+            # The master's start page: the bare folder has no index page.
+            url = f"{base}/{web_root}intro-nl.html"
+            self._url_label.setText(f'<a href="{url}">{shown}</a>')
+        else:
+            self._url_label.setText(shown if site_config.site_host() else "(no website yet)")
         self._album_root_label.setText(get_virttrips_root() or "(not configured)")

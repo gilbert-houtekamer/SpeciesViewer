@@ -680,7 +680,9 @@ class VirtualTripCreationDialog(QDialog):
         self.date_field.set_dates(trip_data.get("fromdate", ""), trip_data.get("todate", ""))
         layout2.addWidget(self.date_field)
         from gui.range_check_view import check_range_row
-        layout2.addLayout(check_range_row(self, self.date_field, "album"))
+        layout2.addLayout(check_range_row(
+            self, self.date_field, "album",
+            own_name=lambda: Path(self.trip_web.get_text().strip()).name))
 
         tabs.addTab(tab2, "Images && Dates")
 
@@ -694,6 +696,8 @@ class VirtualTripCreationDialog(QDialog):
         self.title_nl_field = LabeledTextFieldQt("Album title (Dutch)", trip_data.get("title_nl", ""))
         self.message_nl_field = LabeledTextFieldQt(
             "Album description (Dutch)", trip_data.get("message_nl", ""), multiline=True)
+        from gui.link_insert import add_link_editing
+        add_link_editing(self.message_nl_field.field)   # Ctrl+K / right-click → <a href>
         translate_nl_btn = QPushButton("Translate to English")
         translate_nl_btn.clicked.connect(self.translate_dutch_to_english)
         dutch_layout.addWidget(translate_nl_btn)
@@ -710,6 +714,8 @@ class VirtualTripCreationDialog(QDialog):
         self.title_en_field = LabeledTextFieldQt("Album title (English)", trip_data.get("title_en", ""))
         self.message_en_field = LabeledTextFieldQt(
             "Album description (English)", trip_data.get("message_en", ""), multiline=True)
+        from gui.link_insert import add_link_editing
+        add_link_editing(self.message_en_field.field)   # Ctrl+K / right-click → <a href>
         translate_en_btn = QPushButton("Translate to Dutch")
         translate_en_btn.clicked.connect(self.translate_english_to_dutch)
         english_layout.addWidget(translate_en_btn)

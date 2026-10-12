@@ -246,7 +246,7 @@ class RangeCheckDialog(QDialog):
 
 
 def show_for_range(parent, config, from_date: str, to_date: str,
-                   *, subject: str = "trip") -> dict | None:
+                   *, subject: str = "trip", exclude: str = "") -> dict | None:
     """Run the check and show it. Returns the report (so the caller can put a
     one-line summary beside its button), or None when it could not run."""
     from engine.range_check import check_range
@@ -266,7 +266,8 @@ def show_for_range(parent, config, from_date: str, to_date: str,
     try:
         report = check_range(master, from_date, to_date,
                              trips_root=_clean(get_trips_root()),
-                             virttrip_root=_clean(get_virttrips_root()))
+                             virttrip_root=_clean(get_virttrips_root()),
+                             exclude=exclude)
     except Exception as e:
         logger.warning(f"Check Range {from_date} - {to_date} failed: {e}")
         QMessageBox.warning(parent, "Check Range",
@@ -279,7 +280,7 @@ def show_for_range(parent, config, from_date: str, to_date: str,
     return report
 
 
-def check_range_row(dialog, date_field, subject: str):
+def check_range_row(dialog, date_field, subject: str, own_name=None):
     """The "Check Range…" button + its hint, as a row to drop under a date field.
 
     A free function rather than a method on either Create dialog: both of them
@@ -301,7 +302,10 @@ def check_range_row(dialog, date_field, subject: str):
     def _run():
         from utils.config import _config
         start, end = date_field.get_dates()
-        report = show_for_range(dialog, _config, start, end, subject=subject)
+        # own_name(): the name of the trip/album being edited, left out of
+        # the overlaps — it always "overlaps" its own range.
+        report = show_for_range(dialog, _config, start, end, subject=subject,
+                                exclude=own_name() if own_name else "")
         hint.setText(summary_line(report) if report else "")
 
     btn.clicked.connect(_run)

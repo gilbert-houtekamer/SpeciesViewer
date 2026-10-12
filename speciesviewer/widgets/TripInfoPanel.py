@@ -115,6 +115,11 @@ class TripInfoPanel(QWidget):
 
         self._refresh_highlights()
 
+    def item_count(self) -> int:
+        """Real trips only — the "(No trips found)" placeholder row has no folder."""
+        return sum(1 for i in range(self.tree.topLevelItemCount())
+                   if self.tree.topLevelItem(i).data(0, _PATH_ROLE))
+
     def _refresh_highlights(self):
         active = _config.get("trip", "tripbiotadatabase", fallback="")
         active_path = Path(active) if active else None

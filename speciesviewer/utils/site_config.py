@@ -101,7 +101,9 @@ def site_base() -> str:
     local website it is the local server's address. A bare host in the config
     still yields a real URL; "" when not set."""
     if is_local():
-        return f"http://127.0.0.1:{local_port()}"
+        # "localhost" reads better than 127.0.0.1; the server stays bound to
+        # 127.0.0.1, and browsers fall back to it from IPv6 by themselves.
+        return f"http://localhost:{local_port()}"
     base = _get("base_url").rstrip("/")
     if base and not base.startswith("http"):
         base = "https://" + base

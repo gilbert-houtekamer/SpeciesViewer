@@ -29,6 +29,13 @@ yet — the first time you start SpeciesViewer, or in a new master without one.
 | Decode Quality | the 100% view; works on defaults | · |
 | DxO PhotoLab | editing; optional | – |
 
+A row that is not set at all gets a **Use suggested** button (**Create
+suggested** for the master): one click makes the folder and uses it. The
+suggestions are `C:\SpeciesViewer\nature`, `…\trips`, `…\CurrentPictures` and
+`…\albums` on Windows, and `~/SpeciesViewer/…` on the Mac. A row that is set
+but whose folder is missing — an unplugged drive — gets no such button: that is
+fixed by plugging the drive in, not by pointing somewhere else.
+
 With only the master collection set up you can already copy days off a card,
 add them to the master and browse it — no website needed.
 

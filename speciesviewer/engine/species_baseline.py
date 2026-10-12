@@ -222,6 +222,17 @@ def source_for_date(master_repo, created):
     return None, None, None
 
 
+def _master_has_no_pictures(master_repo) -> bool:
+    """True only when the master's picture list exists and has no rows — a
+    brand-new master. Missing or unreadable is NOT "empty"."""
+    path = os.path.join(master_repo, "metadata", "active", "data_pictures.csv")
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            return sum(1 for line in f if line.strip()) <= 1    # header only
+    except OSError:
+        return False
+
+
 def write_baseline(master_repo, trip_repo, source_csv=None, taken_at=None,
                    reconstructed_from=""):
     """Freeze the master's species list into the trip. Returns the path written,
@@ -250,10 +261,18 @@ def write_baseline(master_repo, trip_repo, source_csv=None, taken_at=None,
         return None
 
     if not names:
-        logger.warning(f"Species baseline: {src} yielded 0 species — refusing to "
-                       f"write an empty baseline (it would make every species "
-                       f"look new). Count Species will fall back to the live master.")
-        return None
+        if source_csv is None and _master_has_no_pictures(master_repo):
+            # A new master really knows no species: every species of this trip
+            # IS new, and an empty baseline says exactly that (Gilbert,
+            # 2026-10-12). The guard below is for a master WITH pictures whose
+            # list reads as empty — a broken read, not an empty master.
+            logger.info("Species baseline: the master has no pictures yet, so "
+                        "every species of this trip will count as new.")
+        else:
+            logger.warning(f"Species baseline: {src} yielded 0 species — refusing to "
+                           f"write an empty baseline (it would make every species "
+                           f"look new). Count Species will fall back to the live master.")
+            return None
 
     target = baseline_path(trip_repo)
     os.makedirs(os.path.dirname(target), exist_ok=True)

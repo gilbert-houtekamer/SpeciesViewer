@@ -134,7 +134,7 @@ def _read_disk_ranges(root: str, kind: str):
 
 
 def find_overlaps(from_date: str, to_date: str, *, master_root: str = "",
-                  trips_root: str = "", virttrip_root: str = ""):
+                  trips_root: str = "", virttrip_root: str = "", exclude: str = ""):
     """Trips and albums whose range intersects [from_date, to_date].
 
     Merged from three sources so neither half of the truth is missing: a trip
@@ -159,6 +159,9 @@ def find_overlaps(from_date: str, to_date: str, *, master_root: str = "",
 
     merged = {}
     for r in rows:
+        # The trip or album being checked is not an overlap with itself.
+        if exclude and r["name"].lower() == exclude.lower():
+            continue
         days = _overlap_days(lo, hi, r["start"], r["end"])
         if not days:
             continue
@@ -178,7 +181,7 @@ def find_overlaps(from_date: str, to_date: str, *, master_root: str = "",
 
 
 def check_range(master_root: str, from_date: str, to_date: str, *,
-                trips_root: str = "", virttrip_root: str = "") -> dict:
+                trips_root: str = "", virttrip_root: str = "", exclude: str = "") -> dict:
     """The whole report. Read-only.
 
     Returns {"from", "to", "days", "totals", "overlaps", "empty_days_listed"};
@@ -233,7 +236,8 @@ def check_range(master_root: str, from_date: str, to_date: str, *,
             "days_empty": span - filled,
         },
         "overlaps": find_overlaps(lo, hi, master_root=master_root,
-                                  trips_root=trips_root, virttrip_root=virttrip_root),
+                                  trips_root=trips_root, virttrip_root=virttrip_root,
+                                  exclude=exclude),
     }
     logger.info(f"Check Range {lo} - {hi}: {report['totals']['pictures']} pictures on "
                 f"{filled} of {span} days, {len(report['overlaps'])} overlapping "

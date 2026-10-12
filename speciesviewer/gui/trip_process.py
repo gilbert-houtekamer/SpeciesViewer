@@ -162,19 +162,21 @@ class TripCreationDialog(QDialog):
         # Tab 1: Trip Folder
         tab1 = QWidget()
         layout1 = QVBoxLayout(tab1)
-        info_label = HTMLLabel(
-            "<p><b>What is a trip?</b><br>"
-            "A <b>trip</b> represents a collection of pictures from a vacation, field activity, or any event. "
-            "Typically, a trip consists of multiple <b>days</b>, each stored in its own directory. "
-            "SpeciesViewer helps validate this data and organizes it into a structured trip database — which is simply a well-organized directory tree.</p>"
-            "<p><b>Creating a new trip</b><br>"
-            "To begin, enter a folder name (e.g. <i>kretadb</i>) and click <b>Create Folder</b> — this creates the directory and copies placeholder images. "
-            "You can later replace the placeholder <i>trip picture</i> (600×450) and <i>banner</i> (2000×270) with real photos.</p>"
-            "<p>Once the folder is created, fill in the dates and trip description, then click <b>Create Trip</b> to generate the full directory structure.</p>"
-            "<p><b>This tab:</b> Select the root folder for your trip to begin the setup process.</p>"
-            # "For more information about birds, visit <a href='https://avibase.bsc-eoc.org/avibase.jsp?lang=EN'>Avibase World Bird Database</a>.</p>"
-        )
+        if self.mode == "create":
+            info_label = HTMLLabel(
+                "<p><b>A trip</b> is the pictures of a holiday, an outing or any event, "
+                "one folder per day.</p>"
+                "<p>Type a name and the dates. SpeciesViewer suggests where everything "
+                "goes; change a suggestion if you like. <b>Create Trip</b> makes the "
+                "folders. The trip picture, the banner and the texts can follow later.</p>")
+        else:
+            info_label = HTMLLabel(
+                "<p><b>A trip</b> is the pictures of a holiday, an outing or any event, "
+                "one folder per day.</p>"
+                "<p><b>This tab:</b> the trip's folders. Its web address is fixed "
+                "once the trip is created.</p>")
         layout1.addWidget(info_label)
+        self._layout1 = layout1
         # ⚠ The initial value goes in through the CONSTRUCTOR, before this signal is
         # connected, so on_trip_root_changed never ran for it: the dialog opened
         # showing trip A's FOLDER with trip B's web root, name, dates and texts
@@ -188,23 +190,9 @@ class TripCreationDialog(QDialog):
         self.root_field = RecentDirectoryFieldQt("Trip Root folder", trip_root)
         self.root_field.textChanged(self.on_trip_root_changed)
         layout1.addWidget(self.root_field)
-
-        # New folder creation row — wrapped in QWidget so margins match other field widgets
-        new_folder_widget = QWidget()
-        new_folder_row = QHBoxLayout(new_folder_widget)
-        new_folder_row.setContentsMargins(0, 0, 0, 0)
-        new_folder_row.addWidget(QLabel("New trip folder"))
-        self.new_folder_name = QLineEdit()
-        self.new_folder_name.setPlaceholderText("e.g. kretadb")
-        self.new_folder_name.setMaximumWidth(300)
-        new_folder_row.addWidget(self.new_folder_name)
-        create_folder_btn = QPushButton("Create Folder")
-        create_folder_btn.setFixedWidth(110)
-        create_folder_btn.setStyleSheet("QPushButton { padding: 4px 0px; }")
-        create_folder_btn.clicked.connect(self.create_new_trip_folder)
-        new_folder_row.addWidget(create_folder_btn)
-        new_folder_row.addStretch()
-        layout1.addWidget(new_folder_widget)
+        # (The "New trip folder / Create Folder" row is gone: in create mode the
+        # name panel suggests the folder and Create Trip makes it —
+        # docs/plans/trip_create_naming_plan.md.)
 
         # The web root is the trip's identity — trip_name/web_slug are derived from
         # it — so in create mode it starts empty rather than carrying the last trip's.
@@ -243,7 +231,12 @@ class TripCreationDialog(QDialog):
             "Trip pictures folder (contains the day subfolders)",
             "" if self.mode == "create" else _config.get("project", "picturedirectory", fallback=""))
         layout1.addWidget(self.project_path)
-        tabs.addTab(tab1, "Select Trip Folder")
+        if self.mode == "create":
+            # The name panel (added once the date field exists, below) asks for
+            # these; the fields stay as the values the save reads.
+            for w in (self.root_field, trip_web_row, self.project_path):
+                w.setVisible(False)
+        tabs.addTab(tab1, "Name && Folders" if self.mode == "create" else "Trip Folders")
 
         # Tab 2: Images & Dates
         tab2 = QWidget()
@@ -280,17 +273,31 @@ class TripCreationDialog(QDialog):
             "You can adjust this range later to include additional days or refine the trip timeline.</p>"
         )
 
-        layout2.addWidget(info_label23)
+        if self.mode != "create":           # create: the dates sit beside the name
+            layout2.addWidget(info_label23)
         # A new trip is planned ahead: start two weeks out, run for two weeks —
         # and moving the start drags the end along so the length is kept. An
         # existing trip's saved range is restored below without re-triggering that.
         self.date_field = DateRangeFieldQt(lead_days=14, span_days=14, follow_end=True)
         self.date_field.set_dates(trip_data.get("fromdate", ""), trip_data.get("todate", ""))
-        layout2.addWidget(self.date_field)
+        if self.mode == "create":
+            from gui.trip_name_panel import TripNamePanel
+            self.name_panel = TripNamePanel(self.date_field)
+            self._layout1.insertWidget(1, self.name_panel)
+            self._layout1.addStretch()
+        else:
+            layout2.addWidget(self.date_field)
         from gui.range_check_view import check_range_row
-        layout2.addLayout(check_range_row(self, self.date_field, "trip"))
+        # Beside the dates it checks: on the first tab when creating.
+        range_row = check_range_row(
+            self, self.date_field, "trip",
+            own_name=lambda: Path(self.trip_web.get_text().strip()).name)
+        if self.mode == "create":
+            self._layout1.insertLayout(2, range_row)
+        else:
+            layout2.addLayout(range_row)
 
-        tabs.addTab(tab2, "Images && Dates")
+        tabs.addTab(tab2, "Images" if self.mode == "create" else "Images && Dates")
 
         # Tab 3: Dutch, English, Create
         tab3 = QWidget()
@@ -302,6 +309,7 @@ class TripCreationDialog(QDialog):
         dutch_layout = QVBoxLayout(dutch_tab)
         self.title_nl_field = LabeledTextFieldQt("Trip title (Dutch)", trip_data.get("title_nl", ""))
         self.message_nl_field = LabeledTextFieldQt("Trip description (Dutch)", trip_data.get("message_nl", ""), multiline=True)
+        add_link_editing(self.message_nl_field.field)   # Ctrl+K / right-click → <a href>
         translate_btn = QPushButton("Translate to English")
         translate_btn.clicked.connect(self.translate_dutch_to_english)
 
@@ -323,6 +331,7 @@ class TripCreationDialog(QDialog):
         english_layout = QVBoxLayout(english_tab)
         self.title_en_field = LabeledTextFieldQt("Trip title (English)", trip_data.get("title_en", ""))
         self.message_en_field = LabeledTextFieldQt("Trip description (English)", trip_data.get("message_en", ""), multiline=True)
+        add_link_editing(self.message_en_field.field)   # Ctrl+K / right-click → <a href>
         translate_btn_en = QPushButton("Translate to Dutch")
         translate_btn_en.clicked.connect(self.translate_english_to_dutch)        
 
@@ -360,6 +369,7 @@ class TripCreationDialog(QDialog):
             "existing trip (e.g. its Preferred names). 'Create Trip' is only for "
             "building a brand-new trip's structure.")
         create_button = QPushButton("Create Trip")
+        self.create_button = create_button
         select_button = QPushButton("Select")
 
         # One job per screen: Create mode offers only Create, Update mode only the
@@ -403,46 +413,47 @@ class TripCreationDialog(QDialog):
             on_locked=lambda e: prompt_translation_locked(self, e))
         super().closeEvent(event)
 
-    def create_new_trip_folder(self):
-        folder_name = self.new_folder_name.text().strip()
-        if not folder_name:
-            self.status_label.setText("❌ Enter a folder name first.")
-            return
-
-        # Not set = Path("") = the CURRENT folder, which exists — the trip was then
-        # created wherever SpeciesViewer happened to be started (it appeared in
-        # the source tree, 2026-10-11). Refuse and say where to set it.
-        if not get_trips_root().strip():
-            self.status_label.setText(
-                "❌ Choose a Trips folder first: Help ▸ Setup Checklist ▸ Trips folder.")
-            return
-        trips_parent = Path(get_trips_root())
-        if not trips_parent.is_dir():
-            self.status_label.setText(f"❌ Cannot find trips parent directory: {trips_parent}")
-            return
-
-        new_trip_path = trips_parent / folder_name
+    def _make_trip_folders(self) -> bool:
+        """Create mode: check the name panel, make the trip's folders, and fill
+        the (hidden) fields the save below reads. False = nothing made; the
+        status line says why."""
+        problems = self.name_panel.problems()
+        if problems:
+            self.tabs.setCurrentIndex(0)
+            self.status_label.setText("❌ Not created: " + "; ".join(problems) + ".")
+            return False
+        data = self.name_panel.data_folder()
+        pictures = self.name_panel.pictures_folder()
         try:
-            new_trip_path.mkdir(exist_ok=True)
-        except Exception as e:
-            self.status_label.setText(f"❌ Could not create folder: {e}")
-            return
-
-        # Copy default images from dist/includes web/
-        dist_dir = Path(__file__).resolve().parent.parent / "dist" / "includes web"
-        for src_name, dest_name in [("tripbanner.jpg", "tripbanner.jpg"), ("tripimage.jpg", "tripimage.jpg")]:
-            src = dist_dir / src_name
-            dest = new_trip_path / dest_name
-            if src.exists() and not dest.exists():
-                shutil.copy(src, dest)
-
-        # Update the trip root field and pre-fill image fields
-        self.root_field.set_text(str(new_trip_path))
-        self.topbar_img_field.field.setText("tripbanner.jpg")
-        self.trip_img_field.field.setText("tripimage.jpg")
-        self.trip_web.set_text(f"/trips/{folder_name}")
-        self.status_label.setText(f"✅ Created: {new_trip_path}")
-        self.logger.info(f"Created new trip folder: {new_trip_path}")
+            data.mkdir(parents=True, exist_ok=True)
+            pictures.mkdir(parents=True, exist_ok=True)
+        except OSError as e:
+            self.status_label.setText(f"❌ Could not create the folders: {e}")
+            return False
+        self.logger.info(f"New trip folders: {data} and {pictures}")
+        self.root_field.set_text(str(data))      # first: the picture fields check against it
+        # The trip gets its own copy of the default picture and banner: the
+        # blog and the trip index use them, and they are the files to replace
+        # with real ones later (Gilbert, 2026-10-12).
+        for default, field in ((DEFAULT_TRIP_PICTURE, self.trip_img_field),
+                               (DEFAULT_TRIP_BANNER, self.topbar_img_field)):
+            name = Path(default).name
+            if not field.get_filename().strip():
+                try:
+                    if not (data / name).exists():
+                        shutil.copy(default, data / name)
+                    field.field.setText(name)
+                except OSError as e:
+                    self.logger.warning(f"Default picture not copied ({name}): {e}")
+        self.trip_web.set_text("/trips/" + self.name_panel.slug())
+        self.project_path.field.setText(str(pictures))
+        # Titles default to the name; the Trip Text tab can say more later.
+        title = self.name_panel.trip_name()
+        title = title[:1].upper() + title[1:]
+        for field in (self.title_nl_field, self.title_en_field):
+            if not field.get_text().strip():
+                field.set_text(title)
+        return True
 
     def on_trip_root_changed(self, new_path):
         trip_data = read_trip_ini(new_path)
@@ -514,15 +525,8 @@ class TripCreationDialog(QDialog):
         # Create makes its own folder as part of saving. Without this the root field
         # still pointed at whatever it pointed at — the live-trip overwrite — because
         # "Create Folder" was a separate step nothing forced you to take.
-        if self.mode == "create" and not self.root_field.get_text().strip():
-            if not self.new_folder_name.text().strip():
-                self.new_folder_name.setFocus()
-                self.status_label.setText(
-                    "❌ Name the new trip's folder first (e.g. kretadb).")
-                return
-            self.create_new_trip_folder()
-            if not self.root_field.get_text().strip():
-                return              # folder creation failed; status_label says why
+        if self.mode == "create" and not self._make_trip_folders():
+            return
         # Abort if trip root or project pictures folder is invalid — otherwise the
         # batch below would build a trip pointing at a non-existent picture dir.
         if not self.create_trip_ini():
@@ -540,6 +544,11 @@ class TripCreationDialog(QDialog):
             # (TripInfoPanel scans disk once at startup) — rescan it now so the
             # trip just created is actually selectable.
             self.passed_parent.trip_panel.rebuild()
+            if self.mode == "create":
+                # Done: a second press would only say "already exists".
+                self.create_button.setEnabled(False)
+                self.create_button.setText("Created ✓")
+                self.name_panel.setEnabled(False)
         runner = BatchModuleRunner(self, self.passed_parent)
         runner.run(self.menu_spec, on_success=_on_created)
 
@@ -640,15 +649,14 @@ class TripCreationDialog(QDialog):
                     f"Saving here replaces its settings with “{new_name}” — the "
                     f"name, the dates, the pictures folder and the description. "
                     f"The trip's pictures and blogs are not touched.\n\n"
-                    f"To make a NEW trip instead: close this, type a folder name "
-                    f"next to “New trip folder”, press “Create Folder”, and fill "
-                    f"the form again.\n\n"
+                    f"To make a NEW trip instead: close this and use "
+                    f"Trips ▸ Create Trip.\n\n"
                     f"Replace the settings of “{shown}”?",
                     QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
                     QMessageBox.StandardButton.No
                     ) != QMessageBox.StandardButton.Yes:
                 self.root_field.show_hint(
-                    "Pick an empty folder, or press “Create Folder” to make one.")
+                    "Pick an empty folder, or make a new trip with Trips ▸ Create Trip.")
                 return False
             self.logger.warning(
                 f"Trip settings of '{existing_name}' in {folder} replaced by "

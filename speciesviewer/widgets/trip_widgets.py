@@ -14,7 +14,7 @@ _ASSETS = str(Path(__file__).resolve().parent.parent / "assets")
 # What the website shows for a trip or album without its own picture / banner.
 _SITE_DEFAULTS = Path(__file__).resolve().parent.parent / "dist" / "includes web"
 DEFAULT_TRIP_PICTURE = str(_SITE_DEFAULTS / "tripimage.jpg")
-DEFAULT_TRIP_BANNER = str(_SITE_DEFAULTS / "keerkringvogel.jpg")
+DEFAULT_TRIP_BANNER = str(_SITE_DEFAULTS / "tripbanner.jpg")
 
 
 def _nearest_existing_dir(path: str) -> str:
