@@ -1237,6 +1237,10 @@ def formatToken(tokenno, MyProject, species_param, file, picture):
             for tripname in sorted_items:  # MyProject.Trip.getTripDictSortedKeys()
                 trip = MyProject.Trip.getTrip(tripname[0])
                 TripWebRoot = webJoin(trips_folder, trip['trip_name'])
+                # A trip without a title still needs link text: its name. An
+                # empty title left only "(Trip soorten)" (2026-10-12).
+                shown_title = ((trip.get("title_" + language) or "").strip()
+                               or trip['trip_name'].capitalize())
                 # print(f'Logname {logname} {blog["BestJPGs"][0]}')
                 workstr += '   <div class="w3-row" style="margin: 15px">\n'
                 workstr += '      <div class="w3-col w3-win8-olive" style="width:25%">\n'
@@ -1245,7 +1249,7 @@ def formatToken(tokenno, MyProject, species_param, file, picture):
                 else:
                     picture = (trip.get("trip_picture") or "").strip()
                     src = TripWebRoot + '/' + picture if picture else default_picture
-                    tip = html.escape(trip["title_" + language], quote=True)
+                    tip = html.escape(shown_title, quote=True)
                     workstr += f'          <a href="'  + TripWebRoot + '/biotablog/blog index-' + language + '.html"><img\n'
                     workstr += '            src="' + src + '" alt="' + tip + '"\n'
                     workstr += '            class="w3-border" style="padding:8px;max-width:100%" title="' + tip + '"></a>\n'
@@ -1254,7 +1258,7 @@ def formatToken(tokenno, MyProject, species_param, file, picture):
                 workstr += '        <div class="content" style="margin-left:10px">\n'
                 workstr += '          <table class="w3-table w3-hoverable">\n'
                 workstr += '            <tr class="w3-win8-olive">\n'
-                workstr += f'              <th>' + title + '</th><td><a href="' + TripWebRoot + '/biotablog/blog index-' + language + '.html">' + trip["title_" + language] + '</a> '
+                workstr += f'              <th>' + title + '</th><td><a href="' + TripWebRoot + '/biotablog/blog index-' + language + '.html">' + shown_title + '</a> '
                 workstr += f'<a href="' + TripWebRoot + '/biota/biota-' + language + '.html">(' + soorten + ')</a></td>\n'
                 workstr += '            </tr>\n'
                 workstr += '            <tr>\n'

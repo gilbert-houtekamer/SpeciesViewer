@@ -1046,6 +1046,15 @@ def build_menu_spec(main_window):
     virttrip_create.callback = lambda: (
         require_full_master(main_window)
         and VirtualTripCreationDialog(main_window, virttrip_create).exec())
+    # Two entries, as for trips: Create starts empty and only makes a new album;
+    # Select or Update loads the active album and only writes back into it.
+    virttrip_select = MenuSpec(
+        callback=lambda: (
+            require_full_master(main_window)
+            and VirtualTripCreationDialog(main_window, virttrip_create, mode="update").exec()),
+        title="Select or Update Album…",
+        enabled=has_full_master,
+    )
 
     # Read-only companion to Create: the date range is the thing you cannot
     # remember, and the master already knows it. Report only — see
@@ -1936,6 +1945,7 @@ def build_menu_spec(main_window):
         },
         "Albums": {
             "Find Trips in the Master…": find_trips,
+            "Select or Update Album…": virttrip_select,
             "Create Album": virttrip_create,
             # Browsing this album by taxonomy lives in the Browser menu.
             f"{MenuSpec.separator()}_vt2": None,

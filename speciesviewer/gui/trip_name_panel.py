@@ -1,5 +1,6 @@
-"""Create Trip, first tab: one name, the rest suggested
-(docs/plans/trip_create_naming_plan.md).
+"""Create Trip and Create Album, first tab: one name, the rest suggested
+(docs/plans/trip_create_naming_plan.md, docs/plans/album_create_naming_plan.md).
+An album has no pictures folder of its own (kind="album").
 
 ONE JOB: let the user type a trip name and dates, show the folders and web
 address that follow from them — each with what will happen to it — and hand
@@ -14,6 +15,7 @@ made.
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 from PyQt6.QtCore import Qt
@@ -34,12 +36,22 @@ def _trip_admin_csv() -> str:
 
 
 class TripNamePanel(QWidget):
-    def __init__(self, date_field, parent=None):
+    def __init__(self, date_field, parent=None, kind="trip"):
+        """kind "trip": data folder in the Trips folder + a pictures folder.
+        kind "album": data folder in the Albums folder, no pictures folder — an
+        album draws its pictures from the master by date range."""
         super().__init__(parent)
         self.date_field = date_field
-        self.trips_root = get_trips_root().strip()
+        self.kind = kind if kind in ("trip", "album") else "trip"
+        if self.kind == "album":
+            # The explicit key only: get_virttrips_root() falls back to the
+            # active album's parent, which is a guess, not a choice.
+            self.data_root = _config.get("virttrip", "virttriprootdirectory",
+                                         fallback="").strip()
+        else:
+            self.data_root = get_trips_root().strip()
         self.pictures_root = get_currentpictures_root().strip()
-        self.used = trip_naming.used_web_names(self.trips_root, get_virttrips_root(),
+        self.used = trip_naming.used_web_names(self.data_root, get_virttrips_root(),
                                                _trip_admin_csv())
         self._follow_data = self._follow_pictures = True
 
@@ -47,9 +59,9 @@ class TripNamePanel(QWidget):
         outer.setContentsMargins(0, 0, 0, 0)
 
         top = QHBoxLayout()
-        top.addWidget(QLabel("<b>Trip name</b>"))
+        top.addWidget(QLabel(f"<b>{self.kind.capitalize()} name</b>"))
         self.name = QLineEdit()
-        self.name.setPlaceholderText("e.g. Spain")
+        self.name.setPlaceholderText("e.g. Spain" if self.kind == "trip" else "e.g. North Spain")
         self.name.setMaximumWidth(260)
         top.addWidget(self.name)
         top.addSpacing(20)
@@ -67,7 +79,7 @@ class TripNamePanel(QWidget):
         # lives in the Trips folder, which Create records as the trips root.
         grid.addWidget(QLabel("SpeciesViewer's files"), 0, 0)
         data_row = QHBoxLayout()
-        data_row.addWidget(QLabel(self._shown_root(self.trips_root)))
+        data_row.addWidget(QLabel(self._shown_root(self.data_root)))
         self.data_name = QLineEdit()
         self.data_name.setMaximumWidth(260)
         data_row.addWidget(self.data_name)
@@ -79,7 +91,8 @@ class TripNamePanel(QWidget):
         grid.addWidget(self.data_note, 1, 1, 1, 3)
 
         # Row 2 — your pictures: a full path; it may already exist anywhere.
-        grid.addWidget(QLabel("Your pictures"), 2, 0)
+        pictures_label = QLabel("Your pictures")
+        grid.addWidget(pictures_label, 2, 0)
         self.pictures = QLineEdit()
         grid.addWidget(self.pictures, 2, 1)
         self.pictures_reset = self._reset_button(lambda: self._reset("pictures"))
@@ -89,6 +102,10 @@ class TripNamePanel(QWidget):
         grid.addWidget(browse, 2, 3)
         self.pictures_note = self._note()
         grid.addWidget(self.pictures_note, 3, 1, 1, 3)
+        if self.kind == "album":
+            for w in (pictures_label, self.pictures, self.pictures_reset, browse,
+                      self.pictures_note):
+                w.setVisible(False)
 
         # Row 4 — the web address, derived from the name, never typed.
         grid.addWidget(QLabel("Web address"), 4, 0)
@@ -97,6 +114,16 @@ class TripNamePanel(QWidget):
         grid.addWidget(self.web, 4, 1, 1, 3)
         self.web_note = self._note()
         grid.addWidget(self.web_note, 5, 1, 1, 3)
+        # A taken name without a year: one click adds the start year
+        # ("Spain" → "Spain 2015"). A descriptive name ("North Spain") is the
+        # better answer; this is the quick one.
+        self.year_btn = QPushButton("")
+        self.year_btn.setVisible(False)
+        self.year_btn.clicked.connect(self._add_year)
+        year_row = QHBoxLayout()
+        year_row.addWidget(self.year_btn)
+        year_row.addStretch()
+        grid.addLayout(year_row, 6, 1, 1, 3)
 
         self.name.textChanged.connect(self._refresh)
         self.data_name.textEdited.connect(lambda _: self._edited("data"))
@@ -150,7 +177,7 @@ class TripNamePanel(QWidget):
         start = self.pictures.text().strip() or self.pictures_root
         while start and not Path(start).is_dir() and Path(start).parent != Path(start):
             start = str(Path(start).parent)
-        chosen = QFileDialog.getExistingDirectory(self, "Choose the trip's pictures folder", start)
+        chosen = QFileDialog.getExistingDirectory(self, f"Choose the {self.kind}'s pictures folder", start)
         if chosen:
             self.pictures.setText(str(Path(chosen)))
             self._edited("pictures")
@@ -175,7 +202,7 @@ class TripNamePanel(QWidget):
 
     def data_folder(self) -> Path | None:
         n = self.data_name.text().strip()
-        return Path(self.trips_root) / n if (n and self.trips_root) else None
+        return Path(self.data_root) / n if (n and self.data_root) else None
 
     def pictures_folder(self) -> Path | None:
         p = self.pictures.text().strip()
@@ -185,9 +212,9 @@ class TripNamePanel(QWidget):
         return trip_naming.web_name(self.name.text())
 
     def _refresh_data(self):
-        if not self.trips_root:
-            return self._set_note(self.data_note, "Choose a Trips folder first: Help ▸ "
-                                  "Setup Checklist ▸ Trips folder.", "bad")
+        if not self.data_root:
+            return self._set_note(self.data_note, f"Choose {self._root_name()} first: "
+                                  f"Help ▸ Setup Checklist ▸ {self._root_name(article=False)}.", "bad")
         folder = self.data_folder()
         if folder is None:
             return self._set_note(self.data_note, "", "ok")
@@ -201,6 +228,8 @@ class TripNamePanel(QWidget):
         self._set_note(self.data_note, f"{folder} — will be created.", "ok")
 
     def _refresh_pictures(self):
+        if self.kind == "album":
+            return
         if not self.pictures_root and self._follow_pictures:
             return self._set_note(self.pictures_note, "Choose a Pictures folder first: "
                                   "Help ▸ Setup Checklist ▸ Pictures folder — or Browse.", "bad")
@@ -211,20 +240,43 @@ class TripNamePanel(QWidget):
             days = trip_naming.day_folder_count(folder)
             return self._set_note(
                 self.pictures_note,
-                f"⚠ Exists, {days} day folder{'s' if days != 1 else ''} — this trip will use "
+                f"⚠ Exists, {days} day folder{'s' if days != 1 else ''} — this {self.kind} will use "
                 f"{'it' if days == 1 else 'them'}.",
                 "warn")
         self._set_note(self.pictures_note, "Will be created.", "ok")
 
+    def _root_name(self, article=True) -> str:
+        name = "Trips folder" if self.kind == "trip" else "Albums folder"
+        return ("a " + name) if article else name
+
+    def _year_suggestion(self) -> str:
+        """"Spain 2015" for a taken name without a year in it, else ""."""
+        name = self.name.text().strip()
+        year = self._start_date()[:4]
+        if not year.isdigit() or re.search(r"(19|20)\d{2}", name):
+            return ""
+        candidate = f"{name} {year}"
+        return "" if trip_naming.web_name(candidate) in self.used else candidate
+
+    def _add_year(self):
+        suggestion = self._year_suggestion()
+        if suggestion:
+            self.name.setText(suggestion)
+
     def _refresh_web(self, name, problem):
         from utils import site_config
         slug = self.slug()
+        self.year_btn.setVisible(False)
         if problem or not slug:
             self.web.setText("")
             return self._set_note(self.web_note, "", "ok")
         base = site_config.site_base()
         self.web.setText((base + WEB_FOLDER + slug) if base else (WEB_FOLDER + slug))
         if slug in self.used:
+            suggestion = self._year_suggestion()
+            if suggestion:
+                self.year_btn.setText(f"Use “{suggestion}”")
+                self.year_btn.setVisible(True)
             return self._set_note(
                 self.web_note, f"✗ “{slug}” is already used by {self.used[slug]} — "
                 "change the name. A web address can never change later.", "bad")
@@ -239,8 +291,8 @@ class TripNamePanel(QWidget):
         problem = trip_naming.name_problem(name)
         if problem:
             return [problem]
-        if not self.trips_root:
-            out.append("choose a Trips folder first (Help ▸ Setup Checklist)")
+        if not self.data_root:
+            out.append(f"choose {self._root_name()} first (Help ▸ Setup Checklist)")
         folder = self.data_folder()
         if folder is None:
             out.append("the folder for SpeciesViewer's files has no name")
@@ -248,7 +300,7 @@ class TripNamePanel(QWidget):
             out.append(trip_naming.name_problem(folder.name))
         elif folder.exists() and any(folder.iterdir()):
             out.append(f"{folder} already exists")
-        if self.pictures_folder() is None:
+        if self.kind == "trip" and self.pictures_folder() is None:
             out.append("the pictures folder is not set")
         if self.slug() in self.used:
             out.append(f"the web name “{self.slug()}” is already used")

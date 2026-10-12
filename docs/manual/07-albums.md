@@ -11,6 +11,7 @@ ingest, freeze or commit. There is only writing it up and publishing it.
 | Item | Needs |
 |---|---|
 | Find Trips in the Master… | A full master |
+| Select or Update Album… | A full master |
 | Create Album | A full master |
 | Write Album Blogs | An active album |
 | Make the Blogs Clickable | An active album |
@@ -41,22 +42,51 @@ It is the read-only companion to Create Album, and it exists because the date
 range is precisely the thing you cannot remember about a journey from six years
 ago. The master already knows. Use its output to fill in Create Album.
 
+### Select or Update Album…
+
+*Needs: a full master.*
+
+Switches to another album, or changes the open one's picture, banner, dates and
+texts. It loads the album you pick and can only write back into that one.
+
 ### Create Album
 
 *Needs: a full master.*
 
-Creates the album's directory structure and asks for its details and date range.
+An album plays one of two roles:
 
-There are two scenarios, and the dialog handles both:
+1. **An album that follows a trip** — normally you do not come here at all;
+   [To Master ▸ Retire Trip to Album](05-to-master.md) does this for you, blogs
+   and all. The album keeps the trip's web address and goes in your Albums
+   folder under the trip's folder name. With no Albums folder yet, it offers
+   the suggested one.
+2. **An album over an old period** — a journey that never had a trip. That is
+   what Create Album is for.
 
-1. **From a retired trip** — normally you do not come here at all; [To Master ▸
-   Retire Trip to Album](05-to-master.md) does this for you, blogs and all.
-2. **Retroactive** — a journey that never had a trip repository. You pick the date
-   range, and then build the blogs day by day from a template, reviewing each one.
+**One name, the rest suggested.** The first tab, *Name & Dates*, asks for a name
+and the dates. From `North Spain` it suggests:
 
-The date picker fills the dates for you. (The old separate "Extract Days" step was
-retired, not folded in — a retroactive album reads its days from the master
-directly.)
+| What | Suggested |
+|---|---|
+| SpeciesViewer's files | `<Albums folder>\north-spaindb` |
+| Web address | `…/trips/north-spain` — albums and trips share `/trips/` |
+
+An album has no pictures folder: its pictures are the master's, chosen by the
+dates. That makes **Check Range…**, beside the dates, the important button here:
+it shows what the master holds for them before anything is made.
+
+A web name that is already used — by a trip, an album, or a trip on your
+website's trip list — blocks Create, and the message says where. A descriptive
+name ("Ebro and Pyrenees") is the best way out; for a quick one, a name without
+a year gets a button that adds the start year (*Use "Spain 2015"*).
+
+**Pick from the master…** (bottom left) opens *Find Trips in the Master* and
+fills the name, the dates and a factual default text from the trip you pick.
+
+**Create Album** makes the folder, copies the default picture and banner into it,
+sets both titles to the name, and builds and publishes the album. (The old
+separate "Extract Days" step was retired, not folded in — an album reads its
+days from the master directly.)
 
 ---
 

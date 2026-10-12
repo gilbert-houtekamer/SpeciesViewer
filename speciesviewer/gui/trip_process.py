@@ -4832,7 +4832,10 @@ class MasterPipelineDialog(QDialog):
             self.rows.append(row)
 
         self.warning_label = QLabel("")
-        self.warning_label.setStyleSheet("color: #B45309;")
+        # Information, not a warning: having committed is normal (2026-10-12).
+        from gui import theme
+        self.warning_label.setStyleSheet(f"color: {theme.INK_FAINT};")
+        self._committed_here = False     # a commit made in THIS dialog
         self.warning_label.setWordWrap(True)
         layout.addWidget(self.warning_label)
 
@@ -5018,12 +5021,14 @@ class MasterPipelineDialog(QDialog):
         return None
 
     def _refresh_warning(self):
+        """Say that these pictures are already in the master — but not right
+        after committing them here: the green "Master commit complete" says
+        that, and a second line read as "you did something wrong"."""
         when = self._committed_at()
-        if when:
+        if when and not self._committed_here:
             self.warning_label.setText(
-                "⚠️  These pictures were already committed to master "
-                f"on {when}. Step 3 will warn before re-committing."
-            )
+                f"These pictures are in the master since {when}. Running step "
+                f"{len(self.rows)} again asks first — it would add them a second time.")
         else:
             self.warning_label.setText("")
 
@@ -5037,6 +5042,7 @@ class MasterPipelineDialog(QDialog):
         records = [r for r in self._read_commit_records()
                    if (r.get("picture_directory") or "").strip().lower()
                    != pic_dir.lower()]
+        self._committed_here = True
         records.append({
             "picture_directory": pic_dir,
             "committed_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),

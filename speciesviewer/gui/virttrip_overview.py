@@ -426,6 +426,24 @@ def _run_day_step(main_window, module_fn, before_msg, after_msg,
     runner.run(spec, on_success=on_success)
 
 
+def _add_empty_album_tab(self, trip_name, fromdate, todate):
+    """The Album panel for an album with no pictures in its date range."""
+    from gui.widgets import wrapped
+    overview_widget = QWidget()
+    layout = QVBoxLayout(overview_widget)
+    header_label = QLabel(f"Album: {trip_name}")
+    header_label.setStyleSheet("font-weight: bold; font-size: 16px;")
+    layout.addWidget(header_label)
+    span = f"between {fromdate} and {todate}" if fromdate and todate else "for its dates"
+    layout.addWidget(wrapped(
+        f"The master holds no pictures {span}, so this album has no days yet. "
+        "Change the dates with Albums ▸ Select or Update Album…, or add the "
+        "pictures to the master first.", overview_widget))
+    layout.addStretch()
+    self.yellow_tabs.addTab(overview_widget, TAB_TITLE)
+    self.sync_yellow_to_mode()
+
+
 def populate_virttrip_overview(self):
     """Populate (or refresh) the Virtual Trip tab in yellow_tabs."""
     self.remove_existing_virttrip_tab()
@@ -494,6 +512,10 @@ def populate_virttrip_overview(self):
             return total, jpegs, no_gps, 0, 0
 
     if not day_dirs:
+        # An album whose dates hold no pictures still gets its panel — one that
+        # says why it is empty. Returning without a tab left the other scope's
+        # panel on screen and a warning on every refresh (2026-10-12).
+        _add_empty_album_tab(self, trip_name, fromdate, todate)
         return
 
     # Shared with Unfiled/Days/Trip — see gui/overview_table.py. edit_cells=False
