@@ -12,8 +12,8 @@ for _p in [str(_qt_dir), str(_project_root)]:
         sys.path.insert(0, _p)
 
 from PyQt6.QtWidgets import QApplication, QSplashScreen, QToolTip
-from PyQt6.QtGui import QPixmap, QFont
-from PyQt6.QtCore import Qt, QTimer
+from PyQt6.QtGui import QPixmap, QFont, QIcon
+from PyQt6.QtCore import Qt, QTimer, QSize
 
 from utils.config import _config
 from gui.theme import build_base_qss
@@ -189,8 +189,34 @@ def start_main():
 
     # sys.exit(app.exec())  # 🧠 Start the Qt event loop
 
+def _app_icon() -> QIcon:
+    """The duck: one icon with every drawn size, so each place (title bar,
+    taskbar, Alt-Tab, Dock) picks the sharpest one."""
+    icon_dir = Path(__file__).parent / "assets" / "icon"
+    icon = QIcon()
+    for size in (16, 24, 32, 48, 64, 128, 256, 512, 1024):
+        icon.addFile(str(icon_dir / f"speciesviewer_{size}.png"), QSize(size, size))
+    return icon
+
+
+def _set_windows_app_id() -> None:
+    """Without its own AppUserModelID, Windows groups SpeciesViewer under
+    python.exe and shows Python's icon in the taskbar, whatever the window
+    icon says. Must run before the first window appears."""
+    if sys.platform != "win32":
+        return
+    try:
+        import ctypes
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(
+            "SpeciesViewer.SpeciesViewer")
+    except Exception:
+        pass   # cosmetic only — the app works without it
+
+
 def main():
+    _set_windows_app_id()
     app = QApplication(sys.argv)
+    app.setWindowIcon(_app_icon())        # every window and dialog inherits it
     QToolTip.setFont(QFont("SansSerif", 12))
     from gui import theme
     if theme.is_dark():

@@ -2062,32 +2062,37 @@ that closes 0.3.</em> <strong>Done:</strong> <code>utils/version.py</code> holds
 <code>__version__ = "0.4.0.dev"</code>, read by the window title and the About box; the
 <code>v0.3</code> tag exists.</p>
 
-<p><span class="tag-open">OPEN</span> <strong>The application has no icon.</strong> No
-<code>setWindowIcon()</code> call exists anywhere, which is why Windows falls back to the Python
-icon in the taskbar. What is needed:</p>
+<p><span class="tag-test">NEEDS TEST</span> <strong>The icon: an African Pygmy-goose head.</strong>
+<em>12 Oct.</em> Made from one of the author's own photographs (the website picture of the
+African Pygmy-goose), turned into a flat drawing with Photoshop's Firefly assistant. Firefly
+offered two versions: the whole bird on water, and a close-up of the head and chest. At real size
+the whole bird turns into water-pattern noise at 128 pixels and below, while the head (white
+face, green cheek, orange bill) is still a duck at 32 and a recognisable spot of colour at 16.
+<strong>Decision: the head, at every size</strong> — one drawing, so the icon looks the same in
+the title bar, the taskbar and the Dock.</p>
 
 <ul>
-  <li><strong>Draw once at 1024&times;1024</strong> and derive the rest. A Windows
-    <code>.ico</code> should embed 16, 20, 24, 32, 40, 48, 64 and 256; a macOS <code>.icns</code>
-    wants 16, 32, 128, 256 and 512 each with an @2x variant, which is where the 1024 master earns
-    its keep. In the application, <code>QIcon</code> can take the <code>.ico</code> or several
-    PNGs and picks per context.</li>
-  <li><strong>Two drawings, not one resize.</strong> Below roughly 32 pixels detail turns to mud.
-    Icons that survive have a detailed form for 48 and above and a deliberately simplified mark —
-    fewer elements, thicker strokes, higher contrast — for 32 and below. This is a design
-    decision, not an export setting, and it is the part that gets skipped.</li>
-  <li><strong>On Windows, <code>setWindowIcon()</code> is not enough.</strong>
-    <code>SetCurrentProcessExplicitAppUserModelID</code> has to be called before the first window
-    appears, or Windows groups the process under Python and shows Python's icon whatever the
-    window icon says.</li>
+  <li><strong>Files</strong>, in <code>speciesviewer/assets/icon/</code>: a 1024&times;1024 master
+    with rounded corners and a transparent background; PNGs at 16, 24, 32, 48, 64, 128, 256 and
+    512; <code>speciesviewer.ico</code> (16 to 256, for Windows and a future installer) and
+    <code>speciesviewer.icns</code> (macOS).</li>
+  <li><strong>In the program</strong> (<code>SpeciesViewer.py</code>): the icon is set once on the
+    application, so every window and dialog shows it, and Qt picks the sharpest size for each
+    place. On Windows the program now gives itself its own taskbar identity before the first
+    window appears; without that, Windows grouped it under Python and showed Python's icon.</li>
+  <li><strong>Checked on Windows</strong> (12 Oct): title bar and taskbar show the duck.
+    <strong>Still to check on the Mac:</strong> the Dock. A packaged build needs the <code>.ico</code> and
+    <code>.icns</code> passed to PyInstaller as well, so that the program file itself carries the
+    duck in File Explorer and Finder.</li>
+  <li><strong>Sharpness:</strong> Firefly drew the head only about 420 pixels wide, so the 512 and
+    1024 sizes are slightly soft. That is invisible in a taskbar. If a large version is ever
+    needed (an installer, a web page), generate the head again in Firefly as a full square image
+    and rebuild the set from it.</li>
 </ul>
 
-<p class="note"><strong>A starting point for the mark.</strong> The splash screen
-(<code>assets/svsplash.jpg</code>) is already one of the author's own photographs — a dune
-sow-thistle in marram grass, yellow on pale sand. That is an identity, and a usable one: a warm
-yellow-and-sand icon would stand out in a taskbar that is otherwise blue and grey. It also avoids
-the obvious trap of choosing a bird, which would under-sell a program that handles plants, fungi,
-insects and dragonflies just as well.</p>
+<p class="note"><strong>The earlier idea was a plant</strong> — the sow-thistle of the splash
+screen, to avoid a bird under-selling a program that handles plants, fungi and insects too. A
+duck won on the test that matters: it stays recognisable at 16 pixels.</p>
 
 <h3>Structuring the repository for publication</h3>
 
@@ -2137,8 +2142,8 @@ access to the repository is not something to hand out.</p>
   <li>Build the PyInstaller one-folder ZIP; decide the exiftool arrangement.
     <span class="tag-progress">IN PROGRESS</span> rough ZIP and the bundled exiftool done (11 Oct); the finished package is not.</li>
   <li>Give the program an identity: a real <code>__version__</code>, an About screen that
-    renders <code>NOTICE.md</code>, and an icon. <em>The version is done; About and the icon are
-    open.</em></li>
+    renders <code>NOTICE.md</code>, and an icon. <em>The version is done; the icon is in (12 Oct, Windows checked, Mac
+    still to see); About is open.</em></li>
   <li>Clean the repository root, write the README and the install page, delete
     <code>app.py</code>.</li>
   <li>Publish <code>main</code>, tag v1, attach the ZIP as a release.</li>
@@ -2176,7 +2181,7 @@ better than before even if 0.4 stops there:</p>
   <li><strong>ch.19 tidying</strong>, one item per commit: dead modules (verify, then delete),
     <code>cached_dates_for_new</code>, the trip-root fallback, the Read-SD-card dialog out of
     <code>trip_process.py</code>.</li>
-  <li><strong>Identity</strong>: About box rendering <code>NOTICE.md</code>; the icon.</li>
+  <li><strong>Identity</strong>: About box rendering <code>NOTICE.md</code>. (The icon is in, 12 Oct.)</li>
   <li><strong>Packaging</strong>, finished: the rough ZIP made complete (exiftool arrangement), README,
     repository clean-up, publish.</li>
 </ol>
