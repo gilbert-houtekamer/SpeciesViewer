@@ -1576,6 +1576,52 @@ shows only what the current mode needs.</p>
 </ul>
 
 <!-- ============================================================ -->
+<h2>20. Installable SpeciesViewer &mdash; first run, masters and setup <span class="tag-shipped">SHIPPED</span></h2>
+<p>What SpeciesViewer 0.4 does for a machine with no data, built in October 2026 by running
+throw-away test masters rather than designing on paper. What is still open (About box, icon,
+README, the finished package) is in the Backlog, ch.&nbsp;20.</p>
+
+<ul>
+  <li><strong>Settings out of the repository</strong> <span class="tag-shipped">SHIPPED</span> (10 Oct) &mdash; per-machine settings in
+      the app-data <code>config/</code>, remembered state in <code>state/</code>, the batch hand-off in
+      <code>runtime/</code>, logs in <code>logs/</code>; migrated automatically on first start.</li>
+  <li><strong>Nothing personal built in</strong> <span class="tag-shipped">SHIPPED</span> (10 Oct) &mdash; server, account, website folder,
+      address and contact e-mail are Global Settings (<code>utils/site_config.py</code>); the
+      OpenStreetMap User-Agent uses the contact, or the project's address.</li>
+  <li><strong>One version</strong> <span class="tag-shipped">SHIPPED</span> (10 Oct) &mdash; <code>utils/version.py</code>
+      (<code>0.4.0.dev</code>), read by the window title and the About box; <code>v0.3</code> tagged.</li>
+  <li><strong>Several masters on one machine</strong> <span class="tag-shipped">SHIPPED</span> (11 Oct) &mdash; <em>Master &#9656; Masters</em>:
+      switch (restart), New Master with its own collection, rename, Remove (settings only, or with
+      SpeciesViewer's files &mdash; never the pictures), Restore from the trash, a movable
+      &ldquo;main&rdquo; flag; a test master shows TEST in the title. Each master other than the main
+      one gets its own folders (<code>C:\SpeciesViewer\&lt;master&gt;\nature, trips, albums,
+      CurrentPictures</code>), so test masters never see each other's trips.</li>
+  <li><strong>Setup Checklist</strong> <span class="tag-shipped">SHIPPED</span> (11&ndash;12 Oct) &mdash; <em>Help &#9656; Setup Checklist</em>,
+      one row per setting, read from the real settings; opens by itself while a master has no
+      collection. <em>Use suggested</em> / <em>Create suggested</em> make a missing folder or master in
+      one click; exiftool can be located from it.</li>
+  <li><strong>exiftool in the download</strong> <span class="tag-shipped">SHIPPED</span> (11 Oct) &mdash; the official 13.59, pinned by
+      SHA-256; one lookup for every caller.</li>
+  <li><strong>The website is optional &mdash; and may live on this computer</strong> <span class="tag-shipped">SHIPPED</span> (11&ndash;12 Oct)
+      &mdash; choose <em>on this computer</em> (<code>http://localhost:8765</code>, no internet needed,
+      each master its own site) or <em>on a web server</em>. A website gets its starter pages the
+      moment it is set up; the side rail's Master URL opens it.</li>
+  <li><strong>Create Trip from one name</strong> <span class="tag-shipped">SHIPPED</span> (12 Oct) &mdash; <em>Name &amp; Folders</em>: a name
+      and dates suggest <code>&lt;Trips&gt;\&lt;name&gt;db</code>, <code>&lt;Pictures&gt;\&lt;year&gt;\&lt;year&gt;
+      &lt;name&gt;</code> and <code>/trips/&lt;name&gt;</code>; checked before anything is made (a taken
+      web name says where it is used); default picture and banner copied; Check Range beside the
+      dates. Plan: <code>docs/plans/trip_create_naming_plan.md</code>.</li>
+  <li><strong>Create Album from one name</strong> <span class="tag-shipped">SHIPPED</span> (12 Oct) &mdash; the same for albums, without a
+      pictures folder; refuses a range the master holds no pictures for; a one-click year for a
+      taken name; new <em>Albums &#9656; Select or Update Album&hellip;</em>. Plan:
+      <code>docs/plans/album_create_naming_plan.md</code>.</li>
+  <li><strong>Delete Trip Completely / Delete Album / Remove Master with its files</strong> <span class="tag-shipped">SHIPPED</span>
+      (12 Oct) &mdash; folder, trip-list row and published pages together, for tests and mistakes; the
+      website parts only from a computer that owns the website (never from a read-only laptop).
+      Plan: <code>docs/plans/force_delete_plan.md</code>.</li>
+</ul>
+
+<!-- ============================================================ -->
 <h2>23. Brazil trip &mdash; field feedback <span class="tag-shipped">SHIPPED</span></h2>
 <p>What the 2026 Brazil trip asked for while culling, on the road and back home &mdash; kept together because it came from real use rather than planning. What is still open is in the Backlog, ch.&nbsp;23.</p>
 

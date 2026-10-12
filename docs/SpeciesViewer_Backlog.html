@@ -1840,10 +1840,15 @@ ready-made download — for example
 such a repository is easy to produce for a 500-line widget and considerably harder for 88,000
 lines that assume a photo pipeline, a master database and a website.</p>
 
-<p class="note"><strong>Status on 10 October 2026, after Brazil.</strong> Nothing in this chapter
-moved during the trip work except by accident &mdash; the NOTICE file (21 Aug) is still the only
-item done. The rest is accurate as written, with the updates marked below. This chapter and ch.19
-together are the scope of <strong>SpeciesViewer 0.4</strong>.</p>
+<p class="note"><strong>Status on 12 October 2026.</strong> Most of this chapter moved in two
+days. <strong>Done:</strong> configuration out of the repository (10 Oct), de-personalised site and
+User-Agent (10 Oct), one version string and the <code>v0.3</code> tag, several masters on one
+machine (11 Oct), the rough ZIP with the official exiftool bundled (11 Oct), and the zero-data
+question answered by doing it &mdash; throw-away test masters, a Setup Checklist, a website that may
+live on this computer, and creating trips and albums from one name (11&ndash;12 Oct). <strong>Left:</strong>
+the About box and the icon, the README and repository clean-up, the tracked
+<code>data/configs</code>, and the finished package. This chapter and ch.19 together are the scope
+of <strong>SpeciesViewer 0.4</strong>; the working branch is <code>SpeciesViewer04</code>.</p>
 
 <p class="note"><strong>Who v1 is for.</strong> Worth deciding early, because it sets the bar for
 everything below. SpeciesViewer assumes DxO PhotoLab, a master repository, an SFTP-published
@@ -1855,7 +1860,7 @@ reputation of the project with it.</p>
 
 <h3>The first-run problem — the real blocker</h3>
 
-<p><span class="tag-open">OPEN</span> Today the per-machine configuration lives <em>in the
+<p><span class="tag-shipped">DONE 10 Oct (0.4)</span> Today the per-machine configuration lives <em>in the
 repository root</em>, named <code>sv_config_&lt;machinename&gt;.ini</code>, created as an empty
 <code>[Global]</code> stub when it is missing (<code>utils/config.py</code>). That is fine for a
 clone in <code>d:\code</code> and wrong for anything installed: an application directory is not
@@ -1868,19 +1873,31 @@ chapter 19 item. It names every file that lands in the source tree today, and on
 than the rest — <code>sv_gui_cache.json</code> resolves against the <em>working directory</em>
 rather than <code>CONFIG_DIR</code>, so a launch from another folder silently starts a second,
 empty cache. That has already happened on BigBoy. Fixing this closes an item in both chapters.
-<span class="tag-shipped">DONE 10 Oct (0.4)</span> per-machine settings now live in app-data
+per-machine settings now live in app-data
 <code>config/</code>, remembered state in <code>state/</code>, the batch handoff in
 <code>runtime/</code> and every log in <code>logs/</code>; the repository root is no longer written
 at runtime. Migration is automatic on first start. See
 <code>docs/plans/config_out_of_repo.md</code>.</p>
 
-<p><span class="tag-open">OPEN</span> The harder half of the same problem: <strong>what does
+<p><span class="tag-shipped">DONE 11&ndash;12 Oct (0.4)</span> The harder half of the same problem: <strong>what does
 SpeciesViewer do on a machine with no data?</strong> No master, no trip, no website, no species
 collection. Every panel it opens today assumes at least one of those exists. The options are a
 starter profile shipped with the download (an empty master, one demo day, the species tree), or a
 guided first-run wizard in the style of the existing <em>Install SmallMaster</em> dialog, or
 both. This is more work than the packaging is, and none of the packaging is worth doing until it
-is answered.</p>
+is answered.
+Answered by building it, not by designing it. A machine with
+no data now gets: <strong>Help &#9656; Setup Checklist</strong> (opens by itself while a master has no
+collection) with one row per setting and a <em>Use suggested</em> / <em>Create suggested</em> button
+for every folder and the master (<code>C:\SpeciesViewer\&hellip;</code>, per master); <strong>New
+Master</strong> with its own collection and folders in one go; a website that is <strong>optional</strong>
+and may live <strong>on this computer</strong> (<code>http://localhost:8765</code>), with its starter
+pages supplied the moment it is set up; <strong>Create Trip / Create Album from one name</strong>, the
+folders and web address suggested and checked before anything is made; and <strong>Delete Trip
+Completely / Delete Album / Remove Master with SpeciesViewer's files</strong> for the tests and
+mistakes. Plans: <code>docs/plans/setup_checklist_plan.md</code>,
+<code>website_optional_plan.md</code>, <code>trip_create_naming_plan.md</code>,
+<code>album_create_naming_plan.md</code>, <code>force_delete_plan.md</code>.</p>
 
 <p class="note"><strong>The cheapest way to answer it: build a second master.</strong> A fresh
 master with its own database, on a machine already to hand, <em>is</em> a new-user simulation. It
@@ -1888,23 +1905,32 @@ needs no installer, no packaging and no stranger &mdash; and it turns &ldquo;wha
 SpeciesViewer do with no data?&rdquo; from a design argument into an afternoon of watching where
 it stops. Every gap found that way is a gap a real first user would have hit, and the ones that
 never surface were never worth designing for. This should come before any of the packaging work
-below.</p>
+below. <em>12 Oct: done, and it paid off as predicted &mdash; four throw-away masters (SVv3, SVlocal,
+SVlocal2, SVlocal3) found the missing trip index, an empty species baseline refused for an empty
+master, broken first-run links, test masters seeing each other's trips, and above all how unclear
+the names of a trip were. Each became a fix.</em></p>
 
 <h3>The package itself</h3>
 
-<p><span class="tag-open">OPEN</span> <strong>ZIP or EXE.</strong> PyInstaller is already in
+<p><span class="tag-progress">IN PROGRESS</span> <strong>ZIP or EXE.</strong> PyInstaller is already in
 <code>requirements.txt</code> and no spec file exists yet. A one-folder PyInstaller build zipped
 up is the cheapest thing that can honestly be called an install, and it keeps the third-party
 DLLs as separate files — which, as the licence section notes, is the safer arrangement anyway.
-A true installer (Inno Setup or MSI) is a second step, not a first one.</p>
+A true installer (Inno Setup or MSI) is a second step, not a first one.
+<em>11 Oct: the rough one-folder ZIP exists &mdash; <code>tools/svr_build_zip.py</code> +
+<code>tools/SpeciesViewer.spec</code> build <code>SpeciesViewer-0.4.0.dev-windows.zip</code>. Not yet
+the finished package (README, install page, clean root).</em></p>
 
-<p><span class="tag-open">OPEN</span> <strong>exiftool is a hard prerequisite and is not a pip
+<p><span class="tag-shipped">DONE 11 Oct</span> <strong>exiftool is a hard prerequisite and is not a pip
 install.</strong> It is a separate binary that SpeciesViewer drives through
 <code>PyExifTool</code>, and essentially nothing works without it — ingest, sidecars, ratings,
 previews. Three choices: bundle the Windows binary in the download (its licence permits this),
 have first run detect its absence and offer to fetch it, or document it as a manual prerequisite
 and fail with a clear message. The middle option is the most work and the best experience; the
-last is acceptable for v1 <em>if</em> the failure message actually names the problem.</p>
+last is acceptable for v1 <em>if</em> the failure message actually names the problem.
+The download ships the <strong>official exiftool 13.59, pinned by
+SHA-256</strong>; one lookup serves every caller, and <em>Help &#9656; Setup Checklist &#9656; exiftool
+&#9656; Locate&hellip;</em> finds or points at it, explaining where the official version comes from.</p>
 
 <p><span class="tag-open">OPEN</span> <strong>Python version and platform.</strong> Development
 is on Python 3.12 on Windows 11. The download is Windows-only for v1; the source runs anywhere
@@ -1995,7 +2021,8 @@ repository's root looks like — this is a presentation question as much as a pr
 <em>10 Oct: the seventeen files under <code>data/configs/</code> are <strong>tracked</strong> in
 git, not just present; <code>speciesviewer/bug.png</code> is tracked too. The root also holds
 <code>trip_admin.csv</code>, a <code>.pre-fix-backup</code> of it, <code>studio.log</code> and a
-<code>testpict - Willcox/</code> folder (untracked).</em></p>
+<code>testpict - Willcox/</code> folder (untracked). 12 Oct: still seventeen tracked files under
+<code>data/configs/</code>.</em></p>
 
 <h3>Identity — the About screen and an icon</h3>
 
@@ -2009,7 +2036,9 @@ first ten seconds and only one of them is currently true.</p>
 that has nothing to do with the subject, a version number that was never true, a joke company
 name, and the one fact a user does not care about — which GUI toolkit it was written with.
 It should say the name, a real version, one line about what the program is, the copyright, and a
-plain sentence that this is free software under GPL-3.0 with a link to the licence.</p>
+plain sentence that this is free software under GPL-3.0 with a link to the licence.
+<em>12 Oct: it now shows the real version, but the rocket, &ldquo;with PyQt6&rdquo; and &ldquo;Gilbert
+Inc.&rdquo; are still there.</em></p>
 
 <p><span class="tag-open">OPEN</span> <strong>Credits belong there too, but one level down.</strong>
 A second pane behind a <em>&ldquo;Third-party licences and credits…&rdquo;</em> button, which
@@ -2020,7 +2049,7 @@ Updating the credits then means editing one Markdown file, which is the only ver
 will still be accurate in a year. The OpenStreetMap attribution belongs on that pane as well —
 it is already correct in the map view, but About is where anybody checking will look first.</p>
 
-<p><span class="tag-bug">BUG</span> <strong>There is no version string anywhere in the tree.</strong>
+<p><span class="tag-shipped">DONE 10 Oct (0.4)</span> <strong>There is no version string anywhere in the tree.</strong>
 Not a constant, not a module attribute — the <code>0.1</code> in the About dialog is a literal in
 that one file. A single <code>__version__</code> that the About screen, the packaged build and the
 release tag all read is a precondition for tagging v1 at all, and it is a ten-minute job that
@@ -2029,7 +2058,9 @@ nobody will remember to do at the end.
 0.1, the main window title says <code>Species Viewer 0.3</code> (<code>gui/mainwindow.py</code>).
 There are no git tags yet either. This is the natural first commit of 0.4: one
 <code>__version__ = "0.4.0.dev"</code>, read by both, and a <code>v0.3</code> tag on the commit
-that closes 0.3.</em></p>
+that closes 0.3.</em> <strong>Done:</strong> <code>utils/version.py</code> holds
+<code>__version__ = "0.4.0.dev"</code>, read by the window title and the About box; the
+<code>v0.3</code> tag exists.</p>
 
 <p><span class="tag-open">OPEN</span> <strong>The application has no icon.</strong> No
 <code>setWindowIcon()</code> call exists anywhere, which is why Windows falls back to the Python
@@ -2070,7 +2101,8 @@ too — deleting <code>speciesviewer/app.py</code> (the PyQt tutorial file with 
 Window&rdquo; button, which is exactly what a curious visitor opens first), the configuration
 inventory a new user needs in order to know what to fill in, and the per-site stylesheet
 duplication. <em>10 Oct: the inventory exists and the stylesheet can no longer drift (ch.19), so
-only <code>app.py</code> is left of the three.</em></p>
+only <code>app.py</code> is left of the three. 12 Oct: unchanged &mdash; <code>app.py</code> is still
+there and the README is still three lines.</em></p>
 
 <p class="note"><strong>Note on ch.19.</strong> The rest of that chapter should <em>not</em> be a
 prerequisite for publishing. It is slow-payoff internal tidying whose value does not change
@@ -2083,8 +2115,8 @@ having an audience.</p>
 gives anybody the ability to fork, branch and open a pull request, with review before anything
 merges. The only real decisions are which branch is the published one — <code>ClaudeSpecies</code>
 is the working branch today, and <code>main</code> should become what the world sees
-<em>(10 Oct: the working branch is now <code>SpeciesViewer03</code>; <code>main</code> is the stable
-fallback and <code>ClaudeSpecies</code> is redundant)</em> — and a
+<em>(12 Oct: the working branch is <code>SpeciesViewer04</code>, opened from the <code>v0.3</code>
+tag; <code>main</code> is the stable fallback and <code>ClaudeSpecies</code> is redundant)</em> — and a
 short <code>CONTRIBUTING.md</code> saying what a good pull request looks like. Direct write
 access to the repository is not something to hand out.</p>
 
@@ -2092,18 +2124,21 @@ access to the repository is not something to hand out.</p>
 
 <ol>
   <li>Decide who v1 is for, and what a zero-data machine does. Everything else follows from
-    these two answers.</li>
-  <li>Move the configuration out of the repository root; de-personalise the User-Agent and the
-    site defaults.</li>
+    these two answers. <span class="tag-shipped">DONE 12 Oct</span> for the zero-data machine (see above); who v1
+    is for stands as written.</li>
+  <li><s>Move the configuration out of the repository root; de-personalise the User-Agent and the
+    site defaults.</s> <span class="tag-shipped">DONE 10 Oct</span></li>
   <li><s>Write the NOTICE file and settle the two dependency questions.</s>
     <span class="tag-shipped">DONE 21 Aug</span> — <code>NOTICE.md</code>; both questions became
     build rules (no libx265, one-folder only). <code>requirements.txt</code> cleaned at the same
     time: <code>flet</code>, <code>exif</code> and <code>configparser</code> were declared but
     imported nowhere, and <code>numpy</code>/<code>opencv-python</code> were used directly but
     undeclared.</li>
-  <li>Build the PyInstaller one-folder ZIP; decide the exiftool arrangement.</li>
+  <li>Build the PyInstaller one-folder ZIP; decide the exiftool arrangement.
+    <span class="tag-progress">IN PROGRESS</span> rough ZIP and the bundled exiftool done (11 Oct); the finished package is not.</li>
   <li>Give the program an identity: a real <code>__version__</code>, an About screen that
-    renders <code>NOTICE.md</code>, and an icon.</li>
+    renders <code>NOTICE.md</code>, and an icon. <em>The version is done; About and the icon are
+    open.</em></li>
   <li>Clean the repository root, write the README and the install page, delete
     <code>app.py</code>.</li>
   <li>Publish <code>main</code>, tag v1, attach the ZIP as a release.</li>
@@ -2116,26 +2151,28 @@ same work re-ordered so that each step is small, stands on its own, and leaves a
 better than before even if 0.4 stops there:</p>
 
 <ol>
-  <li><strong>Close 0.3.</strong> Tag <code>v0.3</code> on the current <code>SpeciesViewer03</code>
+  <li><strong>Close 0.3.</strong> <span class="tag-shipped">DONE 10 Oct</span> Tag <code>v0.3</code> on the current <code>SpeciesViewer03</code>
     head; the merge to <code>main</code> can wait. Open <code>SpeciesViewer04</code> from that
     tag.</li>
-  <li><strong>One version string</strong> &mdash; <code>__version__</code>, read by the window
+  <li><strong>One version string</strong> <span class="tag-shipped">DONE 10 Oct</span> &mdash; <code>__version__</code>, read by the window
     title and the About box. Ten minutes; makes every later step attributable to a release.</li>
-  <li><strong>The GUI cache path</strong> (one-line bug), then <strong>configuration out of the
+  <li><strong>The GUI cache path</strong> <span class="tag-shipped">DONE 10 Oct</span> (one-line bug), then <strong>configuration out of the
     repository root</strong> into the per-OS application-data folder, with a one-time migration of
     the existing files. The inventory is the checklist. This is the real blocker in this chapter
     and the largest ch.19 loose end at the same time.</li>
-  <li><strong>De-personalise</strong>: the OSM User-Agent and the ten hard-coded site details move
+  <li><strong>De-personalise</strong> <span class="tag-shipped">DONE 10 Oct</span>: the OSM User-Agent and the ten hard-coded site details move
     into configuration.</li>
-  <li><strong>Several masters on one machine</strong> (11 Oct) &mdash; <em>Master &#9656; Masters</em>:
+  <li><strong>Several masters on one machine</strong> <span class="tag-shipped">DONE 11 Oct</span> (11 Oct) &mdash; <em>Master &#9656; Masters</em>:
     switch (restart), new test master, a movable &ldquo;main&rdquo; flag; a test master never touches the
     main one. Plan: <code>docs/plans/multiple_masters_plan.md</code>.</li>
-  <li><strong>A first, rough ZIP</strong> (11 Oct) &mdash; one folder with <code>SpeciesViewer.exe</code>,
+  <li><strong>A first, rough ZIP</strong> <span class="tag-shipped">DONE 11 Oct</span> (11 Oct) &mdash; one folder with <code>SpeciesViewer.exe</code>,
     unpacked into a fresh folder and started outside VS Code. Only rough: no exiftool arrangement, no
     README. It is the vehicle for the next step, because a test master in the development setup is
     still a machine with Python and VS Code on it.</li>
-  <li><strong>The second master</strong> &mdash; the zero-data simulation, run from that ZIP in an empty
-    test master. Its findings decide what first run needs; do not design that before it.</li>
+  <li><strong>The second master</strong> <span class="tag-shipped">DONE 11&ndash;12 Oct</span> &mdash; the zero-data simulation, run from that ZIP in an empty
+    test master. Its findings decide what first run needs; do not design that before it.
+    <em>Run in test masters from VS Code rather than from the ZIP; what it found is listed under
+    &ldquo;The first-run problem&rdquo; above.</em></li>
   <li><strong>ch.19 tidying</strong>, one item per commit: dead modules (verify, then delete),
     <code>cached_dates_for_new</code>, the trip-root fallback, the Read-SD-card dialog out of
     <code>trip_process.py</code>.</li>
