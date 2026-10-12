@@ -85,6 +85,41 @@ def create_master_collection(folder) -> None:
     persist_config()
 
 
+# Where a master's other folders go, beside its collection — only for the
+# suggested layout <base>/<master>/nature; a collection anywhere else gets no
+# siblings (the Setup Checklist then suggests per-master folders).
+_SIBLINGS = {("trip", "tripsrootdirectory"): "trips",
+             ("virttrip", "virttriprootdirectory"): "albums",
+             ("currentpictures", "rootdirectory"): "CurrentPictures"}
+
+
+def sibling_folders(collection) -> dict | None:
+    collection = Path(collection)
+    if collection.name.lower() != "nature":
+        return None
+    return {key: collection.parent / name for key, name in _SIBLINGS.items()}
+
+
+def point_master_folders(config_file, collection) -> None:
+    """Give a NEW master its own trips, albums and pictures folders beside its
+    collection (made here), so it never shares them with another master."""
+    from utils.ini_io import read_ini
+    sib = sibling_folders(collection)
+    if not sib:
+        return
+    config_file = Path(config_file)
+    cfg = configparser.ConfigParser()
+    if config_file.exists():
+        read_ini(cfg, config_file)
+    for (section, key), folder in sib.items():
+        folder.mkdir(parents=True, exist_ok=True)
+        if not cfg.has_section(section):
+            cfg.add_section(section)
+        cfg.set(section, key, str(folder))
+    with open(config_file, "w", encoding="utf-8") as f:
+        cfg.write(f)
+
+
 def point_master_at(config_file, folder) -> None:
     """Point ANOTHER master's settings file at the collection in `folder`
     (New Test Master: the new master is not the one this process has open).

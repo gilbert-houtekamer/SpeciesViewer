@@ -34,7 +34,9 @@ suggested** for the master): one click makes the folder and uses it. The
 suggestions are `C:\SpeciesViewer\nature`, `…\trips`, `…\CurrentPictures` and
 `…\albums` on Windows, and `~/SpeciesViewer/…` on the Mac. A row that is set
 but whose folder is missing — an unplugged drive — gets no such button: that is
-fixed by plugging the drive in, not by pointing somewhere else.
+fixed by plugging the drive in, not by pointing somewhere else. In a master
+other than the main one, the suggestions sit in that master's own folder
+(`C:\SpeciesViewer\<master>\trips` and so on).
 
 With only the master collection set up you can already copy days off a card,
 add them to the master and browse it — no website needed.

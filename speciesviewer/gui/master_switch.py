@@ -111,6 +111,15 @@ class NewMasterDialog(QDialog):
         row.addWidget(self.folder, 1)
         row.addWidget(browse)
         layout.addLayout(row)
+        # The folder follows the name (<base>/<name>/nature) until it is
+        # edited; with a folder named "nature" the master also gets its own
+        # trips, albums and pictures folders beside it — masters do not share.
+        self._folder_follows = True
+        self.folder.textEdited.connect(self._folder_edited)
+        self.name.textChanged.connect(self._suggest_folder)
+        self.layout_note = wrapped("", self)
+        layout.addWidget(self.layout_note)
+        self.folder.textChanged.connect(self._show_layout)
         self.with_collection.toggled.connect(self.folder.setEnabled)
         self.with_collection.toggled.connect(browse.setEnabled)
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok
@@ -125,7 +134,26 @@ class NewMasterDialog(QDialog):
         chosen = QFileDialog.getExistingDirectory(
             self, "Choose an EMPTY folder for the new collection")
         if chosen:
+            self._folder_follows = False
             self.folder.setText(chosen)
+
+    def _folder_edited(self, _text):
+        self._folder_follows = False
+
+    def _suggest_folder(self, name):
+        from utils import default_folders
+        if self._folder_follows:
+            name = name.strip()
+            self.folder.setText(str(default_folders.master_folder(name, main=False))
+                                if name else "")
+
+    def _show_layout(self, text):
+        from pathlib import Path
+        from engine.master_create import sibling_folders
+        sib = sibling_folders(Path(text.strip())) if text.strip() else None
+        self.layout_note.setText(
+            ("Its own trips, albums and pictures folders go beside it: "
+             + ", ".join(str(p) for p in sib.values()) + ".") if sib else "")
 
     def _check_and_accept(self):
         """Everything that could fail cheaply is checked BEFORE anything is
@@ -149,7 +177,7 @@ def _new_master(main_window) -> None:
     from pathlib import Path
     from PyQt6.QtCore import Qt
     from PyQt6.QtWidgets import QApplication
-    from engine.master_create import make_collection, point_master_at
+    from engine.master_create import make_collection, point_master_at, point_master_folders
     from utils.config import CONFIG_FILENAME
     dlg = NewMasterDialog(main_window)
     if dlg.exec() != QDialog.DialogCode.Accepted:
@@ -176,7 +204,9 @@ def _new_master(main_window) -> None:
     try:
         entry = masters.create(dlg.name.text(), copy_machine_settings_from=source)
         if folder:
-            point_master_at(masters.folder_of(entry) / "config" / CONFIG_FILENAME, folder)
+            config_file = masters.folder_of(entry) / "config" / CONFIG_FILENAME
+            point_master_at(config_file, folder)
+            point_master_folders(config_file, folder)
     except (masters.MasterError, OSError) as e:
         QMessageBox.warning(main_window, "New Master", str(e))
         return
@@ -239,13 +269,46 @@ def _remove(main_window) -> None:
                                     "Master to remove:", removable, 0, False)
     if not ok:
         return
-    answer = QMessageBox.question(
-        main_window, "Remove Master",
-        f"Remove the master “{name}” from SpeciesViewer?\n\n"
-        "Its settings, trips list and other remembered state are zipped to the "
-        "trash first. Pictures and other data folders you chose for it are NOT "
-        "deleted.")
-    if answer != QMessageBox.StandardButton.Yes:
+    # What "also delete its data" would delete — read from THAT master's own
+    # settings, shown before anything happens (docs/plans/force_delete_plan.md B).
+    from PyQt6.QtWidgets import QCheckBox
+    from engine import master_purge
+    from engine.force_delete import human
+    try:
+        data_plan = master_purge.plan(name)
+    except Exception as e:
+        main_window.logger.info(f"Remove Master: could not list {name}'s data: {e}")
+        data_plan = None
+    box = QMessageBox(QMessageBox.Icon.Question, "Remove Master",
+                      f"Remove the master “{name}” from SpeciesViewer?\n\n"
+                      "Its settings, remembered state and website on this computer "
+                      "are zipped to the trash first.",
+                      QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                      main_window)
+    box.setDefaultButton(QMessageBox.StandardButton.No)
+    data_cb = None
+    if data_plan and (data_plan["collection"] or data_plan["trips"] or data_plan["albums"]):
+        lines = []
+        if data_plan["collection"]:
+            c = data_plan["collection"]
+            lines.append(f"• collection {c} ({human(data_plan['sizes'][str(c)])})")
+        for f in data_plan["trips"]:
+            lines.append(f"• trip {f} ({human(data_plan['sizes'][str(f)])})")
+        for f in data_plan["albums"]:
+            lines.append(f"• album {f} ({human(data_plan['sizes'][str(f)])})")
+        kept = []
+        if data_plan["pictures"]:
+            kept.append(f"its pictures ({data_plan['pictures']})")
+        if data_plan["other_trips"]:
+            kept.append(f"{len(data_plan['other_trips'])} trip(s)/album(s) of other "
+                        "masters in the same folders")
+        kept += [f"{p} — {why}" for p, why in data_plan["skipped"]]
+        box.setInformativeText(
+            "With the box ticked, also deleted — no backup:\n" + "\n".join(lines)
+            + ("\n\nNot deleted: " + "; ".join(kept) + "." if kept else ""))
+        data_cb = QCheckBox(f"Also delete this master's data — {human(data_plan['size'])}")
+        box.setCheckBox(data_cb)
+    if box.exec() != QMessageBox.StandardButton.Yes:
         return
     try:
         zip_path = masters.remove(name)
@@ -253,6 +316,17 @@ def _remove(main_window) -> None:
         QMessageBox.warning(main_window, "Remove Master", str(e))
         return
     main_window.logger.info(f"Master “{name}” removed; its settings are in {zip_path}")
+    if data_cb is not None and data_cb.isChecked():
+        report = master_purge.delete(data_plan)
+        # With shared folders the deleted trips/albums were in THIS master's
+        # lists too; the panels read the folders once at start, so re-read.
+        for panel in ("trip_panel", "virttrip_panel"):
+            try:
+                getattr(main_window, panel).rebuild()
+            except Exception as e:
+                main_window.logger.info(f"Remove Master: {panel} refresh skipped: {e}")
+        QMessageBox.information(main_window, "Remove Master",
+                                f"“{name}” is removed.\n\n" + "\n".join(report))
     main_window.rebuild_menu()
 
 

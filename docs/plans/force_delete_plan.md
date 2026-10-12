@@ -1,7 +1,7 @@
 # Force delete — an unfinished trip or album, and a whole test master
 
-*Opened 2026-10-12. Status: part A (trips AND albums) BUILT, uncommitted —
-awaiting Gilbert's test; then part B. It DELETES, so
+*Opened 2026-10-12. Status: part A SHIPPED (d14b380); part B BUILT,
+uncommitted — awaiting Gilbert's test. It DELETES, so
 every step is shown before it happens.*
 
 ## Why
@@ -174,3 +174,25 @@ a read-only SmallMaster. Same rule for trips and albums.
 - A trip/album whose ini names a master that does not exist on this computer
   (imported from BigBoy) is NOT "another master's".
 - The server's rmtree only ever gets `<site>/trips/<plain name>`.
+
+## Built (2026-10-12) — part B
+
+- `engine/master_purge.py` — plan(name) reads the master's OWN settings file
+  (never the open master's), lists its collection and the trips/albums whose
+  ini names that collection, with sizes; delete(plan) removes them, no
+  backup. Skipped: anything another master's settings still name, trips or
+  albums of another master, the pictures. An emptied trips/albums folder is
+  removed only when truly empty (a .trash with asked-for backups keeps it).
+- Remove Master: one extra, unticked checkbox "Also delete this master's
+  data — <size>", the list above it.
+- `utils/default_folders` is per master: the main master's folders sit in
+  C:\SpeciesViewer, any other master's in C:\SpeciesViewer\<master>. New
+  Master's collection folder follows the name; with a folder named "nature"
+  the master gets its own trips, albums and CurrentPictures beside it
+  (`master_create.point_master_folders`).
+- Tested end to end in a FAKE app-data (LOCALAPPDATA pointed at scratch);
+  the real masters.json was checked untouched.
+- Found in Gilbert's first try: with shared folders, master B can have master
+  A's trip OPEN (SVlocal3 had SVlocal2's `autumn` open). Deleting A's data
+  must never take it away: a trip or album another master has open is
+  skipped, with the reason shown.
