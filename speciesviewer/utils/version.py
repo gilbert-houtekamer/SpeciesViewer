@@ -9,4 +9,4 @@ screenshot or log line from a work-in-progress build says so.
 
 __version__ = "0.4.0.dev"
 
-APP_NAME = "Species Viewer"
+APP_NAME = "SpeciesViewer"

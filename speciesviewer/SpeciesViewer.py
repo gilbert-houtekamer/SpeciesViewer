@@ -1,4 +1,5 @@
 import logging
+import random
 import sys
 import threading
 import time
@@ -12,7 +13,7 @@ for _p in [str(_qt_dir), str(_project_root)]:
         sys.path.insert(0, _p)
 
 from PyQt6.QtWidgets import QApplication, QSplashScreen, QToolTip
-from PyQt6.QtGui import QPixmap, QFont, QIcon
+from PyQt6.QtGui import QPixmap, QFont, QIcon, QPainter, QLinearGradient, QColor
 from PyQt6.QtCore import Qt, QTimer, QSize
 
 from utils.config import _config
@@ -83,10 +84,41 @@ def _warm_master_db_in_background(done_event: threading.Event) -> None:
 _main_window = None
 
 
+SPLASH_SIZE = QSize(1200, 675)
+SPLASH_FADE = 150      # 0 = no fade; up to 255 = black under the text
+
+
+def _splash_pixmap(path: Path | None = None, fade: int = SPLASH_FADE) -> QPixmap:
+    """A random picture from assets/splash/ (any .jpg dropped there counts),
+    cut to SPLASH_SIZE, darkened towards the bottom so the white text reads
+    on light pictures too."""
+    if path is None:
+        pictures = sorted((Path(__file__).parent / "assets" / "splash").glob("*.jpg"))
+        path = random.choice(pictures) if pictures else None
+    pix = QPixmap(str(path)) if path else QPixmap()
+    if pix.isNull():                     # no pictures: a plain dark splash
+        pix = QPixmap(SPLASH_SIZE)
+        pix.fill(QColor(40, 44, 40))
+    pix = pix.scaled(
+        SPLASH_SIZE, Qt.AspectRatioMode.KeepAspectRatioByExpanding,
+        Qt.TransformationMode.SmoothTransformation)
+    x = (pix.width() - SPLASH_SIZE.width()) // 2
+    y = (pix.height() - SPLASH_SIZE.height()) // 2
+    pix = pix.copy(x, y, SPLASH_SIZE.width(), SPLASH_SIZE.height())
+    if fade:
+        h = pix.height()
+        grad = QLinearGradient(0, h * 0.55, 0, h)
+        grad.setColorAt(0, QColor(0, 0, 0, 0))
+        grad.setColorAt(1, QColor(0, 0, 0, fade))
+        painter = QPainter(pix)
+        painter.fillRect(0, int(h * 0.55), pix.width(), h, grad)
+        painter.end()
+    return pix
+
+
 def start_main():
     # 🖼️ Splash screen setup
-    splash_pix = QPixmap(str(Path(__file__).parent / "assets" / "svsplash.jpg"))
-    splash = QSplashScreen(splash_pix)
+    splash = QSplashScreen(_splash_pixmap())
     splash.setWindowFlag(Qt.WindowType.FramelessWindowHint)
 
     font_title = QFont("Arial", 20, QFont.Weight.Bold)
@@ -95,7 +127,7 @@ def start_main():
     # Use HTML to style each line separately
     splash_text = (
         '<div style="text-align:center;">'
-        '<span style="font-size:24pt; font-weight:bold;color:white;">Welcome to Species Viewer</span><br>'
+        '<span style="font-size:24pt; font-weight:bold;color:white;">Welcome to SpeciesViewer</span><br>'
         '<span style="font-size:16pt;color:white;">Organize species. Explore collections. Bring biodiversity to life.</span>'
         '</div>'
     )

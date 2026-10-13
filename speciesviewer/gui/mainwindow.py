@@ -552,7 +552,7 @@ class MainWindow(QMainWindow):
         # stopping the persistent exiftool writer) with nothing on screen to
         # say so — same problem, and same fix, as the slow dialogs: show a
         # message and force it to paint before doing the actual work.
-        closing_lbl = QLabel("Closing Species Viewer…")
+        closing_lbl = QLabel(f"Closing {APP_NAME}…")
         closing_lbl.setWindowFlag(Qt.WindowType.FramelessWindowHint)
         closing_lbl.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint)
         closing_lbl.setStyleSheet(
