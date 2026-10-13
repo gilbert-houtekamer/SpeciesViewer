@@ -80,3 +80,8 @@ docs/manual/_assets/
 
 # Old per-machine files left behind by the move to app-data (may hold the SFTP password)
 *.moved-to-appdata
+
+# Personal: old per-machine configs and sample files (settings live in app-data now),
+# and Claude Code's per-user permissions.
+/data/
+.claude/settings.local.json
