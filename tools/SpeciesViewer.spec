@@ -3,7 +3,7 @@
 #   python tools/svr_build_zip.py        ← builds with this file and zips it
 #
 # Rough on purpose: exiftool must be on the PATH, no README. The two build
-# rules from NOTICE.md DO apply already:
+# rules (reasoning in docs/licensing_background.md) DO apply already:
 #   1. one FOLDER, never one file — Qt6, LibRaw (raw_r.dll), libheif stay
 #      replaceable files, which is what their LGPL licences ask for;
 #   2. no libx265 — pillow-heif's HEIC *encoder* is GPLv2; SpeciesViewer only
@@ -51,6 +51,7 @@ exe = EXE(
     pyz, a.scripts, [],
     exclude_binaries=True,
     name="SpeciesViewer",
+    icon=str(SV / "assets" / "icon" / "speciesviewer.ico"),   # the .exe in File Explorer
     # Rough build: KEEP the console — a crash in the new-user test then shows
     # its traceback instead of vanishing. The finished build turns it off.
     console=True,

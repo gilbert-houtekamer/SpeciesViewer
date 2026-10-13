@@ -2030,7 +2030,7 @@ git, not just present; <code>speciesviewer/bug.png</code> is tracked too. The ro
 section is about whether it looks like a finished product when it does. The two are judged in the
 first ten seconds and only one of them is currently true.</p>
 
-<p><span class="tag-open">OPEN</span> <strong>The About dialog is scaffolding.</strong>
+<p><span class="tag-shipped">DONE 13 Oct</span> <strong>The About dialog is scaffolding.</strong>
 <code>dialogs/setting.py</code> is nineteen lines and reads, in full,
 <code>&quot;🚀 Species Viewer 0.1 with PyQt6 &mdash; (c) 2025 Gilbert Inc.&quot;</code>. A rocket
 that has nothing to do with the subject, a version number that was never true, a joke company
@@ -2038,16 +2038,24 @@ name, and the one fact a user does not care about — which GUI toolkit it was w
 It should say the name, a real version, one line about what the program is, the copyright, and a
 plain sentence that this is free software under GPL-3.0 with a link to the licence.
 <em>12 Oct: it now shows the real version, but the rocket, &ldquo;with PyQt6&rdquo; and &ldquo;Gilbert
-Inc.&rdquo; are still there.</em></p>
+Inc.&rdquo; are still there.</em> <strong>Done 13 Oct:</strong> a new About box — the
+name, the version, the motto on three lines, &ldquo;Copyright &copy; 2024&ndash;2026 Gilbert
+Houtekamer&rdquo;, the GPL-3.0 line with &ldquo;no warranty&rdquo; (which the GPL asks a program
+with a screen to show), and the African Pygmy-goose on the right. A pastel sand panel in
+light mode, a deep warm brown in dark mode.</p>
 
-<p><span class="tag-open">OPEN</span> <strong>Credits belong there too, but one level down.</strong>
+<p><span class="tag-shipped">DONE 13 Oct</span> <strong>Credits belong there too, but one level down.</strong>
 A second pane behind a <em>&ldquo;Third-party licences and credits…&rdquo;</em> button, which
 <strong>renders <code>NOTICE.md</code> at runtime</strong> rather than repeating it. Qt's
 <code>QTextBrowser</code> reads Markdown natively and can hand links to the system browser, so the
 file the repository publishes <em>is</em> the screen the user sees and the two cannot drift apart.
 Updating the credits then means editing one Markdown file, which is the only version of this that
 will still be accurate in a year. The OpenStreetMap attribution belongs on that pane as well —
-it is already correct in the map view, but About is where anybody checking will look first.</p>
+it is already correct in the map view, but About is where anybody checking will look first.
+<strong>Done 13 Oct:</strong> &ldquo;Licences and credits…&rdquo; shows <code>NOTICE.md</code>,
+rewritten as a public statement (facts only; two out-of-date claims about GBIF and the
+OpenStreetMap contact corrected). The reasoning behind it, including the two build rules, moved
+to <code>docs/licensing_background.md</code> for whoever maintains SpeciesViewer.</p>
 
 <p><span class="tag-shipped">DONE 10 Oct (0.4)</span> <strong>There is no version string anywhere in the tree.</strong>
 Not a constant, not a module attribute — the <code>0.1</code> in the About dialog is a literal in
@@ -2152,8 +2160,8 @@ access to the repository is not something to hand out.</p>
   <li>Build the PyInstaller one-folder ZIP; decide the exiftool arrangement.
     <span class="tag-progress">IN PROGRESS</span> rough ZIP and the bundled exiftool done (11 Oct); the finished package is not.</li>
   <li>Give the program an identity: a real <code>__version__</code>, an About screen that
-    renders <code>NOTICE.md</code>, and an icon. <em>The version is done; the icon is in (12 Oct, Windows checked, Mac
-    still to see); About is open.</em></li>
+    renders <code>NOTICE.md</code>, and an icon. <em>Done: version, icon (Mac Dock still to see), splash, and the About
+    box with its credits (13 Oct).</em></li>
   <li>Clean the repository root, write the README and the install page, delete
     <code>app.py</code>.</li>
   <li>Publish <code>main</code>, tag v1, attach the ZIP as a release.</li>
@@ -2191,7 +2199,7 @@ better than before even if 0.4 stops there:</p>
   <li><strong>ch.19 tidying</strong>, one item per commit: dead modules (verify, then delete),
     <code>cached_dates_for_new</code>, the trip-root fallback, the Read-SD-card dialog out of
     <code>trip_process.py</code>.</li>
-  <li><strong>Identity</strong>: About box rendering <code>NOTICE.md</code>. (The icon is in, 12 Oct.)</li>
+  <li><s><strong>Identity</strong>: About box rendering <code>NOTICE.md</code>; the icon.</s> <span class="tag-shipped">DONE 13 Oct</span></li>
   <li><strong>Packaging</strong>, finished: the rough ZIP made complete (exiftool arrangement), README,
     repository clean-up, publish.</li>
 </ol>
