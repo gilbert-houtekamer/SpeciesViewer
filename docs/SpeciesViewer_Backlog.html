@@ -2165,8 +2165,15 @@ access to the repository is not something to hand out.</p>
     time: <code>flet</code>, <code>exif</code> and <code>configparser</code> were declared but
     imported nowhere, and <code>numpy</code>/<code>opencv-python</code> were used directly but
     undeclared.</li>
-  <li>Build the PyInstaller one-folder ZIP; decide the exiftool arrangement.
-    <span class="tag-progress">IN PROGRESS</span> rough ZIP and the bundled exiftool done (11 Oct); the finished package is not.</li>
+  <li><s>Build the PyInstaller one-folder ZIP; decide the exiftool arrangement.</s>
+    <span class="tag-shipped">DONE 14 Oct</span> &mdash; <strong>0.4.0 final</strong>: no console
+    window, &ldquo;Read me first.txt&rdquo;, LICENSE and NOTICE beside the <code>.exe</code>, the duck
+    on the <code>.exe</code>, matplotlib's demo pictures left out. Tested in Windows Sandbox (a
+    clean Windows): first start, welcome window, create a master, read a folder, the map. Fixes
+    from that test: a welcome window when no master is set; &ldquo;Create here&rdquo; in the Setup
+    Checklist for a chosen empty folder; &ldquo;Read SD-cards&rdquo; became <em>Read SD-card or
+    Folder…</em> and needs an open trip. Not yet published: waits for the GitHub release (the
+    main repository goes public with it) and the sample pictures.</li>
   <li>Give the program an identity: a real <code>__version__</code>, an About screen that
     renders <code>NOTICE.md</code>, and an icon. <em>Done: version, icon (Mac Dock still to see), splash, and the About
     box with its credits (13 Oct).</em></li>

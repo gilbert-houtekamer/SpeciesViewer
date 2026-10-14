@@ -1,0 +1,47 @@
+SpeciesViewer
+=============
+
+Organize species. Explore collections. Bring biodiversity to life.
+
+
+Starting
+--------
+Double-click SpeciesViewer.exe in this folder. Keep the folder together:
+the program needs the files beside it.
+
+The first time, Windows may show a blue window "Windows protected your PC".
+SpeciesViewer is free software from a single author and does not carry a
+paid code-signing certificate. Click "More info", then "Run anyway".
+
+
+First steps
+-----------
+On first start SpeciesViewer opens Help > Setup Checklist. Follow it from
+the top:
+
+  1. Create a master collection (Master > Masters): the folder where the
+     best pictures of every species will live. Choose a disk with room to
+     grow.
+  2. Add pictures, from a memory card or a folder of one day's pictures,
+     and name the species.
+  3. Trips, albums and a website are optional; the checklist shows what
+     each one needs when you get there.
+
+
+Good to know
+------------
+- Your settings are kept in %LOCALAPPDATA%\SpeciesViewer, never in this
+  folder. To update SpeciesViewer, replace this folder with the new one.
+- ExifTool by Phil Harvey, which SpeciesViewer uses to read and write
+  picture metadata, is included in the "exiftool" folder.
+- Licence and credits: Help > About in the program, or LICENSE and
+  NOTICE.md in this folder.
+
+
+Questions and ideas
+-------------------
+speciesviewer@houtekamer.com
+https://github.com/gilbert-houtekamer/SpeciesViewer
+
+Copyright (c) 2024-2026 Gilbert Houtekamer. Free software under the
+GNU General Public License, version 3.

@@ -76,7 +76,7 @@ def copy_day_from_card(main_window):
     registers the created date folders when the copy finishes). Non-modal —
     the copy runs on its own QThread — so the rest of SV stays usable."""
     from gui.trip_process import ReadSDCardDialog
-    if not main_window._try_start_background_op("Read SD-cards"):
+    if not main_window._try_start_background_op("Read SD-card or Folder"):
         return
     dlg = ReadSDCardDialog(main_window, None, days_mode=True)
     main_window._read_sdcard_dlg = dlg  # keep alive while non-modal

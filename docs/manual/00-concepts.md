@@ -168,7 +168,7 @@ The full lifecycle, with the menu that owns each stage:
 
 | Stage | Scope | Menu | What happens |
 |---|---|---|---|
-| 1. Get pictures in | Trip + Day | [Trips ▸ Read SD-cards](04-trips.md), [Days ▸ Copy from Card](03-days.md) | Card to local `YYYY-MM-DD` folders |
+| 1. Get pictures in | Trip + Day | [Trips ▸ Read SD-card or Folder](04-trips.md), [Days ▸ Copy from Card](03-days.md) | Card to local `YYYY-MM-DD` folders |
 | 2. Cull and identify | Trip + Day | Viewers, per day | Ratings, colour labels, species names, GPS |
 | 3. Publish each day | Trip only | [Trips](04-trips.md) 1-3 | Read & Summarize, Write Blog, Publish Day |
 | 4. Finish the trip site | Trip only | [Trips](04-trips.md) 4-5 | Clickable blogs, list the trip on the site |

@@ -7,6 +7,6 @@ e.g. "0.4.0" -> tag v0.4. Between releases the value carries ".dev", so a
 screenshot or log line from a work-in-progress build says so.
 """
 
-__version__ = "0.4.0.dev"
+__version__ = "0.4.0"
 
 APP_NAME = "SpeciesViewer"

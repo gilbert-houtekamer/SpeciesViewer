@@ -47,8 +47,17 @@ def master_collection_state():
                          f"{default_folders.master_folder()} — or choose an "
                          "existing one.")
     if not (Path(path) / "metadata" / "active" / "data_pictures.csv").is_file():
-        return MISSING, f"{path} — not a master collection (no metadata/active/ found)"
+        if _folder_is_free(path):
+            return MISSING, f"{path} — no master collection here yet. Create here makes one."
+        return MISSING, (f"{path} — this folder holds other files and is not a master "
+                         "collection. Choose an empty folder, or an existing collection.")
     return OK, path
+
+
+def _folder_is_free(path) -> bool:
+    """New or empty: a master collection can be created there safely."""
+    folder = Path(path)
+    return not folder.exists() or (folder.is_dir() and not any(folder.iterdir()))
 
 
 def website_state():
@@ -278,6 +287,12 @@ class SetupChecklistDialog(QDialog):
                 suggest.setToolTip(f"Create {_FOLDER_KEYS[title][2]()} and use it.")
                 suggest.clicked.connect(lambda _=False, t=title: self._use_suggested(t))
             elif title == "Master collection":
+                # The folder the user chose, when it is new or empty.
+                self._create_here = QPushButton("Create here")
+                self._create_here.setToolTip(
+                    "Create a new master collection in the folder chosen above.")
+                self._create_here.clicked.connect(self._create_master_here)
+                row_buttons.addWidget(self._create_here)
                 suggest = QPushButton("Create suggested")
                 suggest.setToolTip(f"Create a new master collection in "
                                    f"{default_folders.master_folder()}.")
@@ -301,6 +316,13 @@ class SetupChecklistDialog(QDialog):
         create_collection(self.main_window, folder=default_folders.master_folder())
         self.refresh()
 
+    def _create_master_here(self):
+        from gui.master_switch import create_collection
+        path = _config.get("master", "masterbiotadatabase", fallback="").strip()
+        if path:
+            create_collection(self.main_window, folder=path)
+        self.refresh()
+
     def refresh(self):
         for (title, _needed, check, _actions), mark, text, suggest in zip(
                 self.spec, self.marks, self.texts, self.suggest_buttons):
@@ -311,6 +333,10 @@ class SetupChecklistDialog(QDialog):
                 # quietly pointing somewhere else.
                 configured = _CURRENT[title]().strip()
                 suggest.setVisible(state == MISSING and not configured)
+            if title == "Master collection":
+                configured = _CURRENT[title]().strip()
+                self._create_here.setVisible(
+                    state == MISSING and bool(configured) and _folder_is_free(configured))
             symbol, colour = _MARK[state]
             mark.setText(symbol)
             mark.setStyleSheet(f"font-weight: bold; font-size: 15px; color: {colour};")

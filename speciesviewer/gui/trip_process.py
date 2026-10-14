@@ -851,7 +851,7 @@ class ReadSDCardDialog(QDialog):
         self.unfiled_mode = unfiled_mode
         self.logger = parent.logger
         self.setWindowTitle("Read card into unfiled" if unfiled_mode else
-                            "Copy Day from Card" if days_mode else "Read SD-cards")
+                            "Copy Day from Card" if days_mode else "Read SD-card or Folder")
         # A plain QDialog gets only a close button on Windows; min/max lets you
         # deliberately go full-screen for a big card instead of the dialog
         # having to guess a size that works for every case.
@@ -893,7 +893,7 @@ class ReadSDCardDialog(QDialog):
             "each copy is verified, and pictures already copied are skipped, so you "
             "can re-run this safely.</p>"
             if unfiled_mode else
-            "<p><b>Read SD-cards</b><br>"
+            "<p><b>Read SD-card or Folder</b><br>"
             "Copy pictures from a folder — typically a mounted SD-card — into the "
             "project pictures directory. The filename prefix is added to each picture "
             "(e.g. <i>2026 Zeeland - IMG_1234.CR3</i>); leave it empty to keep names as-is. "

@@ -17,7 +17,7 @@ organised in five blocks, separated by dividers:
 | Export Trip | | An active trip |
 | Import Trip | | |
 | Restore Work from Card | | An active trip |
-| Read SD-cards | | |
+| Read SD-card or Folder | | |
 | Empty a Card | | An active trip |
 | Sync Lightroom & PhotoLab Metadata | | An active trip |
 | 1. Read & Summarize | `Ctrl+D` | An active trip, and the step's turn |
@@ -121,7 +121,7 @@ read it back through any card reader. Open the trip you want to restore into
 
 ## Getting pictures in
 
-### Read SD-cards
+### Read SD-card or Folder
 
 Copies pictures from a folder — typically a mounted card — into the trip's
 picture directory. It runs the copy directly on a worker thread: no statemachine,
@@ -144,7 +144,7 @@ reports files it ignored, and shows a per-day count as it goes.
 
 *Needs: an active trip.*
 
-The other end of Read SD-cards. When every picture on a card has been judged, this
+The other end of Read SD-card or Folder. When every picture on a card has been judged, this
 checks that is actually true, saves the **keepers** to a second card, and marks
 the original safe to format.
 

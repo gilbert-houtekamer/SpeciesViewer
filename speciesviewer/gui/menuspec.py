@@ -103,7 +103,7 @@ def build_menu_spec(main_window):
     # state and are re-evaluated every time a menu opens (see gui/menu.py
     # aboutToShow), so an item greys as soon as the relevant selection changes.
     # "configured" mirrors the existing self-guards: a non-empty, quote-stripped
-    # path. Items with no precondition (Settings, Create Trip, Read SD-cards,
+    # path. Items with no precondition (Settings, Create Trip,
     # Testbed, Sync Sidecars, …) are deliberately left ungated.
     def _cfg(section, key):
         return _config.get(section, key, fallback="").replace('"', "").replace("'", "").strip()
@@ -245,15 +245,19 @@ def build_menu_spec(main_window):
     # because it precedes any day/trip structure.
     read_sdcard = MenuSpec(
         callback=None,
-        title="Read SD-cards",
+        title="Read SD-card or Folder…",
         showsubdirectory=False,
+        # Copies INTO the open trip's pictures folder; with no trip there is no
+        # right place (it fell back to a stale folder — Sandbox test, 14 Oct).
+        # Without a trip: Days ▸ Copy day from card, or the Unfiled lane.
+        enabled=has_active_trip,
     )
     def _open_read_sdcard():
         # Non-modal: the copy/scan run on their own QThread (see
         # ReadSDCardDialog), so there's no reason to freeze the rest of SV
         # while a card reads. _try_start_background_op stops a second one
         # (any of the three read modes) starting at the same time.
-        if not main_window._try_start_background_op("Read SD-cards"):
+        if not main_window._try_start_background_op("Read SD-card or Folder"):
             return
         dlg = ReadSDCardDialog(main_window, read_sdcard)
         main_window._read_sdcard_dlg = dlg  # keep alive while non-modal
@@ -1864,7 +1868,7 @@ def build_menu_spec(main_window):
             "Import Trip…": import_trip,
             "Restore Work from Card…": restore_work,
             f"{MenuSpec.separator()}_setup0": None,
-            "Read SD-cards": read_sdcard,
+            "Read SD-card or Folder…": read_sdcard,
             "Empty a Card": empty_card,
             f"{MenuSpec.separator()}_setup": None,
             "Sync Sidecars": sync_sidecars,

@@ -80,7 +80,7 @@ the work was done on another machine.
 | Export Trip | an active trip |
 | Import Trip | — |
 | Restore Work from Card | an active trip |
-| Read SD-cards | — |
+| Read SD-card or Folder | an active trip (without one: Days ▸ Copy day from card) |
 | Empty a Card | an active trip |
 | Sync Lightroom & PhotoLab Metadata | an active trip |
 | 1. Read & Summarize | an active trip **and** the step's turn |

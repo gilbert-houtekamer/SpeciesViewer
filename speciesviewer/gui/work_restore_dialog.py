@@ -90,7 +90,7 @@ class RestoreWorkDialog(QDialog):
         n.clicked.connect(lambda: self._set_all(False))
         btns.addWidget(n)
         btns.addStretch(1)
-        self._read_btn = QPushButton("Read SD-cards…")
+        self._read_btn = QPushButton("Read SD-card or Folder…")
         self._read_btn.setToolTip(
             "Bring the RAW pictures back from the trip's SD-cards, without "
             "leaving this screen.\nThe SV INDEX card can be out — which pictures "
@@ -303,14 +303,14 @@ class RestoreWorkDialog(QDialog):
         try:
             from gui.trip_process import ReadSDCardDialog
         except Exception as e:
-            QMessageBox.warning(self, "Read SD-cards", f"Could not open it:\n{e}")
+            QMessageBox.warning(self, "Read SD-card or Folder", f"Could not open it:\n{e}")
             return
         parent = self.parent()
         spec = getattr(parent, "menu_spec", {}) or {}
         holder = None
         for group in spec.values():
-            if isinstance(group, dict) and "Read SD-cards" in group:
-                holder = group["Read SD-cards"]
+            if isinstance(group, dict) and "Read SD-card or Folder…" in group:
+                holder = group["Read SD-card or Folder…"]
                 break
         ReadSDCardDialog(parent if parent is not None else self, holder).exec()
         self._refresh_pictures()

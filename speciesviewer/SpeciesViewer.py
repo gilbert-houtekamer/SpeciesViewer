@@ -194,8 +194,14 @@ def start_main():
 
         # A master without a collection can do almost nothing (a new user, a
         # new test master): show what to set up instead of a wall of grey.
+        # No collection at all (a first start): offer to create one first.
+        from gui.welcome import needs_welcome, show_welcome
+        created = False
+        if needs_welcome():
+            show_welcome(main_window)
+            created = not needs_welcome()     # then a restart is on its way
         from gui.setup_checklist import master_needs_setup, show_checklist
-        if master_needs_setup():
+        if not created and master_needs_setup():
             show_checklist(main_window)
 
         # main_window.init_panels()  # ✅ Safe moment — QApplication fully live

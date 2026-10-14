@@ -97,6 +97,10 @@ def main() -> int:
     if x265:
         print(f"FAILED: libx265 found in the build: {x265}")
         return 1
+    # matplotlib comes along only because pygbif imports it; its demo pictures
+    # (grace_hopper.jpg, …) are no use to anyone and look odd in the folder.
+    shutil.rmtree(folder / "_internal" / "matplotlib" / "mpl-data" / "sample_data",
+                  ignore_errors=True)
     exiftool_note = "no exiftool (not Windows: install it with the system)"
     if windows:
         version = install_exiftool(exiftool_zip, folder)
@@ -105,6 +109,10 @@ def main() -> int:
                   f"expected {PIN['version']}")
             return 1
         exiftool_note = f"exiftool {version}"
+    # "Read me first.txt": start, the Windows warning, first steps.
+    shutil.copy2(ROOT / "tools" / "Read me first.txt", folder / "Read me first.txt")
+    for name in ("LICENSE", "NOTICE.md"):      # beside the .exe, where people look
+        shutil.copy2(ROOT / name, folder / name)
     platform = {"win32": "windows", "darwin": "macos"}.get(sys.platform, sys.platform)
     zip_base = BUILD / f"SpeciesViewer-{__version__}-{platform}"
     zip_path = shutil.make_archive(str(zip_base), "zip", root_dir=dist, base_dir="SpeciesViewer")

@@ -39,7 +39,7 @@ came out of the Unfiled inbox.
 Copies pictures off a card into one or more `YYYY-MM-DD` folders and registers
 each created folder as a Day.
 
-This is the same SD-card ingest dialog as [Trips ▸ Read SD-cards](04-trips.md),
+This is the same SD-card ingest dialog as [Trips ▸ Read SD-card or Folder](04-trips.md),
 running in "days mode": date-bucketing is on (so a card holding three dates
 produces three day folders), and the folders it creates are registered when the
 copy finishes.
