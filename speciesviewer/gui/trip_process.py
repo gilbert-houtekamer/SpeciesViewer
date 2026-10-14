@@ -3191,10 +3191,19 @@ class LowerCaseDelegate(QStyledItemDelegate):
         else:
             super().setModelData(editor, model, index)
 
+    # The highlight colours are fixed pastels, so the text on them must be dark
+    # in BOTH themes — in dark mode the palette's light-grey text vanished on
+    # the light yellow of a newly merged row (found 2026-10-14).
+    _INK_ON_PASTEL = QColor(40, 36, 30)
+
     def paint(self, painter, option, index):
         color = self.cell_colors.get((index.row(), index.column()))
         if color:
+            from PyQt6.QtGui import QPalette
+            from PyQt6.QtWidgets import QStyleOptionViewItem
             painter.fillRect(option.rect, color)
+            option = QStyleOptionViewItem(option)
+            option.palette.setColor(QPalette.ColorRole.Text, self._INK_ON_PASTEL)
         super().paint(painter, option, index)
 
 

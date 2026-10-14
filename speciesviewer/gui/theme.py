@@ -212,12 +212,13 @@ def build_base_qss() -> str:
 
         /* Dialog buttons (Yes / No / OK / Save / Cancel) are short words, and the
            QPushButton rule above costs them the native style's minimum width — so
-           "Yes" came out barely wider than the word itself, next to a "No" of a
-           different width. Qt's own minimum for a dialog button is ~75px total;
-           min-width here is CONTENT width (padding sits outside it), so 46 + the
-           6px/14px padding lands on that same figure and the row reads even. */
+           "Yes" came out barely wider than the word itself. Wider side padding
+           gives them a decent size. NOT min-width: inside a QMessageBox Qt
+           applies that as the button's WIDTH, so every longer label ("Keep merged
+           master", "Restore previous master") was cut to 76px and unreadable
+           (found 2026-10-14). Padding grows with the text instead. */
         QMessageBox QPushButton, QDialogButtonBox QPushButton {{
-            min-width: 46px;
+            padding: 6px 26px;
         }}
 
         QCheckBox::indicator {{
