@@ -176,20 +176,8 @@ def load_cache(path):
     return new_cache()
 
 
-def _replace_with_retry(tmp, path, attempts=12, delay=0.25):
-    """os.replace, retried on transient PermissionError. The cache lives under
-    the master repo, which is typically a Dropbox/OneDrive folder; the sync
-    client (and AV real-time scanners) briefly open the destination during
-    sync, which surfaces as WinError 5 (Access denied) on an otherwise-valid
-    replace. Retrying for a few seconds rides out the lock."""
-    for attempt in range(attempts):
-        try:
-            os.replace(tmp, path)
-            return
-        except PermissionError:
-            if attempt == attempts - 1:
-                raise
-            time.sleep(delay)
+# The cache lives under the master repo (Dropbox) — see utils/atomic_replace.
+from utils.atomic_replace import replace_with_retry as _replace_with_retry  # noqa: E402
 
 
 def save_cache(path, cache):

@@ -169,7 +169,9 @@ class StateMachine:
         with open(tmp, 'w', encoding='utf-8') as statefile:
             statefile.write('# This is an automatically generated file to track state for SpeciesViewer\n')
             state.write(statefile)
-        os.replace(tmp, statemachine)
+        # Dropbox may be reading the old file this instant: wait it out.
+        from utils.atomic_replace import replace_with_retry
+        replace_with_retry(tmp, statemachine)
         return
     
     def stateOKtorun(self, statetotest):

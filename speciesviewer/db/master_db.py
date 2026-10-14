@@ -2415,7 +2415,8 @@ class MasterDB:
                 fh.write(json.dumps(e) + "\n")
             fh.flush()
             os.fsync(fh.fileno())
-        os.replace(tmp, self._jsonl_path)
+        from utils.atomic_replace import replace_with_retry
+        replace_with_retry(tmp, self._jsonl_path)
 
     def _truncate_jsonl(self, processed_max_seq: int) -> None:
         """Drop entries up to processed_max_seq, preserving any appended during
@@ -2428,7 +2429,8 @@ class MasterDB:
                 fh.write(json.dumps(e) + "\n")
             fh.flush()
             os.fsync(fh.fileno())
-        os.replace(tmp, self._jsonl_path)
+        from utils.atomic_replace import replace_with_retry
+        replace_with_retry(tmp, self._jsonl_path)
 
     def checkpoint(self) -> int:
         """Replay pending entries into the DB (those newer than the affected CSV

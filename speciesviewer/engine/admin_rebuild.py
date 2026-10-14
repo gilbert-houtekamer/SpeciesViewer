@@ -167,7 +167,8 @@ def _atomic_write_csv(path, header, rows):
         w = csv.writer(fh, delimiter=";")
         w.writerow(header)
         w.writerows(rows)
-    os.replace(tmp, path)
+    from utils.atomic_replace import replace_with_retry
+    replace_with_retry(tmp, path)
 
 
 def execute_heal(master_repo, do_remove=True, do_repoint=True, do_species=True,

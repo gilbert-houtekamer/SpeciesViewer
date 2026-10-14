@@ -5223,7 +5223,8 @@ class MergeTripDialog(BaseTripModuleDialog):
             if choice == "restore":
                 if os.path.isfile(backup_csv):
                     try:
-                        os.replace(backup_csv, master_csv)
+                        from utils.atomic_replace import replace_with_retry
+                        replace_with_retry(backup_csv, master_csv)
                     except OSError as exc:
                         QMessageBox.warning(
                             self, "Merge Species",

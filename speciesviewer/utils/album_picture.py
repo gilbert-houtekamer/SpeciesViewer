@@ -140,7 +140,8 @@ def set_album_picture(source, album_root, *, backup: bool = True, name=None) -> 
         tmp.unlink(missing_ok=True)
         raise OSError(f"could not render the cover from {src.name}: {e}") from e
     try:
-        os.replace(tmp, target)
+        from utils.atomic_replace import replace_with_retry
+        replace_with_retry(tmp, target)
     except OSError as e:
         tmp.unlink(missing_ok=True)
         raise OSError(

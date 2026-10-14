@@ -66,25 +66,8 @@ def cache_file_for(folder: Path) -> Path:
     return cache_root("sidecar") / f"{h}.json"
 
 
-def _replace_with_retry(tmp: Path, dest: Path, attempts: int = 5) -> None:
-    """os.replace, retried briefly.
-
-    On Windows the replace fails with Access Denied whenever ANY process holds the
-    destination open without FILE_SHARE_DELETE — a sync client or an indexer that
-    grabbed the file the instant we last wrote it. It is transient: a few tens of
-    milliseconds later the same call succeeds. The app-data cache should not be
-    touched by such tools, but the culling day folders can still live in synced
-    storage, so this stays as a seatbelt rather than trusting the new location alone.
-    """
-    import time
-    for i in range(attempts):
-        try:
-            tmp.replace(dest)
-            return
-        except PermissionError:
-            if i == attempts - 1:
-                raise
-            time.sleep(0.05 * (i + 1))
+# A seatbelt: day folders can still live in synced storage (utils/atomic_replace).
+from utils.atomic_replace import replace_with_retry as _replace_with_retry  # noqa: E402
 
 
 class SidecarCache:
