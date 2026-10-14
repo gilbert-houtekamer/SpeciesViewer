@@ -2,10 +2,10 @@
 
 ## Windows — the download
 
-*Coming soon. Until the first release, run SpeciesViewer from source (below).*
-
 1. Download `SpeciesViewer-<version>-windows.zip` from the
-   [Releases page](https://github.com/gilbert-houtekamer/SpeciesViewer/releases).
+   [latest release](https://github.com/gilbert-houtekamer/SpeciesViewer/releases/latest).
+   Windows may warn "Windows protected your PC" when you start it: SpeciesViewer has no paid
+   code-signing certificate. Click *More info*, then *Run anyway*.
 2. Unpack it to any folder, for example `C:\Programs\SpeciesViewer`. Keep the folder together:
    the program needs the files beside it.
 3. Start `SpeciesViewer.exe`.

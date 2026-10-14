@@ -72,9 +72,9 @@ The complete list, chapter by chapter, is in
 
 | | |
 |---|---|
-| **Windows 10 / 11** | A download is coming soon. Until then, run it from source — see [Installing SpeciesViewer](docs/install.md). |
+| **Windows 10 / 11** | [**Download the latest release**](https://github.com/gilbert-houtekamer/SpeciesViewer/releases/latest) — a ZIP: unpack it anywhere and start `SpeciesViewer.exe`. ExifTool is included. See [Installing SpeciesViewer](docs/install.md). |
 | **macOS, Linux** | Written to run there too, but not yet ported or tested — see [Installing SpeciesViewer](docs/install.md). |
-| **Sample pictures** | One day in the Pantanal, Brazil — ten pictures with their species, colours and GPS — to try SpeciesViewer without your own collection. Comes with the first release; the photographs are licensed CC BY-NC 4.0. |
+| **Sample pictures** | One day in the Pantanal, Brazil — ten pictures with their species, colours and GPS — to try SpeciesViewer without your own collection. A second download on the [same release page](https://github.com/gilbert-houtekamer/SpeciesViewer/releases/latest); the photographs are licensed CC BY-NC 4.0. |
 
 On first start, SpeciesViewer offers to create your **master collection** — the folder where
 the best pictures of every species will live. **Help ▸ Setup Checklist** then shows what else
