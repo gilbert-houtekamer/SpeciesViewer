@@ -155,9 +155,8 @@ class BatchModuleRunner:
         spinner = QDialog(self.parent)
         spinner.setWindowTitle("Please wait…")
         spinner.setModal(True)
-        spinner.setFixedSize(400, 150)
-
-        layout = QVBoxLayout(spinner)
+        from gui.wait_picture import wait_layout
+        layout = wait_layout(spinner, batch_parms.get("wait_picture"), 400, 150)
         label = QLabel(before_msg)
         layout.addWidget(label, alignment=Qt.AlignmentFlag.AlignCenter)
 

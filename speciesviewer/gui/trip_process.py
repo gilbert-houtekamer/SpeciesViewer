@@ -4833,8 +4833,9 @@ class MasterPipelineDialog(QDialog):
         trip_root = str(Path(configured_pic).parent) if configured_pic else '?'
         info = HTMLLabel(
             "<p><b>Add the active trip's pictures to the master database.</b></p>"
-            "<p>Run the four steps in order. Each step enables the next on "
-            "success; failures stay open for retry. Step&nbsp;1 counts the "
+            "<p><b>Run</b> takes the four steps in order and shows each one's "
+            "progress; it stops at a step that fails, and the next Run can "
+            "continue there. Step&nbsp;1 counts the "
             "trip's species and stores the result in the master — it runs "
             "first because it must see the master as it was <i>before</i> this "
             "trip, and it is the only record of the trip's new species that "
@@ -4851,8 +4852,6 @@ class MasterPipelineDialog(QDialog):
         self.rows = []
         for idx, (label, _spec, _kind) in enumerate(self.step_specs):
             row = self._make_step_row(layout, label)
-            row['button'].clicked.connect(
-                lambda _checked=False, i=idx: self._run_step(i))
             self.rows.append(row)
 
         self.warning_label = QLabel("")
@@ -4872,16 +4871,18 @@ class MasterPipelineDialog(QDialog):
         self.status_label.setMaximumHeight(80)
         layout.addWidget(self.status_label)
 
-        # When True the dialog is auto-advancing through every step (the
-        # "Run all" button). A step failure — or the user declining the
-        # re-commit confirm — stops the chain.
+        # When True the dialog is auto-advancing through the steps (the Run
+        # button; the per-step Run buttons were removed 2026-10-14, once the
+        # chain had proven reliable). A step failure — or the user declining
+        # the re-commit confirm — stops the chain.
         self._chaining = False
 
         btn_layout = QHBoxLayout()
         btn_layout.addStretch()
-        self.run_all_btn = QPushButton("Run all")
+        self.run_all_btn = QPushButton("Run")
+        self.run_all_btn.setDefault(True)
         self.run_all_btn.setToolTip(
-            "Run every step in order, stopping automatically if one fails.")
+            "Run the steps in order, stopping automatically if one fails.")
         self.run_all_btn.clicked.connect(self._run_all)
         btn_layout.addWidget(self.run_all_btn)
         close_btn = QPushButton("Close")
@@ -4917,11 +4918,8 @@ class MasterPipelineDialog(QDialog):
         row.addLayout(text_box)
 
         row.addStretch()
-        button = QPushButton("Run")
-        row.addWidget(button)
         parent_layout.addLayout(row)
-        return {'pip': pip, 'button': button, 'timestamp': timestamp,
-                'state': 'pending'}
+        return {'pip': pip, 'timestamp': timestamp, 'state': 'pending'}
 
     def _set_pip(self, idx, status):
         self.rows[idx]['state'] = status
@@ -4997,16 +4995,9 @@ class MasterPipelineDialog(QDialog):
         self._refresh_buttons()
 
     def _refresh_buttons(self):
-        """Step 0's Run is always enabled. Step N>0 is enabled when the
-        previous step is currently green (either from this session or
-        from a prior-run artifact found on disk)."""
-        for idx, row in enumerate(self.rows):
-            if idx == 0:
-                row['button'].setEnabled(True)
-            else:
-                row['button'].setEnabled(
-                    self.rows[idx - 1]['state'] == 'done'
-                )
+        """Run is available whenever no step is running."""
+        self.run_all_btn.setEnabled(
+            not any(r['state'] == 'running' for r in self.rows))
 
     # ── Marker-file plumbing ────────────────────────────────────────────
     def _master_commits_path(self):
@@ -5083,11 +5074,37 @@ class MasterPipelineDialog(QDialog):
 
     # ── Step execution ──────────────────────────────────────────────────
     def _run_all(self):
-        """Run every step in order, auto-advancing on success and stopping on
-        the first failure (or a declined re-commit confirm)."""
+        """Run the steps in order, auto-advancing on success and stopping on
+        the first failure (or a declined re-commit confirm).
+
+        Where to start: nothing done, or everything done -> step 1. Stopped
+        halfway (some green, then one not) -> ask: continue there, or start
+        again from step 1 (right after changing the trip in between)."""
+        first_open = next((i for i, r in enumerate(self.rows)
+                           if r['state'] != 'done'), None)
+        start = 0
+        if first_open not in (None, 0):
+            box = QMessageBox(self)
+            box.setWindowTitle("Add Trip Pictures to Master")
+            box.setIcon(QMessageBox.Icon.Question)
+            box.setText(f"Steps 1–{first_open} are done. "
+                        f"Continue at step {first_open + 1}?")
+            box.setInformativeText(
+                "Start again from step 1 if you changed the trip since.")
+            cont = box.addButton(f"Continue at step {first_open + 1}",
+                                 QMessageBox.ButtonRole.AcceptRole)
+            again = box.addButton("Start again from step 1",
+                                  QMessageBox.ButtonRole.ActionRole)
+            box.addButton(QMessageBox.StandardButton.Cancel)
+            box.setDefaultButton(cont)
+            box.exec()
+            if box.clickedButton() is cont:
+                start = first_open
+            elif box.clickedButton() is not again:
+                return
         self._chaining = True
         self.run_all_btn.setEnabled(False)
-        self._run_step(0)
+        self._run_step(start)
 
     def _stop_chain(self):
         self._chaining = False
@@ -5113,8 +5130,6 @@ class MasterPipelineDialog(QDialog):
 
         self._set_pip(idx, 'running')
         self.run_all_btn.setEnabled(False)
-        for r in self.rows:
-            r['button'].setEnabled(False)
 
         spec = self.step_specs[idx][1]
         is_last_step = idx == len(self.rows) - 1
@@ -5149,8 +5164,6 @@ class MasterPipelineDialog(QDialog):
             self._set_timestamp(idx, mtime)
             self._stop_chain()  # a serious error stops the whole chain
             self._refresh_buttons()
-            # On failure, keep current row's button enabled regardless.
-            self.rows[idx]['button'].setEnabled(True)
 
         runner = BatchModuleRunner(self, self.passed_parent)
         runner.run(spec, on_success=on_success, on_failure=on_failure)

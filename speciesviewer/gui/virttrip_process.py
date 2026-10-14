@@ -244,7 +244,7 @@ class _RetireVirttripWorker(QObject):
         self.finished.emit("", "\n".join(notes))
 
 
-def _run_virttrip_pipeline(parent, steps, *, title, success_msg):
+def _run_virttrip_pipeline(parent, steps, *, title, success_msg, wait_picture=None):
     """Run an ordered list of (label, callable) album-pipeline steps in a worker
     thread behind a shared spinner. Used by retire-to-album AND Create Album's
     full-publish finish, so the two flows share one runner instead of two copies
@@ -263,8 +263,8 @@ def _run_virttrip_pipeline(parent, steps, *, title, success_msg):
     spinner = QDialog(parent)
     spinner.setWindowTitle(title)
     spinner.setModal(True)
-    spinner.setFixedSize(480, 180)
-    slayout = QVBoxLayout(spinner)
+    from gui.wait_picture import wait_layout
+    slayout = wait_layout(spinner, wait_picture, 480, 180)
     step_label = QLabel("Starting…")
     step_label.setWordWrap(True)
     slayout.addWidget(step_label, alignment=Qt.AlignmentFlag.AlignCenter)
@@ -570,6 +570,7 @@ def retire_trip_to_virttrip(parent):
     _run_virttrip_pipeline(
         parent, steps,
         title="Retire Trip to Album",
+        wait_picture="tortoise",       # the longest wait in SV
         success_msg=f"Album “{trip_name}” is complete.\n\nThe blogs, website and "
                     f"master trip index have all been built and uploaded.")
 

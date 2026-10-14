@@ -682,6 +682,7 @@ def build_menu_spec(main_window):
             'before_msg':     "Reading picture directory and writing summary into master...",
             'after_msg':      "✅ Master ingest complete.",
             'master_mode':    True,
+            'wait_picture':   "chameleon",  # a long wait: something to look at
         },
     )
     master_build_spec = MenuSpec(
@@ -694,6 +695,7 @@ def build_menu_spec(main_window):
             'before_msg':     "Building master species pages and freezing...",
             'after_msg':      "✅ Master pages built and frozen.",
             'master_mode':    True,
+            'wait_picture':   "chameleon",
         },
     )
     master_commit_spec = MenuSpec(
@@ -706,6 +708,7 @@ def build_menu_spec(main_window):
             'before_msg':     "Committing frozen artifact to master active CSVs...",
             'after_msg':      "✅ Master commit complete.",
             'master_mode':    True,
+            'wait_picture':   "chameleon",
         },
     )
     # Step 1 runs the REGULAR Count Species — deliberately without
