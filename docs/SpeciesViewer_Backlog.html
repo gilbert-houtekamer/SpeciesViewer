@@ -504,6 +504,21 @@ reads <em>No current work planned</em>.</p>
     the first two kinds but knows nothing about splits.</li>
 </ul>
 
+<p class="note"><strong>14 Oct &mdash; what the conversion now implies.</strong> From 0.4.1 a new
+master starts from the author's own species list (see ch.&nbsp;20), so every master made before
+this chapter is done is a master this chapter has to convert. While only the author's masters
+exist, the conversion can be a one-off script, run once and checked by hand. Once other people
+have masters it has to be a <em>migration inside the program</em>: it recognises which list a
+master is on, takes a backup, converts in place, survives being interrupted, and is safe to run
+twice. It touches three layers: the species list itself (&ldquo;040 passeriformes&rdquo; becomes
+&ldquo;passeriformes&rdquo; plus a sort number &mdash; the list has eight orders twice today, numbered and
+unnumbered); everything that refers to those parents (the master's CSVs, trips, albums); and the
+published website, whose page paths and links carry the numbered names. The scientific names of
+species do not change &mdash; splits, lumps, moves between families and aliases do, and plants are
+harder than birds. Announced in the README as planned work, so beta users know it is coming.
+A second language other than Dutch (ch.&nbsp;24) rewrites the same list and is best designed
+alongside.</p>
+
 <!-- ============================================================ -->
 <h2>7. Rating &amp; Website</h2>
 <h3>To do</h3>
@@ -1662,7 +1677,8 @@ the scope of SpeciesViewer 0.4.</strong> 0.3 closes with the Brazil work; 0.4 is
 quality, not new capability, so that it can serve as a solid fallback release. Status per item is
 marked below. In short: the four-panels move, the stylesheet copies and stored-path parsing are
 done; the dead-module list is untouched; <code>trip_process.py</code> grew another thousand lines.
-The Python is now about <strong>102,700 lines</strong> (88,600 when this chapter was written).</p>
+The Python is now about <strong>102,700 lines</strong> (88,600 when this chapter was written).
+<em>14 Oct: about 106,500; <code>trip_process.py</code> 6,411.</em></p>
 
 <p>A chapter for work that makes the program <em>smaller</em> rather than better. Nothing here adds
 a capability, fixes a defect or speeds anything up; the payoff is fewer lines to read the next time
@@ -1687,7 +1703,10 @@ a look before it goes. Together they are roughly 900 lines outside the one-off a
 <p><span class="tag-open">OPEN</span> Re-checked 10 Oct: every file below is still there, and still
 unreferenced by the app. Two are used by a tool, not the app: <code>topics_scan</code> by
 <code>tools/topics_dry_run.py</code> and <code>weburl</code> by
-<code>tools/svr_add_species_url.py</code> &mdash; so those two stay or move with their tool.</p>
+<code>tools/svr_add_species_url.py</code> &mdash; so those two stay or move with their tool.
+<em>14 Oct: <code>app.py</code> is deleted (ch.20). The other six are still there and still
+unreferenced: <code>master_add</code>, <code>statslib</code>, <code>admin_audit</code>,
+<code>layout_colorwidget</code>, <code>test_driver</code>, <code>test_driver_all_csv</code>.</em></p>
 
 <ul>
   <li><code>speciesviewer/app.py</code> — 36 lines, and not the application. It is the PyQt tutorial
@@ -1814,6 +1833,19 @@ are places where bugs have actually been fixed more than once:</p>
     a one-line fix that should not wait for the full ch.20 move.</li>
 </ul>
 
+<h3>The tests do not run</h3>
+
+<p><span class="tag-new">NEW 14 Oct</span> <strong><code>pytest</code> fails before it starts.</strong>
+<code>tests/conftest.py</code> imports <code>sview.model</code>, a module from June 2024 that no
+longer exists, so the first thing a contributor tries reports an error. The real checks live
+elsewhere: self-tests in <code>tools/</code> (<code>svr_test_species_baseline.py</code>,
+<code>svr_test_species_learning.py</code>, <code>sv_card_empty_selftest.py</code>, the extension
+audit) and the Testbed module. The honest fix is small: retire the 2024 folder, and put in one
+<em>smoke test</em> that a stranger can run &mdash; every module imports, the version string is
+sane, NOTICE.md and the starter species list are present and readable &mdash; with the
+<code>tools/</code> self-tests listed in CONTRIBUTING. That is also the first thing worth running
+before any release build.</p>
+
 <h3>How to approach this chapter</h3>
 
 <p>One item at a time, each on its own, each verified by the program still starting and the day's
@@ -1849,6 +1881,14 @@ live on this computer, and creating trips and albums from one name (11&ndash;12 
 the About box and the icon, the README and repository clean-up, the tracked
 <code>data/configs</code>, and the finished package. This chapter and ch.19 together are the scope
 of <strong>SpeciesViewer 0.4</strong>; the working branch is <code>SpeciesViewer04</code>.</p>
+
+<p class="note"><strong>Status on 14 October 2026.</strong> Everything under &ldquo;Left&rdquo;
+above is done (13&ndash;14 Oct): About box and credits, icon and rotating splash, README and install
+page, <code>app.py</code> deleted and the root tidied, <code>data/</code> no longer tracked, the
+SFTP password changed. <strong>0.4.0</strong> was built and tested on a clean Windows (Windows
+Sandbox) &mdash; an exercise, not distributed; the fixes it produced are in. Work continues as
+<strong>0.4.1</strong>, to be published as a <em>beta inviting feedback</em> once it feels ready
+(about a week; no deadline). See &ldquo;0.4.1 &mdash; the beta&rdquo; below.</p>
 
 <p class="note"><strong>Who v1 is for.</strong> Worth deciding early, because it sets the bar for
 everything below. SpeciesViewer assumes DxO PhotoLab, a master repository, an SFTP-published
@@ -1932,11 +1972,13 @@ The download ships the <strong>official exiftool 13.59, pinned by
 SHA-256</strong>; one lookup serves every caller, and <em>Help &#9656; Setup Checklist &#9656; exiftool
 &#9656; Locate&hellip;</em> finds or points at it, explaining where the official version comes from.</p>
 
-<p><span class="tag-open">OPEN</span> <strong>Python version and platform.</strong> Development
+<p><span class="tag-shipped">DONE 13 Oct</span> <strong>Python version and platform.</strong> Development
 is on Python 3.12 on Windows 11. The download is Windows-only for v1; the source runs anywhere
 the dependencies do, with the Mac caveat already recorded in ch.10 and ch.19 (stored paths are
 now parsed host-independently; two small portability items remain). Say both plainly in the README rather than leaving a visitor
-to discover it.</p>
+to discover it. <span class="tag-shipped">DONE 13 Oct</span> &mdash; the README and
+<code>docs/install.md</code> say it: Windows download; macOS and Linux &ldquo;written to run there,
+but not yet ported or tested&rdquo;.</p>
 
 <h3>Third-party code and the licence</h3>
 
@@ -1954,7 +1996,10 @@ SpeciesViewer does consume content: OpenStreetMap tiles and Nominatim place name
 attribution requirement and a usage policy), GBIF occurrence and taxonomy data (CC-BY family,
 per-dataset), and the photographs themselves, which remain the photographer's. The map view
 already shows OSM attribution; the published species pages and the README need the GBIF
-citation, and the two obligations should be stated in one place.</p>
+citation, and the two obligations should be stated in one place.
+<em>Corrected 13 Oct: SpeciesViewer uses GBIF for names and classification only and does not
+publish GBIF occurrence records, so no citation is owed today; NOTICE.md says so, and that a
+page showing occurrences would have to cite GBIF.</em></p>
 
 <p><span class="tag-shipped">DONE 21 Aug</span> <strong>NOTICE / THIRD-PARTY file
 written.</strong> Not a licence decision — an inventory, and the one deliverable this section
@@ -2012,7 +2057,7 @@ with a &ldquo;Publishing is not set up&rdquo; message instead of guessing a serv
 carefully — but the defaults are somebody's personal hosting. They belong in the site
 configuration.</p>
 
-<p><span class="tag-open">OPEN</span> <strong>Sweep the tree for private data before it goes
+<p><span class="tag-shipped">DONE 13 Oct</span> <strong>Sweep the tree for private data before it goes
 public.</strong> <code>data/configs/</code> holds sixteen real machine and trip configurations
 with local absolute paths; <code>days_bigboy.json</code>, <code>sv_gui_cache.json</code> and the
 loose <code>.txt</code> and <code>.log</code> files in the root are runtime residue. Most are
@@ -2022,7 +2067,11 @@ repository's root looks like — this is a presentation question as much as a pr
 git, not just present; <code>speciesviewer/bug.png</code> is tracked too. The root also holds
 <code>trip_admin.csv</code>, a <code>.pre-fix-backup</code> of it, <code>studio.log</code> and a
 <code>testpict - Willcox/</code> folder (untracked). 12 Oct: still seventeen tracked files under
-<code>data/configs/</code>.</em></p>
+<code>data/configs/</code>.</em> <strong>Done 13 Oct:</strong> <code>data/</code> no longer tracked
+and now ignored; the root holds only the program, docs, tests, tools and the four public files.
+The history still contains the old configs (local paths, nothing secret) and an SFTP password from
+before 8 Aug &mdash; that password was changed on 14 Oct, so it is worthless.
+<code>speciesviewer/bug.png</code> is still tracked.</p>
 
 <h3>Identity — the About screen and an icon</h3>
 
@@ -2070,7 +2119,7 @@ that closes 0.3.</em> <strong>Done:</strong> <code>utils/version.py</code> holds
 <code>__version__ = "0.4.0.dev"</code>, read by the window title and the About box; the
 <code>v0.3</code> tag exists.</p>
 
-<p><span class="tag-test">NEEDS TEST</span> <strong>The icon: an African Pygmy-goose head.</strong>
+<p><span class="tag-shipped">DONE 13 Oct</span> <strong>The icon: an African Pygmy-goose head.</strong>
 <em>12 Oct.</em> Made from one of the author's own photographs (the website picture of the
 African Pygmy-goose), turned into a flat drawing with Photoshop's Firefly assistant. Firefly
 offered two versions: the whole bird on water, and a close-up of the head and chest. At real size
@@ -2089,9 +2138,8 @@ the title bar, the taskbar and the Dock.</p>
     place. On Windows the program now gives itself its own taskbar identity before the first
     window appears; without that, Windows grouped it under Python and showed Python's icon.</li>
   <li><strong>Checked on Windows</strong> (12 Oct): title bar and taskbar show the duck.
-    <strong>Still to check on the Mac:</strong> the Dock. A packaged build needs the <code>.ico</code> and
-    <code>.icns</code> passed to PyInstaller as well, so that the program file itself carries the
-    duck in File Explorer and Finder.</li>
+    The <code>.exe</code> carries the duck too (build recipe, 13 Oct). The Mac Dock waits for the
+    Mac port.</li>
   <li><strong>Sharpness:</strong> Firefly drew the head only about 420 pixels wide, so the 512 and
     1024 sizes are slightly soft. That is invisible in a taskbar. If a large version is ever
     needed (an installer, a web page), generate the head again in Firefly as a full square image
@@ -2149,7 +2197,11 @@ is the working branch today, and <code>main</code> should become what the world 
 <em>(12 Oct: the working branch is <code>SpeciesViewer04</code>, opened from the <code>v0.3</code>
 tag; <code>main</code> is the stable fallback and <code>ClaudeSpecies</code> is redundant)</em> — and a
 short <code>CONTRIBUTING.md</code> saying what a good pull request looks like. Direct write
-access to the repository is not something to hand out.</p>
+access to the repository is not something to hand out.
+<em>14 Oct: the README invites issues, e-mail (speciesviewer@houtekamer.com, working) and code
+&ldquo;after an issue first&rdquo;. Still open: <code>CONTRIBUTING.md</code> (needs tests that run
+&mdash; ch.19), retire the redundant <code>ClaudeSpecies</code> branch, and make <code>main</code>
+the published branch when the repository goes public.</em></p>
 
 <h3>Suggested order</h3>
 
@@ -2181,6 +2233,35 @@ access to the repository is not something to hand out.</p>
     <code>app.py</code>.</s> <span class="tag-shipped">DONE 13 Oct</span></li>
   <li>Publish <code>main</code>, tag v1, attach the ZIP as a release.</li>
 </ol>
+
+<h3>0.4.1 &mdash; the beta (14 Oct)</h3>
+
+<p>Decided 14 Oct: 0.4.0 stays an exercise; <strong>0.4.1</strong> is published as a
+<strong>beta that asks for feedback</strong>, when it feels ready. What goes into it, and what is
+still to do:</p>
+<ul>
+  <li><span class="tag-open">OPEN</span> <strong>The author's species list as the starter
+    list.</strong> Today a new master starts from <code>initial_speciescollection.csv</code>: birds,
+    dragonflies and butterflies only &mdash; no mammals, plants or fungi. 0.4.1 ships the author's
+    current collection instead (18,640 species, 21 classes). Before shipping: repair its two garbled
+    names (Przevalski&rsquo;s finch, Oberth&uuml;r&rsquo;s anomalous blue) and leave out the landscape
+    rows with the author's years. It carries the eight doubled orders (numbered and unnumbered)
+    &mdash; known, and the reason for ch.&nbsp;6.</li>
+  <li><span class="tag-open">OPEN</span> <strong>Sample pictures</strong> &mdash; one Brazil day
+    (2026-09-09): ten pictures with GPS, the XMP with species and colours, a HEIC landscape and a
+    video, about 170 MB. A second download on the GitHub release, not in git, with its own terms for
+    the photographs (still to choose). Tested in a <em>fresh</em> Windows Sandbox with a new
+    master, which checks the starter list at the same time.</li>
+  <li><span class="tag-open">OPEN</span> <strong>Say &ldquo;beta&rdquo; and what is planned</strong>
+    &mdash; README and speciesviewer.com: beta, feedback welcome, and the species order
+    (ch.&nbsp;6) as planned work.</li>
+  <li><span class="tag-open">OPEN</span> <strong>A smoke test that runs</strong> (ch.&nbsp;19) and a
+    short <code>CONTRIBUTING.md</code>.</li>
+  <li><span class="tag-open">OPEN</span> <strong>Publish:</strong> the repository public, merge
+    <code>SpeciesViewer04</code> into <code>main</code>, tag v0.4.1, a GitHub Release with both ZIPs;
+    then the Download button in the README and on speciesviewer.com (the domain waits for
+    TransIP).</li>
+</ul>
 
 <h3>SpeciesViewer 0.4 &mdash; proposed order (10 Oct)</h3>
 
@@ -2868,6 +2949,20 @@ shipped (the field fixes, working with PhotoLab open, the Editor) is written up 
       only what is on screen (the shared image loader now skips cancelled work).</li>
   <li><span class="tag-parked">PARKED</span> <strong>Canon <code>.HIF</code></strong> &mdash; needs one sample file; not pursued in 2026. See ch.&nbsp;7 and ch.&nbsp;21.</li>
 </ul>
+
+<!-- ============================================================ -->
+<h2 id="second-language">24. A second language other than Dutch</h2>
+
+<p><span class="tag-new">NEW 14 Oct</span> <span class="tag-parked">PARKED</span> Not a high
+priority, but to keep in mind for the ch.&nbsp;6 conversion. Today every species carries an English
+and a <em>Dutch</em> name, and the website, the blogs and the name-display profiles (ch.&nbsp;16)
+offer English, Dutch and scientific. A French or German photographer would want French or German in
+place of Dutch. It may be easier than it looks: the list already has one column per language
+(<code>DutchName</code>, <code>EnglishName</code>), GBIF and the IOC list carry names in many
+languages, and blog text already goes through a translator. The questions are which column becomes
+&ldquo;the second language&rdquo;, how the website's NL/EN switch and file names
+(<code>-nl.html</code>) generalise, and where the interface itself is Dutch. Worth designing
+<em>together</em> with the ch.&nbsp;6 conversion, because both rewrite the same species list.</p>
 
 </body>
 </html>
