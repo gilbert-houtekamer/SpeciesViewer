@@ -269,8 +269,8 @@ def format_summary(rep):
         f"  no species : {rep['no_species']}",
     ]
     if no_jpg:
-        lines.append(f"  (!) {no_jpg} identified picture(s) have NO JPG - these would become "
-                     f"ghost species in the master. DxO-render them first.")
+        lines.append(f"  (!) {no_jpg} identified picture(s) have NO JPG - create JPGs for them "
+                     f"if you want to publish them.")
     unrec = rep.get("unrecognized") or {}
     if unrec:
         total = sum(unrec.values())
