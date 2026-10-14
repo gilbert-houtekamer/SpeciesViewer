@@ -50,7 +50,7 @@ from datetime import date, datetime, timedelta
 from pathlib import Path
 
 from utils.disk_space import check_free_space
-from utils.raw_extensions import RAW, SELF_DESCRIBING
+from utils.raw_extensions import RAW, SELF_DESCRIBING, is_raw, is_video
 from utils.exiftool_path import exe as exiftool_exe
 
 UNKNOWN_DATE_DIR = "unknown-date"
@@ -316,6 +316,21 @@ class _CardCache:
         elif (prev := self._data.get(key)) and (lc := prev.get("last_copied")):
             entry["last_copied"] = lc   # preserve original import time
         self._data[key] = entry
+        self._dirty = True
+
+    def remember_date(self, path: Path, capture_date: str):
+        """Keep a capture date read from the EXIF, also for a picture that was
+        not copied (a day you did not tick), so the next scan of this card
+        groups it by its real day without reading it again. An existing entry
+        for the same file keeps its hash and import time."""
+        key = self._key(path)
+        try:
+            st = path.stat()
+        except OSError:
+            return
+        prev = self.get(path) or {}
+        self._data[key] = {**prev, "size": st.st_size, "mtime_ns": st.st_mtime_ns,
+                           "capture_date": capture_date}
         self._dirty = True
 
     # ── Reserved space on the card ────────────────────────────────────────
@@ -635,6 +650,17 @@ def _read_capture_datetimes(files, log, progress_cb=None) -> dict[str, datetime]
     return result
 
 
+def _file_date_is_capture_date(f: Path) -> bool:
+    """True for a camera original — a RAW or a video — whose file date the
+    camera set when it wrote the file, so it is the day of the shot. Anything
+    else (a JPG, a HEIC, a PNG) may have been exported later — a DxO JPG, a
+    Create JPG, a phone picture copied on — and then its file date is the
+    EXPORT day: on a re-read Brazil day (2026-09-09) five JPGs and a HEIC
+    showed as four other days and were left behind when 09-09 was ticked.
+    Those need their real capture date from the EXIF."""
+    return is_raw(f) or is_video(f)
+
+
 def _build_buckets(files, tz_offset_hours, cache: "_CardCache | None", log,
                     include_dates=None) -> dict[str, str]:
     """{normalised path: 'YYYY-MM-DD'} for all files.
@@ -675,7 +701,7 @@ def _build_buckets(files, tz_offset_hours, cache: "_CardCache | None", log,
         if entry and (date_str := entry.get("capture_date")):
             buckets[_norm(f)] = date_str
             continue
-        if near_dates is not None:
+        if near_dates is not None and _file_date_is_capture_date(f):
             try:
                 mtime_day = (datetime.fromtimestamp(f.stat().st_mtime) + offset) \
                     .strftime("%Y-%m-%d")
@@ -752,20 +778,18 @@ def pictures_on_disk_by_day(dest):
 
 
 def scan_days(source, tz_offset_hours=0.0, use_card_cache=True, logger=None):
-    """Group the card's pictures by capture day WITHOUT copying anything and
-    WITHOUT reading EXIF — this is just a preview for the day-picker, so a file
-    system mtime (cheap: already known from the directory walk, no card I/O
-    beyond what rglob just did) stands in for the real capture date. Cameras
-    set a card file's mtime from their own clock at write time, so it is
-    normally right on the day; a card cache hit from a PRIOR scan/read (a real
-    EXIF date, already confirmed) is preferred over mtime where one exists.
+    """Group the card's pictures by capture day WITHOUT copying anything — a
+    preview for the day-picker. For a camera original (RAW, video) the file
+    system mtime stands in for the capture date: cheap, already known from the
+    directory walk, and right because the camera set it from its own clock when
+    it wrote the file. Everything else (JPG, HEIC, PNG) may have been exported
+    later, when its mtime is the export day — so those get their real EXIF
+    capture date (see _file_date_is_capture_date). A card cache hit from a PRIOR
+    scan/read (a real EXIF date, already confirmed) is preferred over both.
 
-    The real EXIF DateTimeOriginal is only ever read when Read (copy_card)
-    actually files pictures into day folders — that pass was already required
-    for the XMP sidecars, so nothing extra is paid, it's just no longer paid
-    twice. The trade-off: a handful of borderline files (camera clock off, or
-    near a day boundary) could show under a slightly different day here than
-    where Read finally puts them — cosmetic only, never a data-loss risk.
+    The trade-off left: a RAW whose camera clock was off, or shot near midnight,
+    could show under a slightly different day here than where Read finally puts
+    it — cosmetic only, never a data-loss risk.
 
     Returns (days, total, ignored) where `days` is a sorted list of
     (date_str, count), `total` is the picture count, and `ignored` is
@@ -786,9 +810,13 @@ def scan_days(source, tz_offset_hours=0.0, use_card_cache=True, logger=None):
     cache = _CardCache(source, logger=log) if use_card_cache else None
     offset = timedelta(hours=tz_offset_hours or 0)
     buckets: dict[str, str] = {}
+    need_exif: list[Path] = []
     for f in files:
         entry = cache.get(f) if cache else None
         date_str = entry.get("capture_date") if entry else None
+        if not date_str and not _file_date_is_capture_date(f):
+            need_exif.append(f)        # maybe exported later: file date lies
+            continue
         if not date_str:
             try:
                 dt = datetime.fromtimestamp(f.stat().st_mtime)
@@ -797,11 +825,24 @@ def scan_days(source, tz_offset_hours=0.0, use_card_cache=True, logger=None):
             else:
                 date_str = (dt + offset).strftime("%Y-%m-%d")
         buckets[_norm(f)] = date_str
+    if need_exif:
+        log.info(f"Reading the capture date of {len(need_exif)} JPG/HEIC/other "
+                 f"picture(s) — their file date may be the day they were exported.")
+        dt_map = _read_capture_datetimes(need_exif, log)
+        for f in need_exif:
+            dt = dt_map.get(_norm(f))
+            if dt is None:                  # no date in the EXIF: file date it is
+                try:
+                    dt = datetime.fromtimestamp(f.stat().st_mtime)
+                except OSError:
+                    buckets[_norm(f)] = UNKNOWN_DATE_DIR
+                    continue
+            buckets[_norm(f)] = (dt + offset).strftime("%Y-%m-%d")
 
     counts = Counter(buckets.values())
     days = sorted(counts.items())
     log.info(f"Scanned {total} picture(s) across {len(days)} day(s) on the card "
-             f"(from file dates — exact dates are read when you Read).")
+             f"(RAW and video by file date, other pictures by capture date).")
     return days, total, ignored
 
 
@@ -1195,12 +1236,20 @@ def copy_card(source, dest, prefix="", bucket_by_date=False, tz_offset_hours=0.0
     # ── Resolve date buckets ──────────────────────────────────────────────
     # Needed for the subfolder layout AND for an include_dates day filter.
     # Cache reduces exiftool to only new/changed files; updated below after copy.
+    files_by_key = {_norm(f): f for f in files}
     if bucket_by_date or include_dates is not None or include_names:
         buckets, cached_dates_for_new = _build_buckets(
             files, tz_offset_hours, cache, log, include_dates=include_dates)
     else:
         buckets = {}
         cached_dates_for_new = {}
+    if cache:
+        # Every capture date just read from the EXIF, also for days you did not
+        # tick — before, they were read, thrown away, and read again next scan.
+        for key in cached_dates_for_new:
+            src_path = files_by_key.get(key)
+            if src_path is not None and buckets.get(key):
+                cache.remember_date(src_path, buckets[key])
 
     # ── Destination content index (dedup by content, ignores name) ────────
     dest_index = _DestIndex(dest) if skip_if_on_disk else None
