@@ -127,7 +127,15 @@ class BackupWorkDialog(QDialog):
         self.resize(760, 480)
 
         outer = QVBoxLayout(self)
-        outer.addWidget(wrapped(
+        # The jay buries acorns and finds them back months later — a backup.
+        intro_row = QHBoxLayout()
+        intro_row.setSpacing(14)
+        from gui.wait_picture import picture_label
+        jay = picture_label("jay", 100, self.devicePixelRatioF())
+        if jay is not None:
+            intro_row.addWidget(jay, alignment=Qt.AlignmentFlag.AlignTop)
+        outer.addLayout(intro_row)
+        intro_row.addWidget(wrapped(
             "The SD-cards keep the pictures. This backs up the <b>work</b> — culling "
             "colours, species, locations, crops, blog text and the rendered JPGs — "
             "onto the <b>SV INDEX</b> card, as one ZIP per day."))

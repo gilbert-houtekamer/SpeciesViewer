@@ -60,7 +60,7 @@ lists. There is no database to install, and no database upgrade with a new versi
 </p>
 
 <p align="center">
-  <img src="docs/images/species-page.jpg" width="480" alt="A species page on the published website, with names in three languages and the classification">
+  <img src="docs/images/species-page.jpg" width="560" alt="A species page on the published website: the eastern meadowlark, with names in three languages, the classification and the photo details">
   <br><em>A species page on the website: names, classification, the best pictures and a map.</em>
 </p>
 

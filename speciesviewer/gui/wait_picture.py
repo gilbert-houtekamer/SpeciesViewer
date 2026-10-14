@@ -16,6 +16,23 @@ _ASSETS = Path(__file__).resolve().parent.parent / "assets"
 SIDE = 180          # the picture's edge on screen, in pixels
 
 
+def picture_label(picture: str, side: int, dpr: float = 1.0) -> QLabel | None:
+    """A QLabel showing assets/wait_<picture>.jpg at `side` pixels, or None
+    when the file is missing — for a window that is not a wait box but is
+    open while a long job runs (Read SD-card or Folder)."""
+    pix = QPixmap(str(_ASSETS / f"wait_{picture}.jpg"))
+    if pix.isNull():
+        return None
+    pix = pix.scaled(int(side * dpr), int(side * dpr),
+                     Qt.AspectRatioMode.KeepAspectRatio,
+                     Qt.TransformationMode.SmoothTransformation)
+    pix.setDevicePixelRatio(dpr)
+    label = QLabel()
+    label.setPixmap(pix)
+    label.setFixedSize(side, side)
+    return label
+
+
 def wait_layout(dialog: QDialog, picture: str | None,
                 width: int, height: int) -> QVBoxLayout:
     """Lay out `dialog` and return the column its text and spinner go into.

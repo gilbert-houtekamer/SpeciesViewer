@@ -1,15 +1,20 @@
-Priority;Where (menu path);Window;When you see it;Why a picture helps;Suggested animal;Status
-DONE;To Master ▸ Retire Trip to Album;Retire Trip to Album (wait);once per trip, minutes;the longest wait in SV;leopard tortoise;shipped df11efb
-DONE;To Master ▸ Merge Pictures into Master;Please wait… (steps 2-4);once per trip, minutes;long wait, the master grows;chameleon;shipped df11efb
-1;Trip Overview: Write All Blogs / Publish Trip;Running '…' for all days (wait);per trip, minutes (all days);long wait, day after day ticking by;sloth;open
-1;first start (no master);Welcome to SpeciesViewer;once, the very first screen;first impression of the program;the duck (About picture) or a new greeter;open
-2;Trips ▸ Read SD-card or Folder…;Read SD-card or Folder;every outing, copy takes minutes;frequent and long while a card copies;dormouse or bat (hangs on, then busy at night);open
-2;Utilities ▸ Rebuild all Albums and the Master website…;Re-rendering and uploading every master page… (wait);rarely, very long;the longest admin wait;snail;open
-2;publishing a trip or album;Updating online site… / Updating published index… (wait);at publish, a minute;waits on the web server;swift or swallow (the web = flying);open
-3;Help ▸ Setup Checklist;Setup Checklist;first start and when something is grey;friendly while explaining what to set up;owl (wise, explains);open
-3;Help ▸ About;About SpeciesViewer;rarely;already has the duck;—;done (duck)
-3;Biota Browser, empty;"No pictures for …" (empty state);new master, empty groups;an empty screen feels broken; a drawing + one sentence feels intended;a beetle or a mushroom;open
-3;Trips ▸ Trash (deleted pictures)…;Trip trash;after culling;deleting feels harsh; a gentle note;magpie (collects things);open
-3;To Master ▸ Publish Species Names;Merge Species (review);per trip;a long review list;—;no picture: the table needs the space
-4;Viewer: Decoding pictures at full resolution;progress bar;in the viewer, seconds;short, and you look at the pictures already;—;no picture: too short
-4;Updating… / Deleting… / Reading sidecars…;small progress bars;seconds;short;—;no picture: too short
+Status;Window (menu path);Animal;Source photo (docs/images, for Firefly);Why this animal;When you see it
+shipped df11efb;To Master ▸ Retire Trip to Album (wait);leopard tortoise;—;slow and steady: the longest wait in SV;once per trip, minutes
+shipped df11efb;To Master ▸ Merge Pictures into Master (steps 2-4);chameleon;2024 zomer Zuid-Afrika-N7190075 (1).jpg;slow, deliberate steps;once per trip, minutes
+built, to test;Trips ▸ Read SD-card or Folder (+ Days ▸ Copy Day from Card);vitelline masked weaver;—;a good foundation is woven strand by strand;every outing
+built, to test;Trip Overview: Metadata backup / RAW backup;Eurasian jay;2015 januari nl dsc_8379_DxO.jpg;buries acorns and finds them back months later;after each day
+to draw;Trips ▸ Restore Work from Card…;Smith's bush squirrel with a nut;smiths bush squirrel.jpg;finding the stash back;rarely, when it matters
+to draw;Trips ▸ Trash (deleted pictures)…;collared peccary;2026 Brazilie - N9042225_DxO.jpg;roots through what was thrown away;after culling
+to draw;Help ▸ Setup Checklist;barred owl;2016 feb san antonio dsc_8632_DxO.jpg;the wise one explains what to set up;first start, and when something is grey
+to draw;Trips ▸ Find Trips… / Check Range;short-eared owl;2013 oostzee dsc_2468_DxO.jpg;hunts by searching the field;when searching
+to draw;Trip Overview: Publish Trip / Write All Blogs (all days);cliff swallow;2014 mei texas dsc_3027_DxO.jpg;carries the trip out into the world;per trip, minutes
+to draw;Updating online site… / Updating published index… (wait);red-rumped swallow;2018 november sri lanka-DS5_6505_DxO.jpg;flies to the web server and back;at publish, a minute
+to draw;Trip Overview: Map whole trip;African fish eagle;2024 zomer Zuid-Afrika-N7170055.jpg;the view from above;per trip
+to draw;Utilities ▸ Rebuild all Albums and the Master website… (wait);martial eagle;2024 zomer Zuid-Afrika-N7081718.jpg;a big job over the whole territory;rarely, very long
+to draw;To Master ▸ Delete Local Files Backed Up in Master…;hooded crow;2013 oostzee dsc_5350_DxO.jpg;the clever clean-up crew;after a trip is safe in the master
+open;first start: Welcome to SpeciesViewer;the duck (About picture) or a new greeter;—;the very first impression;once
+open;Biota Browser, empty ("No pictures for …");a beetle or a mushroom;—;an empty screen feels broken, a drawing feels intended;new master
+spare;(an alternative jay, or a second backup picture);Florida scrub-jay with a nut;2013 Florida DSC_8648_DxO.jpg;a jay that stores food, nut already in the beak;—
+done;Help ▸ About;African Pygmy-goose;—;the program's own bird;rarely
+no picture;To Master ▸ Publish Species Names (review);—;—;the table needs the space;per trip
+no picture;short progress bars (Updating…, Deleting…, Decoding…);—;—;they last seconds;often

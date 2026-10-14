@@ -161,7 +161,15 @@ class RawBackupDialog(QDialog):
         self.resize(760, 520)
 
         outer = QVBoxLayout(self)
-        outer.addWidget(wrapped(
+        # The jay buries acorns and finds them back months later — a backup.
+        intro_row = QHBoxLayout()
+        intro_row.setSpacing(14)
+        from gui.wait_picture import picture_label
+        jay = picture_label("jay", 100, self.devicePixelRatioF())
+        if jay is not None:
+            intro_row.addWidget(jay, alignment=Qt.AlignmentFlag.AlignTop)
+        outer.addLayout(intro_row)
+        intro_row.addWidget(wrapped(
             "Copies each selected day's <b>picture folder</b> — RAW/HEIC, "
             "sidecars and JPGs — to a RAW-backup location such as a spare SD "
             "card or an external drive. This is separate from the Metadata "

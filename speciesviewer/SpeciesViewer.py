@@ -186,6 +186,11 @@ def start_main():
         main_window._restore_active_left_mode()
         splash.finish(main_window)
         main_window.show()
+        # Once in a while Windows made the taskbar button before it read the
+        # window's icon and showed a generic one (2026-10-13/14, twice an
+        # evening). Setting the icon again, right after the window appears,
+        # makes Windows refresh the button.
+        QTimer.singleShot(500, lambda: main_window.setWindowIcon(_app_icon()))
         # Content-driven splitter sizes (restored from [layout] in the per-machine
         # .ini) can ask for a wider/taller window than the current screen offers —
         # e.g. this machine's config carrying sizes saved on a bigger monitor.

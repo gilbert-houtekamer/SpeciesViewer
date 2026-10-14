@@ -1,6 +1,6 @@
 from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QCheckBox,
     QTabWidget, QWidget, QVBoxLayout, QComboBox, QLineEdit, QFormLayout, QSizePolicy, QFileDialog, QDateEdit, QTextEdit,
-    QTableWidget, QTableWidgetItem, QAbstractItemView, QStyledItemDelegate, QMessageBox, QFrame, QApplication,
+    QTableWidget, QTableWidgetItem, QHeaderView, QAbstractItemView, QStyledItemDelegate, QMessageBox, QFrame, QApplication,
     QListWidget, QListWidgetItem, QScrollArea)
 from PyQt6.QtGui import QFont, QFontMetrics, QGuiApplication, QColor
 from PyQt6.QtCore import Qt, QThread, QObject, pyqtSignal
@@ -1119,9 +1119,19 @@ class ReadSDCardDialog(QDialog):
         # progress, and the eventual read result. Everything Scan/Read change,
         # which is why on_scan/on_read switch to it automatically.
         tab2 = QWidget()
-        card_layout = QVBoxLayout(tab2)
-        card_layout.setContentsMargins(12, 12, 12, 12)
+        # The weaver keeps you company where the long copy runs: a collection
+        # is woven strand by strand (see docs/illustrations.md).
+        card_row = QHBoxLayout(tab2)
+        card_row.setContentsMargins(12, 12, 12, 12)
+        card_row.setSpacing(14)
+        from gui.wait_picture import picture_label
+        weaver = picture_label("weaver", 140, self.devicePixelRatioF())
+        if weaver is not None:
+            card_row.addWidget(weaver, alignment=Qt.AlignmentFlag.AlignTop)
+        card_layout = QVBoxLayout()
+        card_layout.setContentsMargins(0, 0, 0, 0)
         card_layout.setSpacing(10)
+        card_row.addLayout(card_layout, 1)
         self.tabs.addTab(_scrollable(tab2), "SD card")
         self._tab_card = tab2
 
@@ -1170,7 +1180,11 @@ class ReadSDCardDialog(QDialog):
         self.days_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.days_table.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
         self.days_table.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        self.days_table.horizontalHeader().setStretchLastSection(True)
+        # Counts and the date are narrow — size them to their contents, and let
+        # the last column (the tracklog file names) take the rest of the width.
+        _hdr = self.days_table.horizontalHeader()
+        _hdr.setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
+        _hdr.setStretchLastSection(True)
         self.days_table.itemChanged.connect(self._on_day_item_changed)
         # Vertical Expanding + the stretch below: a taller dialog becomes more
         # visible days rather than empty space under the block. How far it may
