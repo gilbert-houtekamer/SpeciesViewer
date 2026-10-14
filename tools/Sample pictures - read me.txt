@@ -1,0 +1,37 @@
+SpeciesViewer - sample pictures
+===============================
+
+One day of a nature trip: 9 September 2026, the Pantanal, Brazil.
+Ten pictures as they come off the card - Olympus RAW files (.ORF), an iPhone
+landscape (.HEIC) and a short video (.MOV) - with:
+
+  - the .xmp sidecars, holding the species names and colour labels;
+  - five JPGs made from the RAW files (DxO PhotoLab) and one from the HEIC;
+  - GPS positions, so the pictures appear on the map.
+
+The species: western osprey, black howler (a monkey), rufescent tiger heron,
+capped heron, turkey vulture, a dragonfly (Diastatops pullata), jaguar and a
+proboscis bat - plus one landscape.
+
+
+Trying them in SpeciesViewer
+----------------------------
+1. Unpack this ZIP to a folder, for example C:\SpeciesViewer-sample.
+2. In SpeciesViewer: Days > Copy day from card..., and choose that folder
+   (or: Master > Add Pictures to Master..., to put them straight into your
+   master collection).
+3. All pictures land on 2026-09-09. Open the day to see them, their species
+   and colours; Map shows where they were taken.
+
+
+Licence of these photographs
+----------------------------
+Copyright (c) 2026 Gilbert Houtekamer.
+
+These photographs are licensed under the Creative Commons
+Attribution-NonCommercial 4.0 International licence (CC BY-NC 4.0):
+https://creativecommons.org/licenses/by-nc/4.0/
+
+You may share and adapt them, for any non-commercial purpose, as long as you
+credit "Gilbert Houtekamer" and link to the licence. This licence covers the
+photographs only; SpeciesViewer itself is free software under the GNU GPL v3.
