@@ -661,6 +661,25 @@ def _file_date_is_capture_date(f: Path) -> bool:
     return is_raw(f) or is_video(f)
 
 
+def _stem_key(f: Path) -> str:
+    """'…/2026 Brazilie - IMG_6300' for both IMG_6300.HEIC and IMG_6300.jpg."""
+    return _norm(f.with_suffix(""))
+
+
+def _partner_dates(undated, buckets: dict[str, str], dated_keys) -> dict[str, str]:
+    """A picture with no capture date in its EXIF takes the date of a same-name
+    partner that has one: SpeciesViewer's own Create JPG writes no metadata, so
+    IMG_6300.jpg (made from IMG_6300.HEIC on 6 Oct) would otherwise be dated by
+    its file date and show as a day of its own. Only partners whose date is
+    real (EXIF, a camera original, or remembered on the card) count."""
+    by_stem: dict[str, str] = {}
+    for key in dated_keys:
+        if key in buckets:
+            by_stem.setdefault(_stem_key(Path(key)), buckets[key])
+    return {_norm(f): by_stem[_stem_key(f)] for f in undated
+            if _stem_key(f) in by_stem}
+
+
 def _build_buckets(files, tz_offset_hours, cache: "_CardCache | None", log,
                     include_dates=None) -> dict[str, str]:
     """{normalised path: 'YYYY-MM-DD'} for all files.
@@ -726,18 +745,31 @@ def _build_buckets(files, tz_offset_hours, cache: "_CardCache | None", log,
                       f"({rate:,.0f} files/s, ~{_fmt_duration(remaining)} left)")
 
         dt_map = _read_capture_datetimes(need_exif, log, progress_cb=_report)
+        undated: list[Path] = []
         for f in need_exif:
             key = _norm(f)
             dt = dt_map.get(key)
             if dt is None:
-                try:
-                    dt = datetime.fromtimestamp(f.stat().st_mtime)
-                except OSError:
-                    buckets[key] = UNKNOWN_DATE_DIR
-                    continue
-            date_str = (dt + offset).strftime("%Y-%m-%d")
-            buckets[key] = date_str
-            cached_dt[key] = dt   # used below to update cache
+                undated.append(f)
+                continue
+            buckets[key] = (dt + offset).strftime("%Y-%m-%d")
+            cached_dt[key] = dt   # a real date: remembered on the card
+        # No capture date at all: a same-name partner's date, else the file date
+        # (not remembered — it is a guess, and the partner may arrive later).
+        dated_keys = [k for k in buckets if k not in {_norm(f) for f in undated}]
+        partners = _partner_dates(undated, buckets, dated_keys)
+        for f in undated:
+            key = _norm(f)
+            if key in partners:
+                buckets[key] = partners[key]
+                cached_dt[key] = None          # real enough: remember the day
+                continue
+            try:
+                dt = datetime.fromtimestamp(f.stat().st_mtime)
+            except OSError:
+                buckets[key] = UNKNOWN_DATE_DIR
+                continue
+            buckets[key] = (dt + offset).strftime("%Y-%m-%d")
 
     return buckets, cached_dt
 
@@ -829,14 +861,24 @@ def scan_days(source, tz_offset_hours=0.0, use_card_cache=True, logger=None):
         log.info(f"Reading the capture date of {len(need_exif)} JPG/HEIC/other "
                  f"picture(s) — their file date may be the day they were exported.")
         dt_map = _read_capture_datetimes(need_exif, log)
+        undated: list[Path] = []
         for f in need_exif:
             dt = dt_map.get(_norm(f))
-            if dt is None:                  # no date in the EXIF: file date it is
-                try:
-                    dt = datetime.fromtimestamp(f.stat().st_mtime)
-                except OSError:
-                    buckets[_norm(f)] = UNKNOWN_DATE_DIR
-                    continue
+            if dt is None:
+                undated.append(f)
+                continue
+            buckets[_norm(f)] = (dt + offset).strftime("%Y-%m-%d")
+        # No date in the EXIF: a same-name partner's date, else the file date.
+        partners = _partner_dates(undated, buckets, list(buckets))
+        for f in undated:
+            if _norm(f) in partners:
+                buckets[_norm(f)] = partners[_norm(f)]
+                continue
+            try:
+                dt = datetime.fromtimestamp(f.stat().st_mtime)
+            except OSError:
+                buckets[_norm(f)] = UNKNOWN_DATE_DIR
+                continue
             buckets[_norm(f)] = (dt + offset).strftime("%Y-%m-%d")
 
     counts = Counter(buckets.values())
