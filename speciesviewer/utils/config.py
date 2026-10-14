@@ -194,6 +194,16 @@ def get_window_state(key):
 # These return the explicit config key when present; otherwise derive via .parent
 # of the active database path (backward-compatible fallback for old configs).
 
+def root_is_unset(section: str, key: str) -> bool:
+    """The trips / albums folder belongs to the master: set once (Repositories,
+    Setup Checklist, or a new master's first trip) and never moved by opening,
+    creating or importing a trip. It used to be overwritten with the parent of
+    whatever trip was opened, so opening a trip from elsewhere — a test master's,
+    an import in another folder — silently re-pointed the left panel and the next
+    Create Trip there. Writers call this first and only fill an EMPTY setting."""
+    return not _config.get(section, key, fallback="").strip()
+
+
 def get_trips_root() -> str:
     explicit = _config.get("trip", "tripsrootdirectory", fallback="")
     if explicit:

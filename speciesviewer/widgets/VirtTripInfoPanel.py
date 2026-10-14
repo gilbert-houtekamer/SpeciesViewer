@@ -218,11 +218,20 @@ class VirtTripInfoPanel(QWidget):
             self._refresh_highlights()
             self.on_virttrip_selected(self.main_window)
             return
+        from engine.trip_owner import foreign_owner, refusal_text
+        owner = foreign_owner(trip_dir, "album",
+                              _config.get("master", "masterbiotadatabase", fallback=""))
+        if owner:
+            from PyQt6.QtWidgets import QMessageBox
+            QMessageBox.warning(self, "Open album", refusal_text(trip_dir, "album", owner))
+            return
         record_gui_usage(trip_dir)
         if not _config.has_section("virttrip"):
             _config.add_section("virttrip")
         _config.set("virttrip", "virttripbiotadatabase", str(trip_dir))
-        _config.set("virttrip", "virttriprootdirectory", str(trip_dir.parent))
+        from utils.config import root_is_unset
+        if root_is_unset("virttrip", "virttriprootdirectory"):
+            _config.set("virttrip", "virttriprootdirectory", str(trip_dir.parent))
         trip_data = read_virttrip_ini(str(trip_dir))
         if trip_data:
             trip_name = trip_data.get("trip_name", "").strip()

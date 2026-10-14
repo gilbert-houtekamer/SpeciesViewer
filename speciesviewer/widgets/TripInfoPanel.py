@@ -162,12 +162,21 @@ class TripInfoPanel(QWidget):
             self._refresh_highlights()
             self.on_trip_selected(self.main_window)
             return
+        from engine.trip_owner import foreign_owner, refusal_text
+        owner = foreign_owner(trip_dir, "trip",
+                              _config.get("master", "masterbiotadatabase", fallback=""))
+        if owner:
+            from PyQt6.QtWidgets import QMessageBox
+            QMessageBox.warning(self, "Open trip", refusal_text(trip_dir, "trip", owner))
+            return
         record_gui_usage(trip_dir)
         trip_data = read_trip_ini(trip_dir)
         trip_name = trip_data.get("trip_name", "").strip()
         _config["trip"]["tripbiotadatabase"] = str(trip_dir)
         _config["trip"]["tripbiotawebroot"] = "/trips/" + trip_name
-        _config["trip"]["tripsrootdirectory"] = str(trip_dir.parent)
+        from utils.config import root_is_unset
+        if root_is_unset("trip", "tripsrootdirectory"):
+            _config["trip"]["tripsrootdirectory"] = str(trip_dir.parent)
         pic = self._resolve_picturedirectory(trip_dir, trip_name)
         if pic:
             _config["project"]["picturedirectory"] = pic

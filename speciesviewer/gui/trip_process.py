@@ -533,7 +533,9 @@ class TripCreationDialog(QDialog):
             return
         # make sure new structure is created
         pd = self._picturedirectory_for_config()
-        _config.set("trip", "tripsrootdirectory", str(Path(self.root_field.get_text()).parent))
+        from utils.config import root_is_unset
+        if root_is_unset("trip", "tripsrootdirectory"):
+            _config.set("trip", "tripsrootdirectory", str(Path(self.root_field.get_text()).parent))
         set_trip_settings(self.root_field.get_text(), self.trip_web.field.text(), pd)
         # Also save trip/project pair (the per-machine day cache)
         update_cache_gui_section("trip_project_map", self.trip_web.field.text(), pd)
@@ -553,9 +555,19 @@ class TripCreationDialog(QDialog):
         runner.run(self.menu_spec, on_success=_on_created)
 
     def on_select(self):
+        # A trip belongs to one master: never open another master's in place.
+        from engine.trip_owner import foreign_owner, refusal_text
+        trip_dir = self.root_field.get_text()
+        owner = foreign_owner(trip_dir, "trip",
+                              _config.get("master", "masterbiotadatabase", fallback=""))
+        if owner:
+            QMessageBox.warning(self, "Select Trip", refusal_text(trip_dir, "trip", owner))
+            return
         # save settings
         pd = self._picturedirectory_for_config()
-        _config.set("trip", "tripsrootdirectory", str(Path(self.root_field.get_text()).parent))
+        from utils.config import root_is_unset
+        if root_is_unset("trip", "tripsrootdirectory"):
+            _config.set("trip", "tripsrootdirectory", str(Path(self.root_field.get_text()).parent))
         set_trip_settings(self.root_field.get_text(), self.trip_web.field.text(), pd)
         update_cache_gui_section("trip_project_map", self.trip_web.field.text(), pd)
         populate_trip_overview(self.passed_parent)
@@ -6091,7 +6103,9 @@ class ImportTripDialog(QDialog):
             picture_root = resolve_trip_picture_root(dest, kind="trip",
                                                      active_picturedirectory="")
             first_day = _first_day_under(picture_root) if picture_root else ""
-            _config.set("trip", "tripsrootdirectory", str(Path(dest).parent))
+            from utils.config import root_is_unset
+            if root_is_unset("trip", "tripsrootdirectory"):
+                _config.set("trip", "tripsrootdirectory", str(Path(dest).parent))
             set_trip_settings(dest, web_root, first_day or picture_root or "")
             update_cache_gui_section("trip_project_map", web_root,
                                      first_day or picture_root or "")

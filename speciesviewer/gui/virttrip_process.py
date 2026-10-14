@@ -496,7 +496,9 @@ def retire_trip_to_virttrip(parent):
     # ── Config setup on the GUI thread (mutates shared _config / svconfig.ini),
     # then the pipeline runs in a worker thread so the spinner stays live. ──
     try:
-        set_setting("virttrip", "virttriprootdirectory", str(Path(virttrip_root).parent))
+        from utils.config import root_is_unset
+        if root_is_unset("virttrip", "virttriprootdirectory"):
+            set_setting("virttrip", "virttriprootdirectory", str(Path(virttrip_root).parent))
         set_setting("virttrip", "virttripbiotadatabase", virttrip_root)
         set_setting("virttrip", "virttripbiotawebroot",
                     web_root if web_root.endswith("/") else web_root + "/")
@@ -1005,7 +1007,9 @@ class VirtualTripCreationDialog(QDialog):
         self._write_virttrip_ini()
         virttrip_root = self.root_field.get_text()
         web_root = self.trip_web.field.text()
-        set_setting("virttrip", "virttriprootdirectory", str(Path(virttrip_root).parent))
+        from utils.config import root_is_unset
+        if root_is_unset("virttrip", "virttriprootdirectory"):
+            set_setting("virttrip", "virttriprootdirectory", str(Path(virttrip_root).parent))
         set_setting("virttrip", "virttripbiotadatabase", virttrip_root)
         set_setting("virttrip", "virttripbiotawebroot",
                     web_root if web_root.endswith("/") else web_root + "/")
@@ -1042,7 +1046,17 @@ class VirtualTripCreationDialog(QDialog):
                         f"the Albums menu when you are ready.")
 
     def on_select(self):
-        set_setting("virttrip", "virttriprootdirectory", str(Path(self.root_field.get_text()).parent))
+        # An album belongs to one master: never open another master's in place.
+        from engine.trip_owner import foreign_owner, refusal_text
+        album_dir = self.root_field.get_text()
+        owner = foreign_owner(album_dir, "album",
+                              _config.get("master", "masterbiotadatabase", fallback=""))
+        if owner:
+            QMessageBox.warning(self, "Select Album", refusal_text(album_dir, "album", owner))
+            return
+        from utils.config import root_is_unset
+        if root_is_unset("virttrip", "virttriprootdirectory"):
+            set_setting("virttrip", "virttriprootdirectory", str(Path(self.root_field.get_text()).parent))
         set_setting("virttrip", "virttripbiotadatabase", self.root_field.get_text())
         set_setting("virttrip", "virttripbiotawebroot",  self.trip_web.field.text())
         populate_virttrip_overview(self.passed_parent)
