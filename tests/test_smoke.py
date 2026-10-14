@@ -92,10 +92,8 @@ def test_starter_species_list_is_a_tree():
     assert not orphans, f"rows whose parent is missing: {orphans[:10]}"
 
 
-@pytest.mark.xfail(strict=True, reason="two garbled names; repaired with the 0.4.1 starter list "
-                                       "(then remove this marker)")
 def test_starter_species_list_has_no_garbled_names():
     """UTF-8 read as Windows-1252 leaves 'â€™' and 'Ã' behind."""
     garbled = [r[1:4] for r in _starter_rows()
-               if any(bad in ";".join(r) for bad in ("â€", "Ã", "�"))]
+               if any(bad in ";".join(r) for bad in ("â€", "Ã", "\ufffd"))]
     assert not garbled, garbled
