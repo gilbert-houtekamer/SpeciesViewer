@@ -889,16 +889,19 @@ class ReadSDCardDialog(QDialog):
             "Copy pictures from a card into <i>&lt;year&gt; unfiled</i>, sorted into "
             "one folder per day. <b>No trip is chosen and nothing is claimed</b> — "
             "empty card after card now, and file the days under a trip later from "
-            "<i>Unfiled pictures</i>. Nothing is ever changed or deleted on the card, "
-            "each copy is verified, and pictures already copied are skipped, so you "
-            "can re-run this safely.</p>"
+            "<i>Unfiled pictures</i>. Your pictures on the card are never changed or "
+            "deleted, each copy is verified, and pictures already copied are skipped, "
+            "so you can re-run this safely. (To remember what was copied, SpeciesViewer "
+            "keeps two small files of its own on the card.)</p>"
             if unfiled_mode else
             "<p><b>Read SD-card or Folder</b><br>"
             "Copy pictures from a folder — typically a mounted SD-card — into the "
             "project pictures directory. The filename prefix is added to each picture "
             "(e.g. <i>2026 Zeeland - IMG_1234.CR3</i>); leave it empty to keep names as-is. "
-            "Nothing is ever changed or deleted on the card, each copy is verified, and "
-            "pictures already copied are skipped, so you can re-run this safely.</p>"
+            "Your pictures on the card are never changed or deleted, each copy is "
+            "verified, and pictures already copied are skipped, so you can re-run this "
+            "safely. (To remember what was copied, SpeciesViewer keeps two small files "
+            "of its own on the card.)</p>"
         ))
 
         # ── Source & options (framed, so it reads as one block separate from the
