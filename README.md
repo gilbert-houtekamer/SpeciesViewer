@@ -107,7 +107,8 @@ Bug reports, questions and ideas are welcome as
 
 Code contributions are welcome too. Please open an issue first to talk about what you have in
 mind, so your work fits in and is not done twice. Contributions are accepted under the same
-licence as SpeciesViewer.
+licence as SpeciesViewer. [CONTRIBUTING.md](CONTRIBUTING.md) explains how to run it from source
+and how to test a change.
 
 ## Licence
 
