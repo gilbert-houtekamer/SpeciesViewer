@@ -475,7 +475,57 @@ def bake_blog_jpg(src: Path, out: Path, crop: dict | None, *,
     tmp = out.with_name(out.name + f".tmp{os.getpid()}")
     im.save(str(tmp), "JPEG", quality=quality, optimize=True)
     os.replace(tmp, out)
+    copy_metadata_to_baked_jpg(src, out)
     return im.size
+
+
+# What a baked JPG carries — the same choice as the author's PhotoLab export
+# ("EXIF, Attributes, IPTC, Keywords — not GPS coordinates"). An explicit list,
+# so a coordinate can never ride along: species locations stay off the website.
+_FROM_PICTURE = (            # EXIF of the RAW / HEIC itself
+    "DateTimeOriginal", "CreateDate", "SubSecTimeOriginal", "OffsetTimeOriginal",
+    "Make", "Model", "LensMake", "LensModel", "ExposureTime", "FNumber", "ISO",
+    "FocalLength", "FocalLengthIn35mmFormat", "ExposureCompensation", "Flash",
+    "MeteringMode", "Artist", "Copyright")
+_FROM_SIDECAR = (            # what SpeciesViewer and PhotoLab keep in the .xmp
+    "XMP-dc:Subject", "XMP-lr:HierarchicalSubject", "XMP-dc:Title",
+    "XMP-dc:Description", "XMP-dc:Creator", "XMP-dc:Rights",
+    "XMP-photoshop:City", "XMP-photoshop:State", "XMP-photoshop:Country",
+    "XMP-iptcCore:Location", "XMP-iptcCore:CountryCode",
+    "XMP-xmp:Rating", "XMP-xmp:Label")
+
+
+def _sidecar_of(src: Path) -> Path | None:
+    for cand in (src.with_suffix(".xmp"), src.with_suffix(".XMP"),
+                 src.with_name(src.name + ".xmp")):
+        if cand.is_file():
+            return cand
+    return None
+
+
+def copy_metadata_to_baked_jpg(src: Path, out: Path) -> None:
+    """Give a baked JPG its capture date, camera, species and place-as-text —
+    before this it carried nothing, so a card read dated it by its file date
+    (the day it was made) and other programs saw no date or species at all.
+
+    Never GPS (an explicit tag list, and every GPS tag cleared to be sure), and
+    no Orientation: the pixels were already turned upright, so copying the
+    camera's "rotate" would turn a vertical picture a second time.
+
+    Best effort: a failure here is logged, never fails the Create JPG itself."""
+    from engine.exif_writer import exiftool_write
+    args = ["-TagsFromFile", str(src)] + [f"-{t}" for t in _FROM_PICTURE]
+    sidecar = _sidecar_of(src)
+    if sidecar is not None:
+        args += ["-TagsFromFile", str(sidecar)] + [f"-{t}" for t in _FROM_SIDECAR]
+        args += ["-IPTC:Keywords<XMP-dc:Subject"]       # where Windows looks
+    args += ["-GPS:all=", "-XMP-exif:GPS*=", "-Orientation="]
+    try:
+        exiftool_write(out, args)
+    except Exception as e:
+        logging.getLogger("speciesviewer").warning(
+            f"Create JPG: {out.name} was made, but its date/species could not be "
+            f"added: {e}")
 
 
 def decode_preview_jpeg(src: Path, max_edge: int, quality: int) -> bytes | None:

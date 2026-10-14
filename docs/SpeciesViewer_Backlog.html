@@ -1739,7 +1739,14 @@ stay with their tools.</p>
     export date. That matters more than it sounds: making JPGs days, months or years after the shot
     is the normal way of working here, so the wrong grouping is the common case, not the odd one.
     Deleting the variable is a one-line fix; <em>using</em> it is the better one.
-    <span class="tag-open">OPEN</span> still unused (<code>sv0ReadSDCard.py:1198</code>).</li>
+    <span class="tag-shipped">DONE 14 Oct</span> &mdash; and it was worse than written: on a
+    re-read Brazil day the day table showed <em>five</em> days for one, and ticking the real day
+    left the DxO JPGs and a HEIC behind. Three small steps: (1) only RAW and video are dated by
+    file date, everything else by its EXIF capture date, and every date read is remembered on the
+    card (<code>7b7689e</code>); (2) a picture with no capture date takes its same-name partner's
+    (<code>27463cf</code>); (3) Create JPG now writes the capture date, camera, species, place as
+    text, description and colour into the JPG &mdash; never GPS, never the rotation &mdash; the same
+    choice as the PhotoLab export (EXIF, Attributes, IPTC, Keywords; no GPS coordinates).</li>
 </ul>
 
 <p class="note"><strong>&ldquo;Dead&rdquo; here often means dormant.</strong> Several of the modules
@@ -2151,7 +2158,9 @@ the title bar, the taskbar and the Dock.</p>
     window appears; without that, Windows grouped it under Python and showed Python's icon.</li>
   <li><strong>Checked on Windows</strong> (12 Oct): title bar and taskbar show the duck.
     The <code>.exe</code> carries the duck too (build recipe, 13 Oct). The Mac Dock waits for the
-    Mac port.</li>
+    Mac port. <em>14 Oct: once in a while the taskbar shows no icon; the next start does. Cause
+    unknown &mdash; note when it happens (first start of the day? after a restart into another
+    master? started from VS Code?).</em></li>
   <li><strong>Sharpness:</strong> Firefly drew the head only about 420 pixels wide, so the 512 and
     1024 sizes are slightly soft. That is invisible in a taskbar. If a large version is ever
     needed (an installer, a web page), generate the head again in Firefly as a full square image
