@@ -1811,7 +1811,19 @@ are places where bugs have actually been fixed more than once:</p>
     the Repositories dialog) and the CurrentPictures root that a trip's <code>picture_root</code> is
     stored relative to (WP8). What is left is the fallback: when a key is empty the code still walks
     up with <code>.parent</code> (<code>utils/config.py</code>), and three places write the key
-    <em>from</em> a <code>.parent</code>. Small, but it is the last of the guesswork.</li>
+    <em>from</em> a <code>.parent</code>. Small, but it is the last of the guesswork.
+    <span class="tag-shipped">DONE 14 Oct</span> &mdash; looked at closely, the two readers are
+    right (a trip folder always sits directly in the trips folder). The real fault was the
+    <em>writers</em>: eight places (Create, Select, Import Trip, clicking a trip; the same for
+    albums) overwrote the trips / albums folder with the parent of whatever trip was opened, so
+    opening a trip from elsewhere silently re-pointed the left panel and the next Create Trip.
+    Now the folder belongs to the master: set once, only filled while empty
+    (<code>utils/config.root_is_unset</code>). <strong>And a trip belongs to one master:</strong>
+    opening another master's trip or album (Select, or a click in the left panel) is refused with
+    a plain message naming its master (<code>engine/trip_owner.py</code>; the same rule as Delete
+    Completely, so a trip carried over from BigBoy, whose master does not exist on this computer,
+    still opens). No &ldquo;clone a trip into another master&rdquo; &mdash; decided against: complex, and
+    it encourages messy habits. (<code>5062251</code>)</li>
   <li><strong>Configuration files have never been inventoried.</strong> There is no single statement
     of which <code>.ini</code> and <code>.json</code> exist, which are per-machine, which travel
     with a trip and which are throwaway caches. Today's work needed that answer twice — once to
