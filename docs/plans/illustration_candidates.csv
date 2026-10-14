@@ -1,0 +1,15 @@
+Priority;Where (menu path);Window;When you see it;Why a picture helps;Suggested animal;Status
+DONE;To Master ▸ Retire Trip to Album;Retire Trip to Album (wait);once per trip, minutes;the longest wait in SV;leopard tortoise;shipped df11efb
+DONE;To Master ▸ Merge Pictures into Master;Please wait… (steps 2-4);once per trip, minutes;long wait, the master grows;chameleon;shipped df11efb
+1;Trip Overview: Write All Blogs / Publish Trip;Running '…' for all days (wait);per trip, minutes (all days);long wait, day after day ticking by;sloth;open
+1;first start (no master);Welcome to SpeciesViewer;once, the very first screen;first impression of the program;the duck (About picture) or a new greeter;open
+2;Trips ▸ Read SD-card or Folder…;Read SD-card or Folder;every outing, copy takes minutes;frequent and long while a card copies;dormouse or bat (hangs on, then busy at night);open
+2;Utilities ▸ Rebuild all Albums and the Master website…;Re-rendering and uploading every master page… (wait);rarely, very long;the longest admin wait;snail;open
+2;publishing a trip or album;Updating online site… / Updating published index… (wait);at publish, a minute;waits on the web server;swift or swallow (the web = flying);open
+3;Help ▸ Setup Checklist;Setup Checklist;first start and when something is grey;friendly while explaining what to set up;owl (wise, explains);open
+3;Help ▸ About;About SpeciesViewer;rarely;already has the duck;—;done (duck)
+3;Biota Browser, empty;"No pictures for …" (empty state);new master, empty groups;an empty screen feels broken; a drawing + one sentence feels intended;a beetle or a mushroom;open
+3;Trips ▸ Trash (deleted pictures)…;Trip trash;after culling;deleting feels harsh; a gentle note;magpie (collects things);open
+3;To Master ▸ Publish Species Names;Merge Species (review);per trip;a long review list;—;no picture: the table needs the space
+4;Viewer: Decoding pictures at full resolution;progress bar;in the viewer, seconds;short, and you look at the pictures already;—;no picture: too short
+4;Updating… / Deleting… / Reading sidecars…;small progress bars;seconds;short;—;no picture: too short

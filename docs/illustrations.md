@@ -26,7 +26,7 @@ out against the app's sand and grey.
 | African Pygmy-goose (head) | `assets/icon/` | the program icon |
 | African Pygmy-goose | `assets/about_duck.jpg` | Help ▸ About |
 | Leopard tortoise | `assets/wait_tortoise.jpg` | Retire Trip to Album — the longest wait |
-| Chameleon | `assets/wait_chameleon.jpg` | To Master ▸ Add Trip Pictures to Master (steps 2–4) |
+| Chameleon | `assets/wait_chameleon.jpg` | To Master ▸ Merge Pictures into Master (steps 2–4) |
 
 A wait picture is `assets/wait_<name>.jpg`, about 512×512; a step shows it with
 `'wait_picture': '<name>'` (see `gui/wait_picture.py`). Keep the 2048-pixel originals out
