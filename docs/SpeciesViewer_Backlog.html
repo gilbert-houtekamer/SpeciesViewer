@@ -1835,7 +1835,7 @@ are places where bugs have actually been fixed more than once:</p>
 
 <h3>The tests do not run</h3>
 
-<p><span class="tag-new">NEW 14 Oct</span> <strong><code>pytest</code> fails before it starts.</strong>
+<p><span class="tag-shipped">DONE 14 Oct</span> <strong><code>pytest</code> fails before it starts.</strong>
 <code>tests/conftest.py</code> imports <code>sview.model</code>, a module from June 2024 that no
 longer exists, so the first thing a contributor tries reports an error. The real checks live
 elsewhere: self-tests in <code>tools/</code> (<code>svr_test_species_baseline.py</code>,
@@ -1844,7 +1844,13 @@ audit) and the Testbed module. The honest fix is small: retire the 2024 folder, 
 <em>smoke test</em> that a stranger can run &mdash; every module imports, the version string is
 sane, NOTICE.md and the starter species list are present and readable &mdash; with the
 <code>tools/</code> self-tests listed in CONTRIBUTING. That is also the first thing worth running
-before any release build.</p>
+before any release build. <strong>Done 14 Oct:</strong> the 2024 folder is retired;
+<code>tests/test_smoke.py</code> (run <code>python -m pytest</code> from the repository root, about
+two seconds) checks that all 250 program modules import, the version string, LICENSE / NOTICE /
+README, the shipped icon, splash and About pictures, and that the starter species list parses as
+a tree. Settings go to a throw-away folder for the whole run, so a test never touches your real
+ones. One check is marked <em>expected to fail</em> until the 0.4.1 starter list repairs its two
+garbled names.</p>
 
 <h3>How to approach this chapter</h3>
 

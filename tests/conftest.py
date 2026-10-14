@@ -1,24 +1,34 @@
+"""Test setup: an isolated, throw-away world BEFORE anything from SpeciesViewer
+is imported.
+
+Importing utils.config creates the settings folders (and would migrate files
+from the repository root), so every per-user location — %LOCALAPPDATA% on
+Windows, the home folder on macOS, XDG on Linux — points at a temporary folder
+for the whole session. Your real settings are never read or written by a test.
+"""
 import os
+import shutil
+import sys
+import tempfile
 from pathlib import Path
-import pytest
-from sview.model import SVConfig
+
+REPO = Path(__file__).resolve().parent.parent
+SV = REPO / "speciesviewer"
+
+_SANDBOX = Path(tempfile.mkdtemp(prefix="sv-tests-"))
+for var in ("LOCALAPPDATA", "USERPROFILE", "HOME", "XDG_DATA_HOME"):
+    os.environ[var] = str(_SANDBOX)
+os.environ.pop("SV_MASTER", None)                 # no master chosen from outside
+os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")   # no windows on screen
+
+# SpeciesViewer.py puts speciesviewer/ on sys.path; its packages are top-level.
+for p in (str(SV), str(REPO)):
+    if p not in sys.path:
+        sys.path.insert(0, p)
 
 
-@pytest.fixture(autouse=True)
-def change_test_dir(request, monkeypatch):
-    monkeypatch.chdir(request.fspath.dirname)
+def pytest_sessionfinish(session, exitstatus):
+    shutil.rmtree(_SANDBOX, ignore_errors=True)
 
 
-@pytest.fixture()
-def app(request, monkeypatch):
-    # create a valid configuration file in the root of our test data
-    svcfg = SVConfig()
-    monkeypatch.chdir(request.fspath.dirname)
-    root = Path(os.curdir) / 'data'
-    for repo_dir in (root / 'repositories').iterdir(): 
-        if repo_dir.is_dir():
-            svcfg.add_repository(repo_dir)
-    for proj_dir in (root / 'projects').iterdir(): 
-        if proj_dir.is_dir():
-            svcfg.add_project(proj_dir)
-    svcfg.write(root / 'config.ini')
+SANDBOX = _SANDBOX
