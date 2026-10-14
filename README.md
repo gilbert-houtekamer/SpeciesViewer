@@ -6,6 +6,11 @@
 
 <p align="center"><em>Organize species. Explore collections. Bring biodiversity to life.</em></p>
 
+> [!NOTE]
+> **SpeciesViewer 0.4 is a beta.** It does real work every day for its author, and it is ready
+> for others to try. Expect rough edges, and please tell us about them — feedback is what this
+> beta is for. See [Questions, ideas and contributions](#questions-ideas-and-contributions).
+
 SpeciesViewer is a desktop program for nature photographers who think in **species**, not in
 folders. It takes you from a full memory card to a lasting collection: cull and identify your
 pictures, keep the best of every species in one collection, write up your trips, and — if you
@@ -69,9 +74,11 @@ The complete list, chapter by chapter, is in
 |---|---|
 | **Windows 10 / 11** | A download is coming soon. Until then, run it from source — see [Installing SpeciesViewer](docs/install.md). |
 | **macOS, Linux** | Written to run there too, but not yet ported or tested — see [Installing SpeciesViewer](docs/install.md). |
+| **Sample pictures** | One day in the Pantanal, Brazil — ten pictures with their species, colours and GPS — to try SpeciesViewer without your own collection. Comes with the first release; the photographs are licensed CC BY-NC 4.0. |
 
-On first start, **Help ▸ Setup Checklist** shows what to set up and in which order: a master
-collection first, then — only if you want them — trips and a website.
+On first start, SpeciesViewer offers to create your **master collection** — the folder where
+the best pictures of every species will live. **Help ▸ Setup Checklist** then shows what else
+can be set up: trips, albums and a website, each only if you want it.
 
 ## Good to know
 
@@ -81,6 +88,16 @@ collection first, then — only if you want them — trips and a website.
 - **Online services:** species names come from GBIF, maps and place names from OpenStreetMap,
   translations from Google Translate. Without internet, SpeciesViewer keeps working with what
   it already knows.
+
+## What is planned
+
+- **Species order.** Today families and orders are sorted by a number in their name
+  ("040 passeriformes"), from a species list of some fifteen years ago; newer orders
+  have no number, so a few appear twice. They will be sorted by a current taxonomic sequence
+  instead, and your collection needs to be converted along with it.
+- **A second language other than Dutch.** Species names, blogs and the website now come in
+  English and Dutch; French, German or another language in place of Dutch is planned.
+- **macOS.** SpeciesViewer is written to run there; the port itself is still to be done.
 
 ## Questions, ideas and contributions
 
