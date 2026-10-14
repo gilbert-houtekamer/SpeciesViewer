@@ -1638,7 +1638,7 @@ class MainWindow(QMainWindow):
 
         runner = ChainedBatchRunner(self, self, steps, module_config, sm,
                                     day_name, on_complete,
-                                    title=("Even geduld..." if confirm
+                                    title=("Please wait…" if confirm
                                            else "Saving changes…"))
         runner.start()
 

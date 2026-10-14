@@ -153,7 +153,7 @@ class BatchModuleRunner:
 
         # Spinner — stays visible and animated while worker thread runs
         spinner = QDialog(self.parent)
-        spinner.setWindowTitle("Even geduld...")
+        spinner.setWindowTitle("Please wait…")
         spinner.setModal(True)
         spinner.setFixedSize(400, 150)
 
@@ -210,7 +210,9 @@ class BatchModuleRunner:
                 if on_failure:
                     on_failure(errorstring)
             else:
-                warn_suffix = f" Please review the {new_warnings if new_warnings > 1 else ''} warning{'s' if new_warnings > 1 else ''}." if new_warnings > 0 else ""
+                warn_suffix = ((" Please review the warning." if new_warnings == 1
+                                else f" Please review the {new_warnings} warnings.")
+                               if new_warnings > 0 else "")
                 display_msg = result_msg if result_msg else after_msg
                 self.logger.info(f"{display_msg}{warn_suffix}")
                 if statusname and statusname != "MakeRepository":
@@ -250,7 +252,7 @@ class ChainedBatchRunner:
     """
 
     def __init__(self, parent, main_window, steps, module_config, sm, directory_name,
-                 on_complete, title="Even geduld..."):
+                 on_complete, title="Please wait…"):
         self._parent = parent
         self._main_window = main_window
         self._steps = steps
@@ -383,7 +385,7 @@ class ColumnBatchRunner:
 
         total = len(day_steps)
         self._spinner = QDialog(parent)
-        self._spinner.setWindowTitle("Even geduld...")
+        self._spinner.setWindowTitle("Please wait…")
         self._spinner.setModal(True)
         self._spinner.setFixedSize(460, 220)
 

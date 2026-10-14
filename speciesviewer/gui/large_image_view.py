@@ -3430,7 +3430,7 @@ class LargeImageView(QDialog):
         cur_key = self._item.key
 
         progress = QDialog(self)
-        progress.setWindowTitle("Even geduld…")
+        progress.setWindowTitle("Please wait…")
         progress.setModal(True)
         progress.setFixedSize(320, 110)
         prog_layout = QVBoxLayout(progress)
@@ -3794,7 +3794,7 @@ class LargeImageView(QDialog):
 
         # Progress dialog — modal so user can't trigger re-sorts mid-write.
         progress = QDialog(self)
-        progress.setWindowTitle("Even geduld…")
+        progress.setWindowTitle("Please wait…")
         progress.setModal(True)
         progress.setFixedSize(320, 110)
         prog_layout = QVBoxLayout(progress)
