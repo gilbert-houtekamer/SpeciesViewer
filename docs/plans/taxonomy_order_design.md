@@ -41,8 +41,9 @@ GBIF species match (cached, so a re-run costs nothing).
 - Sort number: AviList `Sequence` for the GBIF name, else for today's name, else the
   same epithet inside the same family (marked for review), else right after its genus.
   Families and orders sort at their lowest member.
-- A merge (two of today's species → one GBIF species) keeps one row; the other name
-  becomes a forward row, marked for review when it has pictures.
+- A GBIF merge is never followed — see "Decided 15 Oct (after the whole list)" below.
+  Only today's subspecies entries fold into their species (an alias row, marked for
+  review when it has pictures).
 - Names: today's Dutch and English first; AviList's English added as an alias when it differs.
 
 
