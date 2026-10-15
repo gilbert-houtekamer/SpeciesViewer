@@ -179,6 +179,14 @@ def build(birds, higher, avi, gbif):
         g = gbif_view(gbif.get(b["name"]))
         return not g or g["species"] == b["name"]
 
+    def new_name(b):
+        g = gbif_view(gbif.get(b["name"]))
+        return g["species"] if g and g["species"] else b["name"]
+
+    # species that exist in the new table under their own name: an epithet guess
+    # must never land on one of them (Oxyura ferruginea is not Tadorna ferruginea)
+    taken = {new_name(b) for b in birds}
+
     # a species GBIF leaves alone owns its row; one merging into it comes second
     for b in sorted(birds, key=lambda b: not unchanged(b)):
         g = gbif_view(gbif.get(b["name"]))
@@ -204,6 +212,7 @@ def build(birds, higher, avi, gbif):
         else:
             cands = av_epithet.get((new.split()[-1], place["family"]), []) or \
                     av_epithet.get((b["name"].split()[-1], place["family"]), [])
+            cands = [c for c in cands if c["name"] not in taken]
             if len(cands) == 1:
                 seq, src = cands[0]["seq"], "AviList epithet in family — REVIEW"
             elif genus in av_genus:
@@ -244,6 +253,15 @@ def build(birds, higher, avi, gbif):
             fam = [r["seq"] for r in rows.values() if r["family"] == row["family"] and r["seq"] is not None]
             row["seq"] = (max(fam) + 0.9) if fam else 999999.0
 
+    # ties (several species after the same genus): alphabetical, a thousandth apart
+    tied = defaultdict(list)
+    for row in rows.values():
+        tied[(row["family"], row["seq"])].append(row)
+    for group in tied.values():
+        if len(group) > 1:
+            for i, row in enumerate(sorted(group, key=lambda r: r["name"])):
+                row["seq"] += i * 0.001
+
     # higher taxa: sort at their lowest member
     taxa = []
     for rank in ("kingdom", "phylum", "class", "order", "family"):
@@ -273,7 +291,7 @@ def write_outputs(out, taxa, rows, names, changes, av_species):
         w.writerow(["Rank", "ScientificName", "Parent", "Sequence", "SequenceSource",
                     "DutchNames", "EnglishNames", "AvibaseID", "GBIFKey", "Pictures"])
         for t in sorted(taxa, key=lambda t: (RANKS.index(t["rank"]), t["seq"])):
-            w.writerow([t["rank"], t["name"], t["parent"], f"{t['seq']:g}", t["seq_src"],
+            w.writerow([t["rank"], t["name"], t["parent"], round(t['seq'], 4), t["seq_src"],
                         t["nl"], t["en"], t["avibase"], t["gbif_key"], t["pics"]])
     with open(out / "names.csv", "w", encoding="utf-8", newline="") as f:
         w = csv.writer(f, delimiter=";")
