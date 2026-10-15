@@ -96,3 +96,21 @@ Undo log: `C:\SpeciesViewer\Taxonomy\nature\admin\taxonomy_convert_20261015-2148
   the order, Kingdom holds "biota"). Only `trip_registry.py` reads them. The converter writes them the
   same way, on purpose.
 - The admin check reports landscape pictures as REMOVE (it doesn't scan `topics/`).
+
+---
+
+## Open: a merge that should become subspecies (15 Oct)
+
+GBIF folds *Caracara cheriway* into *Caracara plancus* — correct as a species, but the two birds are
+the subspecies *C. p. cheriway* (Northern Crested Caracara) and *C. p. plancus* (Southern). Wanted:
+keep both, saved as `caracara plancus cheriway` and `caracara plancus plancus`, not one lump.
+
+To think through before building:
+- A third choice in the review page for a GBIF synonym: *keep apart* · *merge* · **keep as
+  subspecies of X** (old epithet becomes the third word; the nominate one gets the species
+  epithet twice).
+- That makes subspecies a real level under the species, not a species-level entry as today
+  (*Motacilla flava feldegg*). Then today's default "fold subspecies into the species" may flip
+  to "keep". Website/browser: the species page shows its subspecies together.
+- Folder and XMP: does the picture's keyword become the trinomial, or stay the old name and
+  resolve through an alias?
