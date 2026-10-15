@@ -46,3 +46,13 @@ GBIF species match (cached, so a re-run costs nothing).
 - Names: today's Dutch and English first; AviList's English added as an alias when it differs.
 
 
+
+**Decided 15 Oct (after the whole list):**
+- **GBIF merges are never followed.** A species GBIF calls a synonym of another species stays as it
+  is — own name, own row, GBIF's placement — with the note "GBIF: synonym of X" (423 species, 29 with
+  pictures). Too many of GBIF's merges are wrong: recent Asian damselflies lumped into a relative,
+  *Polites mardon* → *P. sabuleti*, the European Large Skipper → the Asian *Ochlodes venata*.
+  Later choice per species: delete it, or keep it. Genus moves (*Anas → Spatula*) are still followed.
+- **A common name that finds two species** (a split, or a duplicate in today's list): detect it when
+  a species is assigned by name and ask which one is meant. Workaround: type the scientific name.
+  Low priority.

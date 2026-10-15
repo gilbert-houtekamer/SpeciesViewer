@@ -38,6 +38,7 @@ PREFIX_RE = re.compile(r"^(\d+)\s+")
 RANKS = ["kingdom", "phylum", "class", "order", "family", "species"]
 HIGHER = RANKS[:-1]
 SAME_STATUS = {"ACCEPTED", "DOUBTFUL"}
+KEPT = "kept — GBIF synonym"
 HAND_TABLE = Path(__file__).with_name("taxonomy_hand_order.csv")
 AFTER_HAND = 1000          # unknown siblings sort after the hand-placed ones
 
@@ -227,7 +228,9 @@ def build(species, higher, avi, gbif, hand):
 
     def new_name(s):
         g = gbif_view(gbif.get(s["name"]))
-        return g["species"] if g and g["species"] else s["name"]
+        if not g or not g["species"] or change_kind(s["name"], g["species"]) == "merged":
+            return s["name"]    # GBIF merges are never followed: the species stays
+        return g["species"]
 
     # species that exist in the new table under their own name: an epithet guess
     # must never land on one of them (Oxyura ferruginea is not Tadorna ferruginea)
@@ -240,6 +243,10 @@ def build(species, higher, avi, gbif, hand):
         if g and g["species"]:
             new = g["species"]
             kind = change_kind(s["name"], new)
+            if kind == "merged":
+                # GBIF calls it a synonym of another species. Never followed (too
+                # often wrong: Ochlodes sylvanus -> venata); it stays as it is.
+                kind, gbif_target, new = KEPT, new, s["name"]
             place = {k: g[k] for k in HIGHER}
             if not place["order"] and not place["family"]:
                 place["order"], place["family"] = today["order"], today["family"]
@@ -248,6 +255,8 @@ def build(species, higher, avi, gbif, hand):
             genus = g["genus"]
         else:
             new, kind, place, genus = s["name"], "not in GBIF", today, s["name"].split()[0]
+        if kind != KEPT:
+            gbif_target = ""
         bird = place["class"] == "aves"
 
         # sort number for a bird; other species are numbered per family below
@@ -271,7 +280,7 @@ def build(species, higher, avi, gbif, hand):
 
         changes.append({**s, "new": new, "kind": kind, "new_order": place["order"],
                         "new_family": place["family"], "new_class": place["class"],
-                        "seq_src": src})
+                        "seq_src": src, "gbif": gbif_target})
 
         if new in rows:                     # a second of today's species lands here
             row = rows[new]
@@ -296,7 +305,10 @@ def build(species, higher, avi, gbif, hand):
                      "book_family": s["family"],
                      "nl": [s["nl"]] if s["nl"] else [], "en": en,
                      "avibase": av["avibase"] if av else "", "gbif_key": g["key"] if g else "",
-                     "pics": s["pics"], "merged_from": []}
+                     "pics": s["pics"], "merged_from": [],
+                     "note": f"GBIF: synonym of {gbif_target}" if gbif_target else ""}
+        if gbif_target:
+            rows[new]["gbif_key"] = ""      # GBIF's key is the other species'
         if new != s["name"]:
             names.append([s["name"], "sci", new, kind, "GBIF match"])
 
@@ -369,7 +381,7 @@ def build(species, higher, avi, gbif, hand):
         taxa.append({"rank": t["rank"], "name": name, "parent": t["parent"],
                      "seq": t["seq"], "seq_src": t["src"],
                      "nl": [nl] if nl else [], "en": [en] if en else [],
-                     "avibase": "", "gbif_key": "", "pics": ""})
+                     "avibase": "", "gbif_key": "", "pics": "", "note": ""})
     for r in rows.values():
         taxa.append({"rank": "species", **r})
     return taxa, rows, names, changes
@@ -380,10 +392,10 @@ def write_outputs(out, taxa, rows, names, changes, av_species):
     with open(out / "taxa.csv", "w", encoding="utf-8", newline="") as f:
         w = csv.writer(f, delimiter=";")
         w.writerow(["Rank", "ScientificName", "Parent", "Sequence", "SequenceSource",
-                    "DutchNames", "EnglishNames", "AvibaseID", "GBIFKey", "Pictures"])
+                    "DutchNames", "EnglishNames", "AvibaseID", "GBIFKey", "Pictures", "Note"])
         for t in sorted(taxa, key=lambda t: (RANKS.index(t["rank"]), t["parent"], t["seq"])):
             w.writerow([t["rank"], t["name"], t["parent"], round(t["seq"], 4), t["seq_src"],
-                        t["nl"], t["en"], t["avibase"], t["gbif_key"], t["pics"]])
+                        t["nl"], t["en"], t["avibase"], t["gbif_key"], t["pics"], t["note"]])
     with open(out / "names.csv", "w", encoding="utf-8", newline="") as f:
         w = csv.writer(f, delimiter=";")
         w.writerow(["Name", "Language", "PointsTo", "Kind", "Source"])
@@ -423,7 +435,7 @@ def write_outputs(out, taxa, rows, names, changes, av_species):
     L = ["# Step 2 — new taxonomy tables against today's list", "",
          f"Today's list: {len(changes)} species, {len(pictured)} with pictures. "
          f"New table: {len(rows)} species.", "",
-         "| class | species | pictured | renamed | merged | not in GBIF |",
+         "| class | species | pictured | renamed | kept: GBIF synonym | not in GBIF |",
          "|---|---:|---:|---:|---:|---:|"]
     per_class = defaultdict(list)
     for c in changes:
@@ -431,9 +443,9 @@ def write_outputs(out, taxa, rows, names, changes, av_species):
     for k, cs in sorted(per_class.items(), key=lambda kv: -len(kv[1])):
         kc = Counter(c["kind"] for c in cs)
         L.append(f"| {k} | {len(cs)} | {sum(1 for c in cs if c['pics'])} | "
-                 f"{kc['renamed'] + kc['spelling']} | {kc['merged']} | {kc['not in GBIF']} |")
+                 f"{kc['renamed'] + kc['spelling']} | {kc[KEPT]} | {kc['not in GBIF']} |")
     L += ["", "| what happens | all | with pictures |", "|---|---:|---:|"]
-    for k in ("same", "spelling", "renamed", "subspecies → species", "merged", "not in GBIF"):
+    for k in ("same", "spelling", "renamed", "subspecies → species", KEPT, "not in GBIF"):
         L.append(f"| {k} | {kinds_all[k]} | {kinds_pic[k]} |")
 
     def table(title, items, cols):
@@ -444,12 +456,12 @@ def write_outputs(out, taxa, rows, names, changes, av_species):
             L.append("| " + " | ".join(str(fn(c)) for _, fn in cols) + " |")
 
     name_of = lambda c: c["en"] or c["nl"]
-    table("Two of your pictured species become one — ask the user", two_into_one,
+    table("Two of your pictured entries become one (a subspecies folded in) — ask the user", two_into_one,
           [("GBIF species", lambda cs: cs[0]["new"]),
            ("today", lambda cs: ", ".join(f"{c['name']} ({name_of(c)}, {c['pics']})" for c in cs))])
-    table("Pictured species merged into another — ask the user",
-          sorted([c for c in pictured if c["kind"] == "merged"], key=lambda c: -c["pics"]),
-          [("today", lambda c: c["name"]), ("name", name_of), ("GBIF", lambda c: c["new"]),
+    table("Pictured species GBIF calls a synonym — kept as their own species; ask the user",
+          sorted([c for c in pictured if c["kind"] == KEPT], key=lambda c: -c["pics"]),
+          [("species", lambda c: c["name"]), ("name", name_of), ("GBIF: synonym of", lambda c: c["gbif"]),
            ("pictures", lambda c: c["pics"])])
     table("Pictured species with today's subspecies folded into the species",
           [c for c in pictured if c["kind"] == "subspecies → species"],
