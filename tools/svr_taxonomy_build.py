@@ -5,6 +5,7 @@ Read-only on the master. Writes only into --out:
                 a sort number among its siblings + where it came from,
                 Dutch/English names as lists (first = shown)
   names.csv     alias table: name -> scientific name it points to, and what kind
+  changes.csv   one row per species of today's list: what happens to it
   report.md     what would change against today's list, pictured species first
   preview.txt   the whole tree in the new order
   gbif_cache.json  GBIF species-match answers, so a re-run makes no calls
@@ -400,6 +401,14 @@ def write_outputs(out, taxa, rows, names, changes, av_species):
         w = csv.writer(f, delimiter=";")
         w.writerow(["Name", "Language", "PointsTo", "Kind", "Source"])
         w.writerows(sorted(names, key=lambda n: (n[3], n[0])))
+
+    with open(out / "changes.csv", "w", encoding="utf-8", newline="") as f:
+        w = csv.writer(f, delimiter=";")
+        w.writerow(["Today", "Class", "OrderToday", "FamilyToday", "Kind", "New", "GBIFSynonymOf",
+                    "OrderNew", "FamilyNew", "DutchName", "EnglishName", "Pictures", "SequenceSource"])
+        for c in sorted(changes, key=lambda c: (c["class"], c["name"])):
+            w.writerow([c["name"], c["class"], c["order"], c["family"], c["kind"], c["new"], c["gbif"],
+                        c["new_order"], c["new_family"], c["nl"], c["en"], c["pics"], c["seq_src"]])
 
     # preview: the tree in the new order
     by_parent = defaultdict(list)
