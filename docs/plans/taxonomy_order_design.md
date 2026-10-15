@@ -57,3 +57,42 @@ GBIF species match (cached, so a re-run costs nothing).
 - **A common name that finds two species** (a split, or a duplicate in today's list): detect it when
   a species is assigned by name and ask which one is meant. Workaround: type the scientific name.
   Low priority.
+
+---
+
+## First conversion test — Taxonomy master (TaxoGreece), 15 Oct
+
+`tools/svr_taxonomy_convert.py` (dry run by default, `--apply`, `--undo <log>`; refuses Dropbox and
+the main master). Tables built for this master in `D:/code/taxonomy_trial_greece`.
+Undo log: `C:\SpeciesViewer\Taxonomy\nature\admin\taxonomy_convert_20261015-214809.csv`.
+
+**What worked**
+- 125 species folders, 3,571 files moved (same disk: renames), 436 web pages to `.trash`, 146 empty
+  folders removed. No numbered folder left; `022 lepidoptera` + `lepidoptera` are one folder now.
+- 5 names changed: 2 genus moves (*Clanga → Aquila pomarina*, *Anisantha → Bromus tectorum*),
+  2 subspecies folded, 1 Latin ending (*Colias crocea → croceus*).
+- Admin check against disk (`admin_rebuild.plan_rebuild`): REPOINT 0, ADD 0, SPECIES 0 — the same
+  75 REMOVE as before (landscape pictures: the check only scans `biota/`).
+- The app's readers load the four CSVs without a broken link; totals unchanged (1,435 pictures).
+- Website rebuilt (svMasterRebuildWeb, local): 432 pages, **0 broken links** in 13,070 — after the
+  full-size JPGs were copied by hand (below).
+
+**What a real conversion still needs**
+1. **Order on screen = alphabetical now.** The Biota Browser sorts children by path
+   (`gui/biota_source.py:89`), the website by `sorted(Leaves)` (`engine/websupport.py:863, 1490`);
+   with the numbers gone both are A–Z. Code step: sort by Sequence.
+2. **Sequence is dropped** the first time the app writes the species list
+   (`speciesclassification._csvRow` knows six columns).
+3. **Full-size pictures are not republished.** A rebuild republishes HTML and small JPGs only; the big
+   JPGs reach the site only in the run that adds them. A conversion needs a "republish all pictures"
+   step (for the test: copied by hand into the local site).
+4. **The old numbered pages stay on the website** (120 folders locally): publishing never deletes.
+   Needs a cleanup step — and redirects on a real server.
+5. **Old scientific names in pictures** (XMP) don't resolve until aliases are in the lookups.
+6. Trips and albums that point into the master: not converted (low priority, automatic later).
+
+**Found on the way, not ch.6**
+- `data_pictures.csv` Kingdom…Family are filled one level too high (`projectlib.py:973`: Family holds
+  the order, Kingdom holds "biota"). Only `trip_registry.py` reads them. The converter writes them the
+  same way, on purpose.
+- The admin check reports landscape pictures as REMOVE (it doesn't scan `topics/`).

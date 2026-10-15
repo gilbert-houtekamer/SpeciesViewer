@@ -26,6 +26,7 @@ Rules: docs/plans/taxonomy_order_design.md, "Step 2a".
 import argparse
 import csv
 import json
+import os
 import re
 import sys
 import urllib.parse
@@ -62,8 +63,12 @@ def real_family(name):
 
 
 def similar(a, b):
-    """Same word give or take a Latin ending or a spelling (rueppelli/rueppellii)."""
-    return SequenceMatcher(None, a, b).ratio() >= 0.8
+    """Same word give or take a Latin ending or a spelling (rueppelli/rueppellii,
+    crocea/croceus): close overall, or one stem of 4+ letters with a short ending."""
+    if SequenceMatcher(None, a, b).ratio() >= 0.8:
+        return True
+    stem = len(os.path.commonprefix([a, b]))
+    return stem >= 4 and len(a) - stem <= 3 and len(b) - stem <= 3   # not damocles/damone
 
 
 def change_kind(old, new):
