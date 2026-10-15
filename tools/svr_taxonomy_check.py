@@ -61,7 +61,7 @@ def today_pictured(master, klass):
         while name in sc and name not in seen:
             seen.add(name)
             if sc[name]["Level"] == "Level.CLASS":
-                return name == klass
+                return klass == "all" or name == klass
             name = sc[name]["Up"]
         return False
 
@@ -78,7 +78,7 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--tables", required=True, help="folder with taxa.csv and names.csv")
     ap.add_argument("--master", required=True)
-    ap.add_argument("--klass", default="aves", help="class the tables cover (default aves)")
+    ap.add_argument("--klass", default="all", help="class the tables cover (default: all)")
     a = ap.parse_args()
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     folder = Path(a.tables)
@@ -142,7 +142,7 @@ def main():
         for k in kids:
             seqs[k["_seq"]].append(k["ScientificName"])
         ties += [f"under {p or '(top)'}: {', '.join(v)} share {s:g}" for s, v in seqs.items() if len(v) > 1]
-        if p in tax and "_seq" in tax[p]:
+        if p in tax and "_seq" in tax[p] and tax[p]["SequenceSource"] == "lowest member":
             before_parent += [f"{k['ScientificName']} ({k['_seq']:g}) sorts before its parent {p} "
                               f"({tax[p]['_seq']:g})" for k in kids if k["_seq"] < tax[p]["_seq"]]
     rep.check("a parent sorts at its lowest child (no child sorts before it)", before_parent)
@@ -150,7 +150,7 @@ def main():
     rep.check("sort numbers by a guess, for review",
               [f"{n}: {t['SequenceSource']}" for n, t in tax.items()
                if t["Rank"] == "species" and int(t["Pictures"] or 0) > 0 and
-               t["SequenceSource"] not in ("AviList", "AviList (today's name)")], "WARN")
+               any(w in t["SequenceSource"] for w in ("REVIEW", "after", "none"))], "WARN")
 
     # ---- the aliases
     species = {n for n, t in tax.items() if t["Rank"] == "species"}

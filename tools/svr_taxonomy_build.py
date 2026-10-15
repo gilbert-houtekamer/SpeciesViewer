@@ -1,12 +1,21 @@
-"""Ch.6 step 2a — build the new bird taxonomy tables beside today's list.
+"""Ch.6 step 2 — build the new taxonomy tables beside today's list.
 
 Read-only on the master. Writes only into --out:
-  taxa.csv      one row per taxon (kingdom -> species), GBIF name + placement,
-                AviList sort number, Dutch/English names as lists (first = shown)
+  taxa.csv      one row per taxon (kingdom -> species): GBIF name + placement,
+                a sort number among its siblings + where it came from,
+                Dutch/English names as lists (first = shown)
   names.csv     alias table: name -> scientific name it points to, and what kind
   report.md     what would change against today's list, pictured species first
-  preview.txt   the bird tree in the new order
+  preview.txt   the whole tree in the new order
   gbif_cache.json  GBIF species-match answers, so a re-run makes no calls
+
+Sort numbers (compared only among siblings):
+  birds         AviList Sequence; orders and families at their lowest member
+  hand table    kingdoms, phyla, classes and non-bird orders:
+                tools/taxonomy_hand_order.csv (edit it; unknown names come after,
+                alphabetically)
+  book order    odonata / butterflies: today's family and subfamily numbers
+  otherwise     alphabetical
 
 Rules: docs/plans/taxonomy_order_design.md, "Step 2a".
 
@@ -25,13 +34,29 @@ from concurrent.futures import ThreadPoolExecutor
 from difflib import SequenceMatcher
 from pathlib import Path
 
-PREFIX_RE = re.compile(r"^\d+\s+")
+PREFIX_RE = re.compile(r"^(\d+)\s+")
 RANKS = ["kingdom", "phylum", "class", "order", "family", "species"]
+HIGHER = RANKS[:-1]
 SAME_STATUS = {"ACCEPTED", "DOUBTFUL"}
+HAND_TABLE = Path(__file__).with_name("taxonomy_hand_order.csv")
+AFTER_HAND = 1000          # unknown siblings sort after the hand-placed ones
 
 
 def strip(name):
     return PREFIX_RE.sub("", name or "").strip()
+
+
+def legacy_number(name):
+    """The sort number today's list put in front of a name, or None."""
+    m = PREFIX_RE.match(name or "")
+    return int(m.group(1)) if m else None
+
+
+def real_family(name):
+    """'zygoptera lestidae' / 'nymphalidae satyrinae' -> the family word in it."""
+    words = strip(name).split()
+    fam = [w for w in words if w.endswith(("idae", "aceae"))]
+    return fam[0] if fam else (words[-1] if words else "")
 
 
 def similar(a, b):
@@ -76,26 +101,36 @@ def load_today(master):
             name = sc[name]["Up"]
         return out
 
-    birds = []
+    species = []
     for name, r in sc.items():
         if r["Level"] != "Level.SPECIES":
             continue
         ch = chain(name)
-        if ch.get("class") != "aves":
+        if "kingdom" not in ch:          # landscapes and other topics
             continue
-        birds.append({
-            "name": name,
-            "nl": r["DutchName"], "en": r["EnglishName"],
-            "order": strip(ch.get("order")), "family": strip(ch.get("family")),
-            "pics": pics.get(name, 0),
+        fam_raw = ch.get("family", "")
+        species.append({
+            "name": name, "nl": r["DutchName"], "en": r["EnglishName"],
+            "kingdom": strip(ch.get("kingdom")), "phylum": strip(ch.get("phylum")),
+            "class": strip(ch.get("class")), "order": strip(ch.get("order")),
+            "family": real_family(fam_raw), "family_raw": strip(fam_raw),
+            "book": legacy_number(fam_raw), "pics": pics.get(name, 0),
         })
-    # names of higher taxa, keyed by the name without its number
+    # names of higher taxa, keyed by the name without its number; a fused
+    # 'zygoptera lestidae' also names the family 'lestidae'
     higher = {}
     for name, r in sc.items():
         if r["Level"] in ("Level.KINGDOM", "Level.PHYLUM", "Level.CLASS",
                           "Level.ORDER", "Level.FAMILY"):
             higher.setdefault(strip(name), (r["DutchName"], r["EnglishName"]))
-    return birds, higher
+            if r["Level"] == "Level.FAMILY" and strip(name).split()[-1] == real_family(name):
+                higher.setdefault(real_family(name), (r["DutchName"], r["EnglishName"]))
+    return species, higher
+
+
+def load_hand_table(path=HAND_TABLE):
+    return {(r["Rank"], r["Parent"], r["Name"]): (float(r["Sequence"]), r["Source"])
+            for r in read_csv(path)}
 
 
 # ---------------------------------------------------------------- AviList
@@ -127,29 +162,32 @@ def load_avilist(path):
 
 
 # ---------------------------------------------------------------- GBIF
-def gbif_match(names, cache_path):
+def gbif_match(species, cache_path):
     cache = json.loads(cache_path.read_text(encoding="utf-8")) if cache_path.exists() else {}
-    todo = [n for n in names if n not in cache]
+    todo = [s for s in species if s["name"] not in cache]
 
-    def one(name):
-        q = urllib.parse.urlencode({"name": name, "kingdom": "Animalia", "class": "Aves",
-                                    "strict": "true"})
+    def one(s):
+        params = {"name": s["name"], "kingdom": s["kingdom"].capitalize(), "strict": "true"}
+        if s["class"] == "aves":
+            params["class"] = "Aves"
+        q = urllib.parse.urlencode(params)
         for _ in range(3):
             try:
                 with urllib.request.urlopen("https://api.gbif.org/v1/species/match?" + q,
                                             timeout=30) as resp:
-                    return name, json.load(resp)
+                    return s["name"], json.load(resp)
             except Exception:
                 pass
-        return name, None
+        return s["name"], None
 
     if todo:
-        print(f"GBIF: {len(todo)} lookups ({len(names) - len(todo)} cached)…", flush=True)
+        print(f"GBIF: {len(todo)} lookups ({len(species) - len(todo)} cached)…", flush=True)
         with ThreadPoolExecutor(8) as ex:
             for i, (name, d) in enumerate(ex.map(one, todo), 1):
                 if d is not None:
                     cache[name] = d
-                if i % 1000 == 0:
+                if i % 500 == 0:          # save as we go: an interrupted run resumes
+                    cache_path.write_text(json.dumps(cache), encoding="utf-8")
                     print(f"  {i}/{len(todo)}", flush=True)
         cache_path.write_text(json.dumps(cache), encoding="utf-8")
     return cache
@@ -162,125 +200,178 @@ def gbif_view(d):
     return {
         "species": (d.get("species") or "").lower(),
         "status": d.get("status"),
-        "kingdom": (d.get("kingdom") or "").lower(), "phylum": (d.get("phylum") or "").lower(),
-        "class": (d.get("class") or "").lower(), "order": (d.get("order") or "").lower(),
-        "family": (d.get("family") or "").lower(), "genus": (d.get("genus") or "").lower(),
+        **{k: (d.get(k) or "").lower() for k in ("kingdom", "phylum", "class", "order",
+                                                 "family", "genus")},
         "key": d.get("speciesKey") or d.get("usageKey"),
     }
 
 
+def chain_of(place):
+    """[(rank, name)] from kingdom down, skipping empty levels and a name that
+    repeats a higher one (GBIF: class Crocodylia, order Crocodylia)."""
+    out, seen = [], set()
+    for rank in HIGHER:
+        name = place.get(rank, "")
+        if name and name not in seen:
+            out.append((rank, name))
+            seen.add(name)
+    return out
+
+
 # ---------------------------------------------------------------- build
-def build(birds, higher, avi, gbif):
+def build(species, higher, avi, gbif, hand):
     av_species, av_genus, av_family_en, av_epithet = avi
     rows = {}          # new species name -> row
     names = []         # alias rows
     changes = []       # per old species: what happens to it
-    def unchanged(b):
-        g = gbif_view(gbif.get(b["name"]))
-        return not g or g["species"] == b["name"]
 
-    def new_name(b):
-        g = gbif_view(gbif.get(b["name"]))
-        return g["species"] if g and g["species"] else b["name"]
+    def new_name(s):
+        g = gbif_view(gbif.get(s["name"]))
+        return g["species"] if g and g["species"] else s["name"]
 
     # species that exist in the new table under their own name: an epithet guess
     # must never land on one of them (Oxyura ferruginea is not Tadorna ferruginea)
-    taken = {new_name(b) for b in birds}
+    taken = {new_name(s) for s in species}
 
     # a species GBIF leaves alone owns its row; one merging into it comes second
-    for b in sorted(birds, key=lambda b: not unchanged(b)):
-        g = gbif_view(gbif.get(b["name"]))
+    for s in sorted(species, key=lambda s: new_name(s) != s["name"]):
+        g = gbif_view(gbif.get(s["name"]))
+        today = {k: s[k] for k in HIGHER}
         if g and g["species"]:
             new = g["species"]
-            kind = change_kind(b["name"], new)
-            place = {k: g[k] or "" for k in ("kingdom", "phylum", "class", "order", "family")}
-            for k, today in (("order", b["order"]), ("family", b["family"])):
-                if not place[k]:
-                    place[k] = today        # GBIF leaves it empty: today's value stays
+            kind = change_kind(s["name"], new)
+            place = {k: g[k] for k in HIGHER}
+            if not place["order"] and not place["family"]:
+                place["order"], place["family"] = today["order"], today["family"]
+            elif not place["family"]:
+                place["family"] = today["family"]   # GBIF leaves it empty: today's stays
             genus = g["genus"]
         else:
-            new, kind = b["name"], "not in GBIF"
-            place = {"kingdom": "animalia", "phylum": "chordata", "class": "aves",
-                     "order": b["order"], "family": b["family"]}
-            genus = b["name"].split()[0]
+            new, kind, place, genus = s["name"], "not in GBIF", today, s["name"].split()[0]
+        bird = place["class"] == "aves"
 
-        # sort number
-        if new in av_species:
-            seq, src = av_species[new]["seq"], "AviList"
-        elif b["name"] in av_species:
-            seq, src = av_species[b["name"]]["seq"], "AviList (today's name)"
-        else:
-            cands = av_epithet.get((new.split()[-1], place["family"]), []) or \
-                    av_epithet.get((b["name"].split()[-1], place["family"]), [])
-            cands = [c for c in cands if c["name"] not in taken]
-            if len(cands) == 1:
-                seq, src = cands[0]["seq"], "AviList epithet in family — REVIEW"
-            elif genus in av_genus:
-                seq, src = av_genus[genus] + 0.5, "after its genus"
+        # sort number for a bird; other species are numbered per family below
+        seq, src, av = None, "", None
+        if bird:
+            if new in av_species:
+                seq, src = av_species[new]["seq"], "AviList"
+            elif s["name"] in av_species:
+                seq, src = av_species[s["name"]]["seq"], "AviList (today's name)"
             else:
-                seq, src = None, "none — end of family"
-        av = av_species.get(new) or av_species.get(b["name"])
+                cands = av_epithet.get((new.split()[-1], place["family"]), []) or \
+                        av_epithet.get((s["name"].split()[-1], place["family"]), [])
+                cands = [c for c in cands if c["name"] not in taken]
+                if len(cands) == 1:
+                    seq, src = cands[0]["seq"], "AviList epithet in family — REVIEW"
+                elif genus in av_genus:
+                    seq, src = av_genus[genus] + 0.5, "after its genus"
+                else:
+                    src = "none — end of family"
+            av = av_species.get(new) or av_species.get(s["name"])
 
-        changes.append({**b, "new": new, "kind": kind, "new_order": place["order"],
-                        "new_family": place["family"], "seq_src": src})
+        changes.append({**s, "new": new, "kind": kind, "new_order": place["order"],
+                        "new_family": place["family"], "new_class": place["class"],
+                        "seq_src": src})
 
         if new in rows:                     # a second of today's species lands here
             row = rows[new]
-            row["merged_from"].append(b["name"])
-            k = kind + (" — REVIEW" if b["pics"] else "")
-            names.append([b["name"], "sci", new, k, "GBIF match"])
+            row["merged_from"].append(s["name"])
+            k = kind + (" — REVIEW" if s["pics"] else "")
+            names.append([s["name"], "sci", new, k, "GBIF match"])
             for lang in ("nl", "en"):
-                if b[lang] and b[lang] not in row[lang]:
-                    row[lang].append(b[lang])
-                    names.append([b[lang], lang, new, k, "today's list"])
-            row["pics"] += b["pics"]
+                if s[lang] and s[lang] not in row[lang]:
+                    row[lang].append(s[lang])
+                    names.append([s[lang], lang, new, k, "today's list"])
+            row["pics"] += s["pics"]
+            if s["book"] is not None and (row["book"] is None or s["book"] < row["book"]):
+                row["book"] = s["book"]
             continue
 
-        en = [b["en"]] if b["en"] else []
+        en = [s["en"]] if s["en"] else []
         if av and av["en"] and av["en"] not in en:
             en.append(av["en"])
             names.append([av["en"], "en", new, "other English name", "AviList"])
-        rows[new] = {"name": new, **place, "seq": seq, "seq_src": src,
-                     "nl": [b["nl"]] if b["nl"] else [], "en": en,
+        rows[new] = {"name": new, "chain": chain_of(place), "bird": bird,
+                     "seq": seq, "seq_src": src, "book": None if bird else s["book"],
+                     "book_family": s["family"],
+                     "nl": [s["nl"]] if s["nl"] else [], "en": en,
                      "avibase": av["avibase"] if av else "", "gbif_key": g["key"] if g else "",
-                     "pics": b["pics"], "merged_from": []}
-        if new != b["name"]:
-            names.append([b["name"], "sci", new, kind, "GBIF match"])
+                     "pics": s["pics"], "merged_from": []}
+        if new != s["name"]:
+            names.append([s["name"], "sci", new, kind, "GBIF match"])
 
-    # unsorted species: end of their family
-    for row in rows.values():
-        if row["seq"] is None:
-            fam = [r["seq"] for r in rows.values() if r["family"] == row["family"] and r["seq"] is not None]
-            row["seq"] = (max(fam) + 0.9) if fam else 999999.0
-
-    # ties (several species after the same genus): alphabetical, a thousandth apart
-    tied = defaultdict(list)
-    for row in rows.values():
-        tied[(row["family"], row["seq"])].append(row)
-    for group in tied.values():
-        if len(group) > 1:
-            for i, row in enumerate(sorted(group, key=lambda r: r["name"])):
-                row["seq"] += i * 0.001
-
-    # higher taxa: sort at their lowest member
-    taxa = []
-    for rank in ("kingdom", "phylum", "class", "order", "family"):
-        parent_rank = RANKS[RANKS.index(rank) - 1] if rank != "kingdom" else None
-        members = defaultdict(list)
-        parents = {}
-        for r in rows.values():
-            members[r[rank]].append(r["seq"])
-            parents[r[rank]] = r[parent_rank] if parent_rank else ""
-        for name, seqs in members.items():
-            nl, en = higher.get(name, ("", ""))
-            if not en and rank == "family":
-                en = av_family_en.get(name, "")
-            taxa.append({"rank": rank, "name": name, "parent": parents[name],
-                         "seq": min(seqs), "seq_src": "lowest member",
-                         "nl": [nl] if nl else [], "en": [en] if en else [],
-                         "avibase": "", "gbif_key": "", "pics": ""})
     for r in rows.values():
-        taxa.append({"rank": "species", "parent": r["family"], **r})
+        r["parent"] = r["chain"][-1][1] if r["chain"] else ""
+
+    # ---- species order inside each family
+    by_family = defaultdict(list)
+    for r in rows.values():
+        by_family[r["parent"]].append(r)
+    for fam, members in by_family.items():
+        birds = [r for r in members if r["bird"]]
+        if birds:
+            known = [r["seq"] for r in birds if r["seq"] is not None]
+            for r in birds:
+                if r["seq"] is None:
+                    r["seq"] = (max(known) + 0.9) if known else 999999.0
+            tied = defaultdict(list)       # several after the same genus: alphabetical
+            for r in birds:
+                tied[r["seq"]].append(r)
+            for group in tied.values():
+                if len(group) > 1:
+                    for i, r in enumerate(sorted(group, key=lambda r: r["name"])):
+                        r["seq"] += i * 0.001
+        others = sorted((r for r in members if not r["bird"]),
+                        key=lambda r: (r["book"] if r["book"] is not None else 0, r["name"]))
+        for i, r in enumerate(others, 1):
+            r["seq"] = float(i)
+            r["seq_src"] = "today's book order, then alphabetical" if r["book"] is not None \
+                else "alphabetical"
+
+    # ---- higher taxa
+    taxa_hi = {}       # name -> {rank, parent, members, books}
+    for r in rows.values():
+        parent = ""
+        for rank, name in r["chain"]:
+            t = taxa_hi.setdefault(name, {"rank": rank, "parent": parent, "seqs": [],
+                                          "books": [], "bird": False})
+            t["seqs"].append(r["seq"])
+            t["bird"] |= r["bird"]
+            # a family takes a book number only from species that were in it
+            # before — not from one GBIF moved in from another family
+            if r["book"] is not None and (rank != "family" or name == r["book_family"]):
+                t["books"].append(r["book"])
+            parent = name
+    siblings = defaultdict(list)
+    for name, t in taxa_hi.items():
+        siblings[t["parent"]].append(name)
+    for parent, kids in siblings.items():
+        later = []
+        for name in kids:
+            t = taxa_hi[name]
+            if t["bird"] and t["rank"] in ("order", "family"):
+                t["seq"], t["src"] = min(t["seqs"]), "lowest member"
+            elif (t["rank"], parent, name) in hand:
+                t["seq"], t["src"] = hand[(t["rank"], parent, name)]
+            elif t["rank"] == "family" and t["books"]:
+                t["seq"], t["src"] = float(min(t["books"])), "today's book order"
+            else:
+                later.append(name)
+        for i, name in enumerate(sorted(later), 1):
+            taxa_hi[name]["seq"] = AFTER_HAND + i
+            taxa_hi[name]["src"] = "alphabetical"
+
+    taxa = []
+    for name, t in taxa_hi.items():
+        nl, en = higher.get(name, ("", ""))
+        if not en and t["rank"] == "family":
+            en = av_family_en.get(name, "")
+        taxa.append({"rank": t["rank"], "name": name, "parent": t["parent"],
+                     "seq": t["seq"], "seq_src": t["src"],
+                     "nl": [nl] if nl else [], "en": [en] if en else [],
+                     "avibase": "", "gbif_key": "", "pics": ""})
+    for r in rows.values():
+        taxa.append({"rank": "species", **r})
     return taxa, rows, names, changes
 
 
@@ -290,8 +381,8 @@ def write_outputs(out, taxa, rows, names, changes, av_species):
         w = csv.writer(f, delimiter=";")
         w.writerow(["Rank", "ScientificName", "Parent", "Sequence", "SequenceSource",
                     "DutchNames", "EnglishNames", "AvibaseID", "GBIFKey", "Pictures"])
-        for t in sorted(taxa, key=lambda t: (RANKS.index(t["rank"]), t["seq"])):
-            w.writerow([t["rank"], t["name"], t["parent"], round(t['seq'], 4), t["seq_src"],
+        for t in sorted(taxa, key=lambda t: (RANKS.index(t["rank"]), t["parent"], t["seq"])):
+            w.writerow([t["rank"], t["name"], t["parent"], round(t["seq"], 4), t["seq_src"],
                         t["nl"], t["en"], t["avibase"], t["gbif_key"], t["pics"]])
     with open(out / "names.csv", "w", encoding="utf-8", newline="") as f:
         w = csv.writer(f, delimiter=";")
@@ -306,7 +397,7 @@ def write_outputs(out, taxa, rows, names, changes, av_species):
 
     def walk(parent, depth):
         for t in sorted(by_parent.get(parent, []), key=lambda t: t["seq"]):
-            label = t["en"][0] if t["en"] else ""
+            label = t["en"][0] if t["en"] else (t["nl"][0] if t["nl"] else "")
             pics = f"  [{t['pics']}]" if t["rank"] == "species" and t["pics"] else ""
             lines.append(f"{'  ' * depth}{t['name']}  — {label}{pics}")
             if t["rank"] != "species":
@@ -317,7 +408,6 @@ def write_outputs(out, taxa, rows, names, changes, av_species):
     # report
     pictured = [c for c in changes if c["pics"]]
     kinds_all, kinds_pic = Counter(c["kind"] for c in changes), Counter(c["kind"] for c in pictured)
-    src_pic = Counter(c["seq_src"] for c in pictured)
     fam_moves = [c for c in pictured if c["new_family"] != c["family"]]
     spelled = [c for c in fam_moves if similar(c["family"], c["new_family"])
                and (c["new_order"] == c["order"] or similar(c["order"], c["new_order"]))]
@@ -330,15 +420,21 @@ def write_outputs(out, taxa, rows, names, changes, av_species):
     two_into_one = [cs for cs in landing.values() if len(cs) > 1]
     missing = sorted(set(av_species) - {c["new"] for c in changes} - {c["name"] for c in changes})
 
-    L = ["# Step 2a — new bird tables against today's list", "",
-         f"Today's list: {len(changes)} bird species, {len(pictured)} with pictures. "
+    L = ["# Step 2 — new taxonomy tables against today's list", "",
+         f"Today's list: {len(changes)} species, {len(pictured)} with pictures. "
          f"New table: {len(rows)} species.", "",
-         "| what happens | all | with pictures |", "|---|---:|---:|"]
+         "| class | species | pictured | renamed | merged | not in GBIF |",
+         "|---|---:|---:|---:|---:|---:|"]
+    per_class = defaultdict(list)
+    for c in changes:
+        per_class[c["class"]].append(c)
+    for k, cs in sorted(per_class.items(), key=lambda kv: -len(kv[1])):
+        kc = Counter(c["kind"] for c in cs)
+        L.append(f"| {k} | {len(cs)} | {sum(1 for c in cs if c['pics'])} | "
+                 f"{kc['renamed'] + kc['spelling']} | {kc['merged']} | {kc['not in GBIF']} |")
+    L += ["", "| what happens | all | with pictures |", "|---|---:|---:|"]
     for k in ("same", "spelling", "renamed", "subspecies → species", "merged", "not in GBIF"):
         L.append(f"| {k} | {kinds_all[k]} | {kinds_pic[k]} |")
-    L += ["", "## Where the sort number comes from (pictured species)", "",
-          "| source | species |", "|---|---:|"]
-    L += [f"| {k} | {v} |" for k, v in src_pic.most_common()]
 
     def table(title, items, cols):
         nonlocal L
@@ -347,12 +443,13 @@ def write_outputs(out, taxa, rows, names, changes, av_species):
         for c in items:
             L.append("| " + " | ".join(str(fn(c)) for _, fn in cols) + " |")
 
+    name_of = lambda c: c["en"] or c["nl"]
     table("Two of your pictured species become one — ask the user", two_into_one,
           [("GBIF species", lambda cs: cs[0]["new"]),
-           ("today", lambda cs: ", ".join(f"{c['name']} ({c['en']}, {c['pics']})" for c in cs))])
+           ("today", lambda cs: ", ".join(f"{c['name']} ({name_of(c)}, {c['pics']})" for c in cs))])
     table("Pictured species merged into another — ask the user",
           sorted([c for c in pictured if c["kind"] == "merged"], key=lambda c: -c["pics"]),
-          [("today", lambda c: c["name"]), ("English", lambda c: c["en"]), ("GBIF", lambda c: c["new"]),
+          [("today", lambda c: c["name"]), ("name", name_of), ("GBIF", lambda c: c["new"]),
            ("pictures", lambda c: c["pics"])])
     table("Pictured species with today's subspecies folded into the species",
           [c for c in pictured if c["kind"] == "subspecies → species"],
@@ -376,12 +473,14 @@ def write_outputs(out, taxa, rows, names, changes, av_species):
     L += [f"| {a} → {b} | {n} |" for (a, b), n in moves.most_common()]
     table("Pictured species not in GBIF — keep today's placement",
           [c for c in pictured if c["kind"] == "not in GBIF"],
-          [("species", lambda c: c["name"]), ("family", lambda c: c["family"]), ("pictures", lambda c: c["pics"])])
-    table("Pictured species sorted by a guess — review",
-          [c for c in pictured if "REVIEW" in c["seq_src"] or "after" in c["seq_src"] or "none" in c["seq_src"]],
+          [("species", lambda c: c["name"]), ("class", lambda c: c["class"]),
+           ("family", lambda c: c["family"]), ("pictures", lambda c: c["pics"])])
+    table("Pictured birds sorted by a guess — review",
+          [c for c in pictured if "REVIEW" in c["seq_src"] or "after" in c["seq_src"]
+           or "none" in c["seq_src"]],
           [("species", lambda c: c["new"]), ("how", lambda c: c["seq_src"])])
     L += ["", f"## AviList species not in today's list: {len(missing)}", "",
-          "(Neither under today's name nor under GBIF's — what a full list would add.)", ""]
+          "(Neither under today's name nor under GBIF's — what a full bird list would add.)", ""]
     (out / "report.md").write_text("\n".join(L) + "\n", encoding="utf-8")
 
 
@@ -391,15 +490,16 @@ def main():
     ap.add_argument("--avilist", required=True, help="AviList short .xlsx (or a .csv of it)")
     ap.add_argument("--out", required=True)
     a = ap.parse_args()
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     out = Path(a.out)
     out.mkdir(parents=True, exist_ok=True)
 
-    birds, higher = load_today(a.master)
+    species, higher = load_today(a.master)
     avi = load_avilist(a.avilist)
-    gbif = gbif_match([b["name"] for b in birds], out / "gbif_cache.json")
-    taxa, rows, names, changes = build(birds, higher, avi, gbif)
+    gbif = gbif_match(species, out / "gbif_cache.json")
+    taxa, rows, names, changes = build(species, higher, avi, gbif, load_hand_table())
     write_outputs(out, taxa, rows, names, changes, avi[0])
-    print(f"{len(birds)} birds today -> {len(rows)} species, {len(taxa)} taxa, "
+    print(f"{len(species)} species today -> {len(rows)} species, {len(taxa)} taxa, "
           f"{len(names)} alias rows. Written to {out}")
 
 

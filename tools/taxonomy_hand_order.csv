@@ -1,0 +1,157 @@
+Rank;Parent;Name;Sequence;Source
+kingdom;;animalia;1;Observation.org group order
+kingdom;;plantae;2;Observation.org group order
+kingdom;;fungi;3;Observation.org group order
+phylum;animalia;chordata;1;Observation.org group order
+phylum;animalia;arthropoda;2;Observation.org group order
+phylum;animalia;mollusca;3;Observation.org group order
+phylum;plantae;tracheophyta;1;Observation.org group order
+phylum;plantae;bryophyta;2;Observation.org group order
+phylum;plantae;marchantiophyta;3;Observation.org group order
+phylum;fungi;basidiomycota;1;hand
+phylum;fungi;ascomycota;2;hand
+class;chordata;aves;1;Observation.org group order
+class;chordata;mammalia;2;Observation.org group order
+class;chordata;squamata;3;Observation.org group order
+class;chordata;testudines;4;Observation.org group order
+class;chordata;crocodylia;5;Observation.org group order
+class;chordata;amphibia;6;Observation.org group order
+class;chordata;actinopterygii;7;Observation.org group order
+class;arthropoda;insecta;1;Observation.org group order
+class;arthropoda;arachnida;2;Observation.org group order
+class;arthropoda;chilopoda;3;Observation.org group order
+class;arthropoda;diplopoda;4;Observation.org group order
+class;arthropoda;malacostraca;5;Observation.org group order
+class;mollusca;gastropoda;1;Observation.org group order
+class;mollusca;bivalvia;2;Observation.org group order
+class;mollusca;cephalopoda;3;Observation.org group order
+class;tracheophyta;magnoliopsida;1;hand
+class;tracheophyta;liliopsida;2;hand
+class;tracheophyta;pinopsida;3;hand
+class;tracheophyta;polypodiopsida;4;hand
+class;tracheophyta;lycopodiopsida;5;hand
+class;basidiomycota;agaricomycetes;1;hand
+class;basidiomycota;tremellomycetes;2;hand
+class;ascomycota;lecanoromycetes;1;hand
+class;ascomycota;sordariomycetes;2;hand
+order;insecta;archaeognatha;1;insect orders, phylogenetic (Misof et al. 2014)
+order;insecta;zygentoma;2;insect orders, phylogenetic (Misof et al. 2014)
+order;insecta;ephemeroptera;3;insect orders, phylogenetic (Misof et al. 2014)
+order;insecta;odonata;4;insect orders, phylogenetic (Misof et al. 2014)
+order;insecta;plecoptera;5;insect orders, phylogenetic (Misof et al. 2014)
+order;insecta;dermaptera;6;insect orders, phylogenetic (Misof et al. 2014)
+order;insecta;orthoptera;7;insect orders, phylogenetic (Misof et al. 2014)
+order;insecta;phasmida;8;insect orders, phylogenetic (Misof et al. 2014)
+order;insecta;phasmatodea;9;insect orders, phylogenetic (Misof et al. 2014)
+order;insecta;embioptera;10;insect orders, phylogenetic (Misof et al. 2014)
+order;insecta;zoraptera;11;insect orders, phylogenetic (Misof et al. 2014)
+order;insecta;grylloblattodea;12;insect orders, phylogenetic (Misof et al. 2014)
+order;insecta;mantophasmatodea;13;insect orders, phylogenetic (Misof et al. 2014)
+order;insecta;mantodea;14;insect orders, phylogenetic (Misof et al. 2014)
+order;insecta;blattodea;15;insect orders, phylogenetic (Misof et al. 2014)
+order;insecta;psocodea;16;insect orders, phylogenetic (Misof et al. 2014)
+order;insecta;thysanoptera;17;insect orders, phylogenetic (Misof et al. 2014)
+order;insecta;hemiptera;18;insect orders, phylogenetic (Misof et al. 2014)
+order;insecta;hymenoptera;19;insect orders, phylogenetic (Misof et al. 2014)
+order;insecta;coleoptera;20;insect orders, phylogenetic (Misof et al. 2014)
+order;insecta;strepsiptera;21;insect orders, phylogenetic (Misof et al. 2014)
+order;insecta;raphidioptera;22;insect orders, phylogenetic (Misof et al. 2014)
+order;insecta;megaloptera;23;insect orders, phylogenetic (Misof et al. 2014)
+order;insecta;neuroptera;24;insect orders, phylogenetic (Misof et al. 2014)
+order;insecta;trichoptera;25;insect orders, phylogenetic (Misof et al. 2014)
+order;insecta;lepidoptera;26;insect orders, phylogenetic (Misof et al. 2014)
+order;insecta;siphonaptera;27;insect orders, phylogenetic (Misof et al. 2014)
+order;insecta;mecoptera;28;insect orders, phylogenetic (Misof et al. 2014)
+order;insecta;diptera;29;insect orders, phylogenetic (Misof et al. 2014)
+order;mammalia;monotremata;1;mammal orders (MSW3 / MDD sequence)
+order;mammalia;didelphimorphia;2;mammal orders (MSW3 / MDD sequence)
+order;mammalia;paucituberculata;3;mammal orders (MSW3 / MDD sequence)
+order;mammalia;microbiotheria;4;mammal orders (MSW3 / MDD sequence)
+order;mammalia;dasyuromorphia;5;mammal orders (MSW3 / MDD sequence)
+order;mammalia;notoryctemorphia;6;mammal orders (MSW3 / MDD sequence)
+order;mammalia;peramelemorphia;7;mammal orders (MSW3 / MDD sequence)
+order;mammalia;diprotodontia;8;mammal orders (MSW3 / MDD sequence)
+order;mammalia;afrosoricida;9;mammal orders (MSW3 / MDD sequence)
+order;mammalia;macroscelidea;10;mammal orders (MSW3 / MDD sequence)
+order;mammalia;tubulidentata;11;mammal orders (MSW3 / MDD sequence)
+order;mammalia;hyracoidea;12;mammal orders (MSW3 / MDD sequence)
+order;mammalia;proboscidea;13;mammal orders (MSW3 / MDD sequence)
+order;mammalia;sirenia;14;mammal orders (MSW3 / MDD sequence)
+order;mammalia;cingulata;15;mammal orders (MSW3 / MDD sequence)
+order;mammalia;pilosa;16;mammal orders (MSW3 / MDD sequence)
+order;mammalia;scandentia;17;mammal orders (MSW3 / MDD sequence)
+order;mammalia;dermoptera;18;mammal orders (MSW3 / MDD sequence)
+order;mammalia;primates;19;mammal orders (MSW3 / MDD sequence)
+order;mammalia;lagomorpha;20;mammal orders (MSW3 / MDD sequence)
+order;mammalia;rodentia;21;mammal orders (MSW3 / MDD sequence)
+order;mammalia;eulipotyphla;22;mammal orders (MSW3 / MDD sequence)
+order;mammalia;chiroptera;23;mammal orders (MSW3 / MDD sequence)
+order;mammalia;pholidota;24;mammal orders (MSW3 / MDD sequence)
+order;mammalia;carnivora;25;mammal orders (MSW3 / MDD sequence)
+order;mammalia;perissodactyla;26;mammal orders (MSW3 / MDD sequence)
+order;mammalia;artiodactyla;27;mammal orders (MSW3 / MDD sequence)
+order;mammalia;cetacea;28;mammal orders (MSW3 / MDD sequence)
+order;magnoliopsida;amborellales;1;APG IV
+order;magnoliopsida;nymphaeales;2;APG IV
+order;magnoliopsida;austrobaileyales;3;APG IV
+order;magnoliopsida;chloranthales;4;APG IV
+order;magnoliopsida;magnoliales;5;APG IV
+order;magnoliopsida;laurales;6;APG IV
+order;magnoliopsida;canellales;7;APG IV
+order;magnoliopsida;piperales;8;APG IV
+order;magnoliopsida;ceratophyllales;9;APG IV
+order;magnoliopsida;ranunculales;10;APG IV
+order;magnoliopsida;proteales;11;APG IV
+order;magnoliopsida;trochodendrales;12;APG IV
+order;magnoliopsida;buxales;13;APG IV
+order;magnoliopsida;gunnerales;14;APG IV
+order;magnoliopsida;dilleniales;15;APG IV
+order;magnoliopsida;saxifragales;16;APG IV
+order;magnoliopsida;vitales;17;APG IV
+order;magnoliopsida;zygophyllales;18;APG IV
+order;magnoliopsida;fabales;19;APG IV
+order;magnoliopsida;rosales;20;APG IV
+order;magnoliopsida;fagales;21;APG IV
+order;magnoliopsida;cucurbitales;22;APG IV
+order;magnoliopsida;celastrales;23;APG IV
+order;magnoliopsida;oxalidales;24;APG IV
+order;magnoliopsida;malpighiales;25;APG IV
+order;magnoliopsida;geraniales;26;APG IV
+order;magnoliopsida;myrtales;27;APG IV
+order;magnoliopsida;crossosomatales;28;APG IV
+order;magnoliopsida;picramniales;29;APG IV
+order;magnoliopsida;huerteales;30;APG IV
+order;magnoliopsida;sapindales;31;APG IV
+order;magnoliopsida;malvales;32;APG IV
+order;magnoliopsida;brassicales;33;APG IV
+order;magnoliopsida;berberidopsidales;34;APG IV
+order;magnoliopsida;santalales;35;APG IV
+order;magnoliopsida;caryophyllales;36;APG IV
+order;magnoliopsida;cornales;37;APG IV
+order;magnoliopsida;ericales;38;APG IV
+order;magnoliopsida;icacinales;39;APG IV
+order;magnoliopsida;metteniusales;40;APG IV
+order;magnoliopsida;garryales;41;APG IV
+order;magnoliopsida;gentianales;42;APG IV
+order;magnoliopsida;boraginales;43;APG IV
+order;magnoliopsida;vahliales;44;APG IV
+order;magnoliopsida;solanales;45;APG IV
+order;magnoliopsida;lamiales;46;APG IV
+order;magnoliopsida;aquifoliales;47;APG IV
+order;magnoliopsida;asterales;48;APG IV
+order;magnoliopsida;escalloniales;49;APG IV
+order;magnoliopsida;bruniales;50;APG IV
+order;magnoliopsida;paracryphiales;51;APG IV
+order;magnoliopsida;dipsacales;52;APG IV
+order;magnoliopsida;apiales;53;APG IV
+order;liliopsida;acorales;1;APG IV
+order;liliopsida;alismatales;2;APG IV
+order;liliopsida;petrosaviales;3;APG IV
+order;liliopsida;dioscoreales;4;APG IV
+order;liliopsida;pandanales;5;APG IV
+order;liliopsida;liliales;6;APG IV
+order;liliopsida;asparagales;7;APG IV
+order;liliopsida;arecales;8;APG IV
+order;liliopsida;commelinales;9;APG IV
+order;liliopsida;zingiberales;10;APG IV
+order;liliopsida;poales;11;APG IV
