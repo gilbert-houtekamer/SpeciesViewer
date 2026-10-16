@@ -114,3 +114,25 @@ To think through before building:
   to "keep". Website/browser: the species page shows its subspecies together.
 - Folder and XMP: does the picture's keyword become the trinomial, or stay the old name and
   resolve through an alias?
+
+---
+
+## Genus moves checked by AviList and MDD (16 Oct)
+
+Reviewing the 83 pictured genus moves showed that GBIF also moves *backwards*: *Melaniparus
+albiventris → Parus*, *Psittacara → Aratinga*. Of the 13 the author kept, the 10 birds are exactly
+among the 16 where **AviList still uses today's name**. The mammal reference, the **Mammal Diversity
+Database** v2.5 (July 2026, 6,904 species, Zenodo 10.5281/zenodo.21654811), keeps today's name for
+all four mammal moves (*Tapirus*, *Tragelaphus*, *Herpestes*, *Nesotragus*).
+
+`svr_taxonomy_build.py --mdd <MDD csv> --reference-check` builds a second list in which a GBIF genus
+move is followed only when AviList (birds) or MDD (mammals) uses the new name too. Side by side:
+`D:/code/taxonomy_trial` (GBIF) and `D:/code/taxonomy_trial_reference` (GBIF checked by AviList and
+MDD). They differ in 161 species, 8 pictured — the 6 birds and 2 mammals the rule keeps that the
+review had marked "follow".
+
+With `--mdd`, mammals also get a species order: MDD's file is sorted by its 27 orders
+(phylogenetic, `phylosort`) and then suborder … family, genus, species, so the row position is the
+sequence — orders in evolutionary order, families grouped. MDD is ahead of GBIF on three of the
+author's mammals (*Canis → Lupulella mesomelas*, *Cephalophus → Cephalophorus natalensis*,
+*Cebus imitator* folded into *C. capucinus*); with GBIF deciding names these stay as they are.

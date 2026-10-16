@@ -27,6 +27,7 @@ PREFIX_RE = re.compile(r"^\d+\s+")
 KEPT = "kept — GBIF synonym"
 KEPT_CHOICE = "kept — your choice"
 MERGED_CHOICE = "merged — your choice"
+KEPT_REF = "kept — reference list"
 
 
 def read_csv(path):
@@ -91,10 +92,18 @@ def compare(today, new, pictured=None):
             "new": [[n, mark(n, "new")] for n in new if keep(n)]}
 
 
+def change_is_genus(c):
+    """A kept row whose GBIF name differs only in the genus (or the ending): a
+    genus move you chose not to follow, not a GBIF synonym."""
+    a, b = c["Today"].split(), (c["GBIFSynonymOf"] or c["New"]).split()
+    return len(a) == 2 and len(b) == 2 and a[0] != b[0] and a[1][:4] == b[1][:4]
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--tables", required=True)
     ap.add_argument("--master", required=True)
+    ap.add_argument("--title", default="Species order review")
     a = ap.parse_args()
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     folder = Path(a.tables)
@@ -114,16 +123,20 @@ def main():
 
     pic = [c for c in changes if int(c["Pictures"] or 0) > 0]
     decisions = {
-        "synonym": [c for c in pic if c["Kind"] in (KEPT, KEPT_CHOICE, MERGED_CHOICE)],
-        "renamed": [c for c in pic if c["Kind"] == "renamed"],
+        "synonym": [c for c in pic if c["Kind"] in (KEPT, MERGED_CHOICE)
+                    or (c["Kind"] == KEPT_CHOICE and not change_is_genus(c))],
+        "renamed": [c for c in pic if c["Kind"] == "renamed" or c["Kind"] == KEPT_REF
+                    or (c["Kind"] == KEPT_CHOICE and change_is_genus(c))],
         "subspecies": [c for c in pic if c["Kind"] == "subspecies → species"],
     }
     for group in decisions.values():
         group.sort(key=lambda c: -int(c["Pictures"]))
-    slim = {k: [{"today": c["Today"], "new": c["New"], "gbif": c["GBIFSynonymOf"] or c["New"],
+    slim = {k: [{"today": c["Today"],
+                 "new": c["GBIFSynonymOf"] if k == "renamed" and c["GBIFSynonymOf"] else c["New"],
+                 "gbif": c["GBIFSynonymOf"] or c["New"],
                  "decided": "follow" if c["Kind"] == MERGED_CHOICE else
-                            "keep" if c["Kind"] == KEPT_CHOICE else "",
-                 "why": c.get("Decision", ""),
+                            "keep" if c["Kind"] in (KEPT_CHOICE, KEPT_REF) else "",
+                 "why": c.get("Decision", ""), "ref": c.get("Reference", ""),
                  "name": c["EnglishName"] or c["DutchName"], "pics": int(c["Pictures"]),
                  "family": c["FamilyNew"]} for c in v] for k, v in decisions.items()}
 
@@ -167,7 +180,7 @@ def main():
         counts[c["Kind"]] += 1
     data = {"decisions": slim, "tree": tree, "labels": {n: shown(n) for n in tax},
             "counts": counts, "total": len(changes), "pictured": len(pic)}
-    page = PAGE.replace("/*DATA*/null", json.dumps(data, ensure_ascii=False).replace("</", "<\\/"))
+    page = PAGE.replace("Species order review", html.escape(a.title)).replace("/*DATA*/null", json.dumps(data, ensure_ascii=False).replace("</", "<\\/"))
     (folder / "review.html").write_text(page, encoding="utf-8")
     print(f"review.html written: {sum(len(v) for v in slim.values())} decisions, "
           f"{len(tree)} classes. Open {folder / 'review.html'}")
@@ -276,7 +289,8 @@ function decisions(){
       const [a,b] = g.cols(r);
       const opts = g.opts.map(([v,l]) => `<label class="opt"><input type="radio" name="${esc(id)}" value="${v}"
         ${cur===v?"checked":""}> ${esc(typeof l==="function"?l(r):l)}</label>`).join("");
-      const why = r.decided ? `<br><span class="mine">your decision${r.why ? ": "+esc(r.why) : ""}</span>` : "";
+      const why = r.ref && !r.why ? `<br><span class="mine">${esc(r.ref)}</span>`
+        : r.decided ? `<br><span class="mine">your decision${r.why ? ": "+esc(r.why) : ""}</span>` : "";
       out += `<tr data-id="${esc(id)}" data-def="${def}" class="${cur!==def?"changed":""}"><td>${a}${why}</td><td>${b}</td>
         <td class="num">${r.pics}</td><td>${opts}</td></tr>`;
     }

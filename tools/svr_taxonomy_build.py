@@ -43,6 +43,7 @@ SAME_STATUS = {"ACCEPTED", "DOUBTFUL"}
 KEPT = "kept — GBIF synonym"
 KEPT_CHOICE = "kept — your choice"
 MERGED_CHOICE = "merged — your choice"
+KEPT_REF = "kept — reference list"
 OVERRIDES = Path(__file__).with_name("taxonomy_overrides.csv")
 HAND_TABLE = Path(__file__).with_name("taxonomy_hand_order.csv")
 AFTER_HAND = 1000          # unknown siblings sort after the hand-placed ones
@@ -192,6 +193,25 @@ def load_avilist(path):
     return species, genus, family_en, by_epithet
 
 
+def load_mdd(path):
+    """Mammal Diversity Database (mammaldiversity.org, Zenodo), in the same shape as
+    load_avilist. The species order is the ROW order of the file: MDD sorts by
+    phylosort (its 27 orders, phylogenetic), then suborder … superfamily, family,
+    genus, species — every family one block. phylosort alone ranks only orders."""
+    species, genus, by_epithet = {}, {}, defaultdict(list)
+    with open(path, encoding="utf-8", newline="") as f:
+        for i, r in enumerate(csv.DictReader(f), 1):
+            name = r["sciName"].replace("_", " ").lower()
+            seq = float(i)
+            rec = {"name": name, "seq": seq, "en": (r["mainCommonName"] or "").lower(),
+                   "family": (r["family"] or "").lower(), "avibase": ""}
+            species[name] = rec
+            by_epithet[(name.split()[-1], rec["family"])].append(rec)
+            g = name.split()[0]
+            genus[g] = min(genus.get(g, seq), seq)
+    return species, genus, {}, by_epithet
+
+
 # ---------------------------------------------------------------- GBIF
 def gbif_match(species, cache_path):
     cache = json.loads(cache_path.read_text(encoding="utf-8")) if cache_path.exists() else {}
@@ -250,8 +270,20 @@ def chain_of(place):
 
 
 # ---------------------------------------------------------------- build
-def build(species, higher, avi, gbif, hand, ov):
-    av_species, av_genus, av_family_en, av_epithet = avi
+def build(species, higher, avi, gbif, hand, ov, mdd=None, refcheck=False):
+    """refcheck: follow a GBIF genus move only when the group's reference list
+    (AviList for birds, MDD for mammals) uses the new name too."""
+    av_family_en = avi[2]
+    refs = {"aves": ("AviList", avi)}
+    if mdd:
+        refs["mammalia"] = ("MDD", mdd)
+
+    def ref_keeps(old, new, klass):
+        """The reference list still uses today's name and not GBIF's: GBIF is behind."""
+        if not refcheck or klass not in refs:
+            return ""
+        label, (sp, *_rest) = refs[klass]
+        return f"{label} still uses this name" if old in sp and new not in sp else ""
     rows = {}          # new species name -> row
     names = []         # alias rows
     changes = []       # per old species: what happens to it
@@ -264,6 +296,8 @@ def build(species, higher, avi, gbif, hand, ov):
             return s["name"]
         if not g or not g["species"] or change_kind(s["name"], g["species"]) == "merged":
             return s["name"]    # GBIF merges are never followed: the species stays
+        if ref_keeps(s["name"], g["species"], g["class"] or s["class"]):
+            return s["name"]
         return g["species"]
 
     # species that exist in the new table under their own name: an epithet guess
@@ -291,6 +325,9 @@ def build(species, higher, avi, gbif, hand, ov):
             new, kind, place, genus = s["name"], "not in GBIF", today, s["name"].split()[0]
         if kind != KEPT:
             gbif_target = ""
+        reference = ref_keeps(s["name"], new, place["class"]) if kind == "renamed" else ""
+        if reference:
+            kind, gbif_target, new = KEPT_REF, new, s["name"]
         decision = ""
         if s["name"] in ov["merge"]:                # your choice after review
             target, decision = ov["merge"][s["name"]]
@@ -299,21 +336,23 @@ def build(species, higher, avi, gbif, hand, ov):
             decision = ov["keep"][s["name"]]
             if gbif_target or new != s["name"]:
                 gbif_target, new, kind = gbif_target or new, s["name"], KEPT_CHOICE
-        bird = place["class"] == "aves"
+        ref = refs.get(place["class"])
+        bird = ref is not None      # has a species-level reference order (birds, mammals)
 
-        # sort number for a bird; other species are numbered per family below
+        # sort number from the reference list; other species are numbered per family below
         seq, src, av = None, "", None
         if bird:
+            label, (av_species, av_genus, _fe, av_epithet) = ref
             if new in av_species:
-                seq, src = av_species[new]["seq"], "AviList"
+                seq, src = av_species[new]["seq"], label
             elif s["name"] in av_species:
-                seq, src = av_species[s["name"]]["seq"], "AviList (today's name)"
+                seq, src = av_species[s["name"]]["seq"], f"{label} (today's name)"
             else:
                 cands = av_epithet.get((new.split()[-1], place["family"]), []) or \
                         av_epithet.get((s["name"].split()[-1], place["family"]), [])
                 cands = [c for c in cands if c["name"] not in taken]
                 if len(cands) == 1:
-                    seq, src = cands[0]["seq"], "AviList epithet in family — REVIEW"
+                    seq, src = cands[0]["seq"], f"{label} epithet in family — REVIEW"
                 elif genus in av_genus:
                     seq, src = av_genus[genus] + 0.5, "after its genus"
                 else:
@@ -322,7 +361,8 @@ def build(species, higher, avi, gbif, hand, ov):
 
         changes.append({**s, "new": new, "kind": kind, "new_order": place["order"],
                         "new_family": place["family"], "new_class": place["class"],
-                        "seq_src": src, "gbif": gbif_target, "decision": decision})
+                        "seq_src": src, "gbif": gbif_target, "decision": decision,
+                        "reference": reference})
 
         if new in rows:                     # a second of today's species lands here
             row = rows[new]
@@ -341,7 +381,7 @@ def build(species, higher, avi, gbif, hand, ov):
         en = [s["en"]] if s["en"] else []
         if av and av["en"] and av["en"] not in en:
             en.append(av["en"])
-            names.append([av["en"], "en", new, "other English name", "AviList"])
+            names.append([av["en"], "en", new, "other English name", ref[0]])
         rows[new] = {"name": new, "chain": chain_of(place), "bird": bird,
                      "seq": seq, "seq_src": src, "book": None if bird else s["book"],
                      "book_family": s["family"],
@@ -350,6 +390,7 @@ def build(species, higher, avi, gbif, hand, ov):
                      "pics": s["pics"], "merged_from": [],
                      "note": "; ".join(x for x in (
                          f"GBIF: {gbif_target}" if gbif_target else "",
+                         reference,
                          f"your choice: {decision}" if decision else "") if x)}
         if gbif_target:
             rows[new]["gbif_key"] = ""      # GBIF's key is the other species'
@@ -484,11 +525,11 @@ def write_outputs(out, taxa, rows, names, changes, av_species):
         w = csv.writer(f, delimiter=";")
         w.writerow(["Today", "Class", "OrderToday", "FamilyToday", "Kind", "New", "GBIFSynonymOf",
                     "OrderNew", "FamilyNew", "DutchName", "EnglishName", "Pictures", "SequenceSource",
-                    "Decision"])
+                    "Decision", "Reference"])
         for c in sorted(changes, key=lambda c: (c["class"], c["name"])):
             w.writerow([c["name"], c["class"], c["order"], c["family"], c["kind"], c["new"], c["gbif"],
                         c["new_order"], c["new_family"], c["nl"], c["en"], c["pics"], c["seq_src"],
-                        c["decision"]])
+                        c["decision"], c["reference"]])
 
     # preview: the tree in the new order
     by_parent = defaultdict(list)
@@ -534,7 +575,7 @@ def write_outputs(out, taxa, rows, names, changes, av_species):
         L.append(f"| {k} | {len(cs)} | {sum(1 for c in cs if c['pics'])} | "
                  f"{kc['renamed'] + kc['spelling']} | {kc[KEPT] + kc[KEPT_CHOICE]} | {kc['not in GBIF']} |")
     L += ["", "| what happens | all | with pictures |", "|---|---:|---:|"]
-    for k in ("same", "spelling", "renamed", "subspecies → species", KEPT, KEPT_CHOICE,
+    for k in ("same", "spelling", "renamed", KEPT_REF, "subspecies → species", KEPT, KEPT_CHOICE,
               MERGED_CHOICE, "not in GBIF"):
         L.append(f"| {k} | {kinds_all[k]} | {kinds_pic[k]} |")
 
@@ -591,6 +632,9 @@ def main():
     ap.add_argument("--master", required=True)
     ap.add_argument("--avilist", required=True, help="AviList short .xlsx (or a .csv of it)")
     ap.add_argument("--out", required=True)
+    ap.add_argument("--mdd", help="Mammal Diversity Database CSV (MDD_v2.x_*species.csv)")
+    ap.add_argument("--reference-check", action="store_true",
+                    help="follow a GBIF genus move only when AviList / MDD agree")
     a = ap.parse_args()
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     out = Path(a.out)
@@ -599,8 +643,9 @@ def main():
     species, higher = load_today(a.master)
     avi = load_avilist(a.avilist)
     gbif = gbif_match(species, out / "gbif_cache.json")
+    mdd = load_mdd(a.mdd) if a.mdd else None
     taxa, rows, names, changes = build(species, higher, avi, gbif, load_hand_table(),
-                                       load_overrides())
+                                       load_overrides(), mdd, a.reference_check)
     write_outputs(out, taxa, rows, names, changes, avi[0])
     print(f"{len(species)} species today -> {len(rows)} species, {len(taxa)} taxa, "
           f"{len(names)} alias rows. Written to {out}")
