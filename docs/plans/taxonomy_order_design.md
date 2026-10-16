@@ -136,3 +136,25 @@ With `--mdd`, mammals also get a species order: MDD's file is sorted by its 27 o
 sequence — orders in evolutionary order, families grouped. MDD is ahead of GBIF on three of the
 author's mammals (*Canis → Lupulella mesomelas*, *Cephalophus → Cephalophorus natalensis*,
 *Cebus imitator* folded into *C. capucinus*); with GBIF deciding names these stay as they are.
+
+---
+
+## Decided 16 Oct: birds from AviList, mammals from MDD — never GBIF
+
+Supersedes "GBIF decides" for these two groups. The species list ships AviList (birds) and MDD
+(mammals) — both CC BY 4.0, credited in NOTICE.md — so no bird or mammal is ever looked up in GBIF.
+GBIF stays for every other group. Today's names are matched to AviList without GBIF: same name
+(9,229), same English name in the AviList, Clements or BirdLife column (1,146), the protonym (16),
+an AviList subspecies (200, 24 pictured), the epithet within the family for review (42), no match
+(47, 4 pictured — answered). Matching order matters: an AviList subspecies within the same genus
+comes before the English name, and no rule takes a species another name already matches exactly.
+List: `D:/code/taxonomy_trial_reference/birds_vs_avilist.csv`.
+
+**Subspecies** (the author, 16 Oct): pictures of a subspecies sit in the **same folder as the
+species** — no folder of their own — and a subspecies is kept apart only when it has a clear common
+name of its own (Hooded Crow, Yellow-billed Kite, Northern Crested Caracara, Hume's Whitethroat).
+The species page links to its subspecies, on the website and in the app.
+
+New actions in `tools/taxonomy_overrides.csv` (read by the AviList builder, next step):
+`avilist` — today's name is this AviList species (an alias); `subspecies` — today's name is this
+AviList subspecies.
