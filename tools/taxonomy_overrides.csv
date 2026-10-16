@@ -1,7 +1,9 @@
 Name;Action;Value;Note
 bos primigenius;merge;bos taurus;aurochs is extinct: merge is right (en.wikipedia.org/wiki/Aurochs, /Cattle)
 colias crocea;keep;;crocea and croceus are used for different taxa: keep the split (en.wikipedia.org/wiki/Colias_croceus)
-caracara cheriway;keep;;northern crested caracara = C. p. cheriway; later as subspecies (see design doc)
+caracara cheriway;merge;caracara plancus;one species; northern = C. p. cheriway, southern = C. p. plancus; later as subspecies (see design doc)
+malva pseudolavatera;merge;malva multiflora;review 16 Oct
+orthotrichum affine;merge;lewinskya affinis;the rename is real; the Lewinskya affinis complex is split by region (researchgate 344417048)
 eristalis horticola;keep;;bosbijvlieg; Cheilosia morio is a very different fly (nl.wikipedia.org/wiki/Bosbijvlieg)
 papaver hybridum;keep;;no international agreement (en.wikipedia.org/wiki/Roemeria_sicula)
 sus domesticus;keep;;no international agreement (en.wikipedia.org/wiki/Pig)
@@ -20,8 +22,7 @@ phacellodomus ferrugineigula;keep;;en.wikipedia.org/wiki/Orange-breasted_thornbi
 tangara brasiliensis;keep;;en.wikipedia.org/wiki/White-bellied_tanager
 vireo chivi;keep;;en.wikipedia.org/wiki/Chivi_vireo
 ardea brachyrhyncha;keep;;yellow-billed egret, Africa; split by region, see egretta intermedia
-caracara cheriway;en;northern crested caracara;C. p. cheriway
-caracara plancus;en;southern crested caracara;C. p. plancus
+caracara plancus;en;crested caracara;one species now: northern (C. p. cheriway) and southern (C. p. plancus) stay as search names
 porphyrio porphyrio;en;western swamphen;was purple swamphen (en.wikipedia.org/wiki/Western_swamphen)
 bubalus arnee;en;wild water buffalo;en.wikipedia.org/wiki/Wild_water_buffalo
 bubalus bubalis;en;water buffalo;en.wikipedia.org/wiki/Water_buffalo
