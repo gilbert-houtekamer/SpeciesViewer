@@ -158,3 +158,24 @@ The species page links to its subspecies, on the website and in the app.
 New actions in `tools/taxonomy_overrides.csv` (read by the AviList builder, next step):
 `avilist` — today's name is this AviList species (an alias); `subspecies` — today's name is this
 AviList subspecies.
+
+**Built 16 Oct — the third list.** `svr_taxonomy_build.py --authority` with the AviList *extended*
+xlsx, `--mdd` and `--mdd-syn` (MDD's Species_Syn file) takes every bird from AviList and every mammal
+from MDD; GBIF is asked only about the other groups. Today's names resolve in this order: the
+author's overrides (`merge`, `subspecies`, `avilist`, `keep`), the same name, today's subspecies
+entry, an AviList subspecies (folded into its species), the English name (AviList, Clements and
+BirdLife columns; MDD main and other names), a synonym (AviList protonym; MDD's 66,616 old
+combinations), the epithet within the family (review), and otherwise kept as its own species
+(review). The list's English name is shown; today's English name stays searchable; today's Dutch
+names carry over. Decided subspecies get rows of their own under the species. A name the list uses
+for a species of its own (the extinct aurochs) gets no alias.
+
+Result for the main master: 25,982 species (all of AviList and MDD), 0 checker failures.
+Birds: 9,229 same, 1,146 by English name, 16 by protonym, 19 subspecies by choice, 176 AviList
+subspecies folded, 42 + 43 for review (4 pictured). Mammals: all 106 resolved without GBIF.
+Side by side: `D:/code/taxonomy_trial` (GBIF), `…_reference` (GBIF checked by AviList/MDD),
+`…_authority` (AviList/MDD) — each with its own review page.
+
+Still to do before the next conversion: the converter must put subspecies pictures in the folder of
+their species (today it would make a subfolder), and Dutch names for the ~14,800 species of AviList
+and MDD that the author's list never had.

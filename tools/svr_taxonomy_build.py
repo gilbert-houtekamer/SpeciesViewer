@@ -37,8 +37,8 @@ from difflib import SequenceMatcher
 from pathlib import Path
 
 PREFIX_RE = re.compile(r"^(\d+)\s+")
-RANKS = ["kingdom", "phylum", "class", "order", "family", "species"]
-HIGHER = RANKS[:-1]
+RANKS = ["kingdom", "phylum", "class", "order", "family", "species", "subspecies"]
+HIGHER = RANKS[:5]
 SAME_STATUS = {"ACCEPTED", "DOUBTFUL"}
 KEPT = "kept — GBIF synonym"
 KEPT_CHOICE = "kept — your choice"
@@ -145,7 +145,7 @@ def load_overrides(path=OVERRIDES):
       merge     the species joins Value (or, without Value, the species GBIF names)
       en / nl   the name to show; the one shown before stays, for searching
       alias-en / alias-nl   an extra name to search by"""
-    ov = {"keep": {}, "merge": {}, "names": []}
+    ov = {"keep": {}, "merge": {}, "names": [], "subspecies": {}, "avilist": {}}
     if not path.exists():
         return ov
     for r in read_csv(path):
@@ -155,6 +155,8 @@ def load_overrides(path=OVERRIDES):
             ov["keep"].setdefault(name, note)
         elif act == "merge":
             ov["merge"][name] = (val, note)
+        elif act in ("subspecies", "avilist"):
+            ov[act][name] = (val, note)
         elif act in ("en", "nl", "alias-en", "alias-nl"):
             ov["names"].append((name, act, val, note))
     return ov
@@ -269,8 +271,190 @@ def chain_of(place):
     return out
 
 
+
+# ---------------------------------------------------------------- authorities
+# Birds come from AviList and mammals from MDD: names, placement and order. GBIF
+# is never asked about them (decided 16 Oct). Both lists are CC BY 4.0.
+def _norm_en(s):
+    return (s or "").lower().replace("-", " ").replace("grey", "gray").strip()
+
+
+def _new_ref(label, klass):
+    return {"label": label, "klass": klass, "species": {}, "subspecies": {}, "genus": {},
+            "by_en": defaultdict(set), "synonyms": defaultdict(set),
+            "by_ep_fam": defaultdict(set), "family_en": {}}
+
+
+def load_avilist_ref(path):
+    """AviList EXTENDED xlsx -> a reference: species, subspecies, genera, and what
+    today's names can be matched by (English names in three columns, protonym)."""
+    import openpyxl
+    wb = openpyxl.load_workbook(path, read_only=True)
+    it = wb[wb.sheetnames[0]].iter_rows(values_only=True)
+    h = next(it)
+    ix = {k: i for i, k in enumerate(h)}
+
+    def col(r, k):
+        return str(r[ix[k]]) if k in ix and r[ix[k]] is not None else ""
+    ref = _new_ref("AviList", "aves")
+    for r in it:
+        rank, name = col(r, "Taxon_rank").lower(), col(r, "Scientific_name").lower().strip()
+        seq = float(r[ix["Sequence"]])
+        order, family = col(r, "Order").lower(), col(r, "Family").lower()
+        if rank == "species":
+            ref["species"][name] = {"seq": seq, "order": order, "family": family,
+                                    "en": col(r, "English_name_AviList").lower(),
+                                    "id": col(r, "AvibaseID")}
+            for c in ("English_name_AviList", "English_name_Clements_v2024",
+                      "English_name_BirdLife_v9"):
+                if col(r, c):
+                    ref["by_en"][_norm_en(col(r, c))].add(name)
+            proto = " ".join(col(r, "Protonym").lower().split()[:2])
+            if proto and proto != name:
+                ref["synonyms"][proto].add(name)
+            ref["by_ep_fam"][(name.split()[-1], family)].add(name)
+        elif rank == "subspecies":
+            ref["subspecies"][name] = {"seq": seq, "species": " ".join(name.split()[:2])}
+        elif rank == "genus":
+            ref["genus"][name] = {"seq": seq, "order": order, "family": family}
+        elif rank == "family" and col(r, "Family_English_name"):
+            ref["family_en"][family] = col(r, "Family_English_name").lower()
+    return ref
+
+
+def load_mdd_ref(path, syn_path=None):
+    """MDD species CSV (+ the Species_Syn CSV for old names) -> a reference. The
+    species order is the file's row order (27 orders phylogenetic, families grouped)."""
+    ref = _new_ref("MDD", "mammalia")
+    with open(path, encoding="utf-8", newline="") as f:
+        for i, r in enumerate(csv.DictReader(f), 1):
+            name = r["sciName"].replace("_", " ").lower()
+            order, family = r["order"].lower(), r["family"].lower()
+            ref["species"][name] = {"seq": float(i), "order": order, "family": family,
+                                    "en": (r["mainCommonName"] or "").lower(), "id": r["id"]}
+            for en in [r["mainCommonName"]] + (r["otherCommonNames"] or "").split("|"):
+                if en and en != "NA":
+                    ref["by_en"][_norm_en(en)].add(name)
+            ref["by_ep_fam"][(name.split()[-1], family)].add(name)
+            g = name.split()[0]
+            if g not in ref["genus"]:
+                ref["genus"][g] = {"seq": float(i), "order": order, "family": family}
+    if syn_path:
+        with open(syn_path, encoding="utf-8", newline="") as f:
+            for r in csv.DictReader(f):
+                old = (r["MDD_normalized_original_combination"] or "").lower().strip()
+                acc = (r["MDD_species"] or "").replace("_", " ").lower().strip()
+                if old and acc in ref["species"] and len(old.split()) == 2 and old != acc:
+                    ref["synonyms"][old].add(acc)
+    return ref
+
+
+def resolve_authority(species_today, ref, ov):
+    """Today's names in one class, against its reference list. Returns rows (every
+    species of the list + today's kept ones), subs (subspecies rows), names, changes."""
+    L, sp, klass = ref["label"], ref["species"], ref["klass"]
+    rows, subs, names, changes = {}, {}, [], []
+
+    def place_of(order, family):
+        return {"kingdom": "animalia", "phylum": "chordata", "class": klass,
+                "order": order, "family": family}
+
+    for name, a in sp.items():
+        rows[name] = {"name": name, "chain": chain_of(place_of(a["order"], a["family"])),
+                      "bird": True, "seq": a["seq"], "seq_src": L, "book": None,
+                      "book_family": a["family"], "nl": [], "en": [a["en"]] if a["en"] else [],
+                      "avibase": a["id"] if L == "AviList" else "", "gbif_key": "",
+                      "pics": 0, "merged_from": [], "note": ""}
+    exact = {s["name"] for s in species_today if s["name"] in sp}
+    sub_by_gen_ep = {(n.split()[0], n.split()[-1]): v["species"]
+                     for n, v in ref["subspecies"].items()}
+
+    def unique(cands):
+        c = set(cands) - exact
+        return next(iter(c)) if len(c) == 1 else None
+
+    quiet = ("same", "same English name", "subspecies — your choice",
+             "alias — your choice", MERGED_CHOICE)
+    for s in sorted(species_today, key=lambda s: s["name"] not in exact):
+        n, w = s["name"], s["name"].split()
+        target, sub, kind, decision = None, None, "", ""
+        by_en = unique(ref["by_en"].get(_norm_en(s["en"]), ())) if s["en"] else None
+        if n in ov["merge"]:
+            (target, decision), kind = ov["merge"][n], MERGED_CHOICE
+        elif n in ov["subspecies"]:
+            sub, decision = ov["subspecies"][n]
+            target, kind = " ".join(sub.split()[:2]), "subspecies — your choice"
+        elif n in ov["avilist"]:
+            (target, decision), kind = ov["avilist"][n], "alias — your choice"
+        elif n in sp:
+            target, kind = n, "same"
+        elif n in ov["keep"]:
+            kind, decision = KEPT_CHOICE, ov["keep"][n]
+        elif len(w) == 3 and " ".join(w[:2]) in sp:
+            target, kind = " ".join(w[:2]), "subspecies → species"
+        elif (w[0], w[-1]) in sub_by_gen_ep:
+            target, kind = sub_by_gen_ep[(w[0], w[-1])], f"a subspecies in {L} → species"
+        elif by_en:
+            target, kind = by_en, "same English name"
+        elif unique(ref["synonyms"].get(n, ())):
+            target, kind = unique(ref["synonyms"][n]), f"synonym in {L}"
+        else:
+            fam = ref["genus"].get(w[0], {}).get("family") or s["family"]
+            target = unique(ref["by_ep_fam"].get((w[-1], fam), ()))
+            kind = "epithet in family — REVIEW" if target else f"not in {L} — REVIEW"
+        if target and target not in sp:
+            kind, target = f"not in {L} — REVIEW (no {target})", None
+
+        if target is None:                       # kept as its own species
+            g = ref["genus"].get(w[0], {})
+            seq = next((v["seq"] for sn, v in ref["subspecies"].items()
+                        if sn.split()[0] == w[0] and sn.split()[-1] == w[-1]), None)
+            if seq is None and g:
+                seq = g["seq"] + 0.5
+            order, family = g.get("order") or s["order"], g.get("family") or s["family"]
+            rows[n] = {"name": n, "chain": chain_of(place_of(order, family)), "bird": True,
+                       "seq": seq, "seq_src": f"own species, placed by {L}" if seq else "end of family",
+                       "book": None, "book_family": family,
+                       "nl": [s["nl"]] if s["nl"] else [], "en": [s["en"]] if s["en"] else [],
+                       "avibase": "", "gbif_key": "", "pics": s["pics"], "merged_from": [],
+                       "note": "; ".join(x for x in (kind, decision) if x)}
+            changes.append({**s, "new": n, "kind": kind, "new_order": order,
+                            "new_family": family, "new_class": klass,
+                            "seq_src": rows[n]["seq_src"], "gbif": "", "decision": decision,
+                            "reference": L})
+            continue
+
+        row = rows[target]
+        if sub:                                   # its own subspecies row under the species
+            v = ref["subspecies"].get(sub, {})
+            subs[sub] = {"name": sub, "parent": target, "seq": v.get("seq", row["seq"] + 0.0001),
+                         "seq_src": L if v else "after its species",
+                         "nl": [s["nl"]] if s["nl"] else [], "en": [s["en"]] if s["en"] else [],
+                         "pics": s["pics"], "note": decision, "avibase": "", "gbif_key": ""}
+            new = sub
+        else:
+            new = target
+            row["pics"] += s["pics"]
+            if s["nl"] and s["nl"] not in row["nl"]:
+                row["nl"].append(s["nl"])
+                if len(row["nl"]) > 1:
+                    names.append([s["nl"], "nl", target, kind, "today's list"])
+            if s["en"] and s["en"] not in row["en"]:
+                row["en"].append(s["en"])
+                names.append([s["en"], "en", target, f"today's English name ({kind})",
+                              "today's list"])
+        if n != new and n not in sp:       # a name the list itself uses (the extinct
+            k = kind + (" — REVIEW" if s["pics"] and "REVIEW" not in kind and kind not in quiet
+                        else "")             # aurochs) keeps its meaning: no alias
+            names.append([n, "sci", new, k, L])
+        changes.append({**s, "new": new, "kind": kind, "new_order": sp[target]["order"],
+                        "new_family": sp[target]["family"], "new_class": klass, "seq_src": L,
+                        "gbif": "", "decision": decision, "reference": L})
+    return rows, subs, names, changes
+
+
 # ---------------------------------------------------------------- build
-def build(species, higher, avi, gbif, hand, ov, mdd=None, refcheck=False):
+def build(species, higher, avi, gbif, hand, ov, mdd=None, refcheck=False, auth=None):
     """refcheck: follow a GBIF genus move only when the group's reference list
     (AviList for birds, MDD for mammals) uses the new name too."""
     av_family_en = avi[2]
@@ -287,6 +471,17 @@ def build(species, higher, avi, gbif, hand, ov, mdd=None, refcheck=False):
     rows = {}          # new species name -> row
     names = []         # alias rows
     changes = []       # per old species: what happens to it
+    subs = {}          # subspecies rows (birds / mammals only)
+    if auth:           # birds and mammals from their own list; GBIF only for the rest
+        for klass, ref in auth.items():
+            r_, s_, n_, c_ = resolve_authority([s for s in species if s["class"] == klass],
+                                               ref, ov)
+            rows.update(r_)
+            subs.update(s_)
+            names.extend(n_)
+            changes.extend(c_)
+            av_family_en = {**ref["family_en"], **av_family_en}
+        species = [s for s in species if s["class"] not in auth]
 
     def new_name(s):
         g = gbif_view(gbif.get(s["name"]))
@@ -404,11 +599,12 @@ def build(species, higher, avi, gbif, hand, ov, mdd=None, refcheck=False):
     for name, act, val, note in ov["names"]:
         if act in ("en", "nl") and val:
             claimed[(act, val)].add(name)
+    taxon = lambda n: rows.get(n) or subs.get(n)
     for name, act, val, note in ov["names"]:
-        if name not in rows or not val:
+        if not taxon(name) or not val:
             continue
         lang = act[-2:]
-        lst = rows[name][lang]
+        lst = taxon(name)[lang]
         if act.startswith("alias"):
             if val not in lst:
                 lst.append(val)
@@ -423,9 +619,10 @@ def build(species, higher, avi, gbif, hand, ov, mdd=None, refcheck=False):
     # decided after ALL names are applied, so the file's row order doesn't matter
     for name, lang, before in pending:
         others = (claimed.get((lang, before), set()) |
-                  {n for n, r in rows.items() if r[lang][:1] == [before]}) - {name}
+                  {n for n, r in list(rows.items()) + list(subs.items())
+                   if r[lang][:1] == [before]}) - {name}
         if others:
-            rows[name][lang].remove(before)
+            taxon(name)[lang].remove(before)
             dropped.append((name, lang, before, sorted(others)))
         else:
             names.append([before, lang, name, "name shown before", "today's list"])
@@ -502,6 +699,8 @@ def build(species, higher, avi, gbif, hand, ov, mdd=None, refcheck=False):
                      "avibase": "", "gbif_key": "", "pics": "", "note": ""})
     for r in rows.values():
         taxa.append({"rank": "species", **r})
+    for r in subs.values():
+        taxa.append({"rank": "subspecies", **r})
     for name, lang, before, others in dropped:
         print(f"  name dropped: '{before}' ({lang}) no longer finds {name} — it names {', '.join(others)}")
     return taxa, rows, names, changes
@@ -540,9 +739,9 @@ def write_outputs(out, taxa, rows, names, changes, av_species):
     def walk(parent, depth):
         for t in sorted(by_parent.get(parent, []), key=lambda t: t["seq"]):
             label = t["en"][0] if t["en"] else (t["nl"][0] if t["nl"] else "")
-            pics = f"  [{t['pics']}]" if t["rank"] == "species" and t["pics"] else ""
+            pics = f"  [{t['pics']}]" if t["rank"] in ("species", "subspecies") and t["pics"] else ""
             lines.append(f"{'  ' * depth}{t['name']}  — {label}{pics}")
-            if t["rank"] != "species":
+            if t["rank"] != "subspecies":
                 walk(t["name"], depth + 1)
     walk("", 0)
     (out / "preview.txt").write_text("\n".join(lines) + "\n", encoding="utf-8")
@@ -575,9 +774,8 @@ def write_outputs(out, taxa, rows, names, changes, av_species):
         L.append(f"| {k} | {len(cs)} | {sum(1 for c in cs if c['pics'])} | "
                  f"{kc['renamed'] + kc['spelling']} | {kc[KEPT] + kc[KEPT_CHOICE]} | {kc['not in GBIF']} |")
     L += ["", "| what happens | all | with pictures |", "|---|---:|---:|"]
-    for k in ("same", "spelling", "renamed", KEPT_REF, "subspecies → species", KEPT, KEPT_CHOICE,
-              MERGED_CHOICE, "not in GBIF"):
-        L.append(f"| {k} | {kinds_all[k]} | {kinds_pic[k]} |")
+    for k, n in kinds_all.most_common():
+        L.append(f"| {k} | {n} | {kinds_pic[k]} |")
 
     def table(title, items, cols):
         nonlocal L
@@ -633,6 +831,10 @@ def main():
     ap.add_argument("--avilist", required=True, help="AviList short .xlsx (or a .csv of it)")
     ap.add_argument("--out", required=True)
     ap.add_argument("--mdd", help="Mammal Diversity Database CSV (MDD_v2.x_*species.csv)")
+    ap.add_argument("--mdd-syn", help="MDD Species_Syn CSV: old mammal names -> MDD species")
+    ap.add_argument("--authority", action="store_true",
+                    help="birds from AviList (EXTENDED xlsx as --avilist), mammals from MDD (--mdd);"
+                         " GBIF only for the other groups")
     ap.add_argument("--reference-check", action="store_true",
                     help="follow a GBIF genus move only when AviList / MDD agree")
     a = ap.parse_args()
@@ -642,10 +844,16 @@ def main():
 
     species, higher = load_today(a.master)
     avi = load_avilist(a.avilist)
-    gbif = gbif_match(species, out / "gbif_cache.json")
+    gbif = gbif_match([s for s in species if not (a.authority and s["class"] in
+                                                  ("aves", "mammalia"))], out / "gbif_cache.json")
     mdd = load_mdd(a.mdd) if a.mdd else None
+    auth = None
+    if a.authority:
+        auth = {"aves": load_avilist_ref(a.avilist)}
+        if a.mdd:
+            auth["mammalia"] = load_mdd_ref(a.mdd, a.mdd_syn)
     taxa, rows, names, changes = build(species, higher, avi, gbif, load_hand_table(),
-                                       load_overrides(), mdd, a.reference_check)
+                                       load_overrides(), mdd, a.reference_check, auth)
     write_outputs(out, taxa, rows, names, changes, avi[0])
     print(f"{len(species)} species today -> {len(rows)} species, {len(taxa)} taxa, "
           f"{len(names)} alias rows. Written to {out}")

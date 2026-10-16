@@ -129,12 +129,42 @@ def main():
                     or (c["Kind"] == KEPT_CHOICE and change_is_genus(c))],
         "subspecies": [c for c in pic if c["Kind"] == "subspecies → species"],
     }
+    texts = None
+    if any(c.get("Reference") in ("AviList", "MDD") for c in changes):
+        # birds from AviList, mammals from MDD: other groups to look at
+        auth = lambda c: c.get("Reference") in ("AviList", "MDD")
+        decisions = {
+            "synonym": [c for c in pic if "REVIEW" in c["Kind"]
+                        or (not auth(c) and c["Kind"] in (KEPT, KEPT_CHOICE, MERGED_CHOICE))],
+            "renamed": [c for c in pic if c["New"] != c["Today"] and "REVIEW" not in c["Kind"]
+                        and c["Kind"] != "subspecies — your choice"
+                        and (auth(c) or c["Kind"] in ("renamed", "spelling"))],
+            "subspecies": [c for c in pic if c["Kind"] == "subspecies — your choice"],
+        }
+        texts = {
+            "synonym": {"title": "Needs a look",
+                        "intro": "Matched only by the species part of the name, not found at all, "
+                                 "or a GBIF synonym (other groups). The proposal is the default.",
+                        "opts": [["follow", "Use {new}"], ["keep", "Keep today's name"]],
+                        "def": "follow", "col": "Proposed"},
+            "renamed": {"title": "New name from AviList, MDD or GBIF",
+                        "intro": "Your old name stays searchable. Birds follow AviList, mammals MDD, "
+                                 "the rest GBIF.",
+                        "opts": [["follow", "Use {new}"], ["keep", "Keep today's name"]],
+                        "def": "follow", "col": "New"},
+            "subspecies": {"title": "Your subspecies",
+                           "intro": "Kept as a subspecies with its own name, in the folder of its "
+                                    "species.",
+                           "opts": [["follow", "Subspecies {new}"], ["keep", "Fold into the species"]],
+                           "def": "follow", "col": "Subspecies"},
+        }
     for group in decisions.values():
         group.sort(key=lambda c: -int(c["Pictures"]))
     slim = {k: [{"today": c["Today"],
                  "new": c["GBIFSynonymOf"] if k == "renamed" and c["GBIFSynonymOf"] else c["New"],
                  "gbif": c["GBIFSynonymOf"] or c["New"],
-                 "decided": "follow" if c["Kind"] == MERGED_CHOICE else
+                 "decided": "follow" if c["Kind"] in (MERGED_CHOICE, "alias — your choice",
+                                                      "subspecies — your choice") else
                             "keep" if c["Kind"] in (KEPT_CHOICE, KEPT_REF) else "",
                  "why": c.get("Decision", ""), "ref": c.get("Reference", ""),
                  "name": c["EnglishName"] or c["DutchName"], "pics": int(c["Pictures"]),
@@ -179,7 +209,7 @@ def main():
     for c in changes:
         counts[c["Kind"]] += 1
     data = {"decisions": slim, "tree": tree, "labels": {n: shown(n) for n in tax},
-            "counts": counts, "total": len(changes), "pictured": len(pic)}
+            "counts": counts, "total": len(changes), "pictured": len(pic), "texts": texts}
     page = PAGE.replace("Species order review", html.escape(a.title)).replace("/*DATA*/null", json.dumps(data, ensure_ascii=False).replace("</", "<\\/"))
     (folder / "review.html").write_text(page, encoding="utf-8")
     print(f"review.html written: {sum(len(v) for v in slim.values())} decisions, "
@@ -268,6 +298,11 @@ const GROUPS = [
   cols:r=>[`<i>${esc(r.today)}</i><br><span class="muted">${esc(r.name)}</span>`,`<i>${esc(r.new)}</i>`]},
 ];
 
+if (D.texts) for (const g of GROUPS) {
+  const x = D.texts[g.key]; if (!x) continue;
+  g.title = x.title; g.intro = x.intro; g.def = x.def; g.col = x.col;
+  g.opts = x.opts.map(([v, l]) => [v, r => l.replace("{new}", r.new)]);
+}
 function summary(){
   const c = D.counts, n = k => (c[k]||0).toLocaleString();
   document.getElementById("summary").innerHTML =
@@ -283,7 +318,7 @@ function decisions(){
     const rows = D.decisions[g.key];
     out += `<div class="card"><h3 style="margin:0 0 4px">${esc(g.title)} <span class="muted">(${rows.length})</span></h3>
      <p class="muted" style="margin:0 0 8px">${esc(g.intro)}</p><table><thead><tr><th>Today</th>
-     <th>${g.key==="synonym"?"GBIF says":"New"}</th><th class="num">Pictures</th><th>Your choice</th></tr></thead><tbody>`;
+     <th>${g.col || (g.key==="synonym"?"GBIF says":"New")}</th><th class="num">Pictures</th><th>Your choice</th></tr></thead><tbody>`;
     for (const r of rows){
       const def = r.decided || g.def, id = g.key+":"+r.today, cur = choices[id] || def;
       const [a,b] = g.cols(r);

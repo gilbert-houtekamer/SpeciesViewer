@@ -18,7 +18,7 @@ import sys
 from collections import defaultdict
 from pathlib import Path
 
-RANKS = ["kingdom", "phylum", "class", "order", "family", "species"]
+RANKS = ["kingdom", "phylum", "class", "order", "family", "species", "subspecies"]
 PREFIX_RE = re.compile(r"^\d+\s+")
 SHOW = 25          # offenders listed per check
 
@@ -123,7 +123,7 @@ def main():
     rep.check("a parent is always a higher rank (a level may be skipped)", bad_order)
     rep.check("every taxon reaches a kingdom (no loops, no dead ends)", no_kingdom)
     rep.check("every taxon above species has children",
-              [f"{n} ({t['Rank']})" for n, t in tax.items() if t["Rank"] != "species"
+              [f"{n} ({t['Rank']})" for n, t in tax.items() if t["Rank"] not in ("species", "subspecies")
                and not any(c["Parent"] == n for c in tax.values())])
 
     # ---- the order
@@ -154,9 +154,10 @@ def main():
 
     # ---- the aliases
     species = {n for n, t in tax.items() if t["Rank"] == "species"}
+    leaves = species | {n for n, t in tax.items() if t["Rank"] == "subspecies"}
     sci = [r for r in names if r["Language"] == "sci"]
     rep.check("every alias points to a species in the table",
-              [f"{r['Name']} → {r['PointsTo']}" for r in names if r["PointsTo"] not in species])
+              [f"{r['Name']} → {r['PointsTo']}" for r in names if r["PointsTo"] not in leaves])
     rep.check("an alias is never itself a taxon (no species is also an old name)",
               [f"{r['Name']} → {r['PointsTo']}" for r in sci if r["Name"] in tax])
     rep.check("an alias never points to itself",
@@ -171,7 +172,7 @@ def main():
     for lang, col in (("nl", "DutchNames"), ("en", "EnglishNames")):
         lookup = defaultdict(set)
         for n, t in tax.items():
-            if t["Rank"] == "species":
+            if t["Rank"] in ("species", "subspecies"):
                 for name in as_list(t[col]):
                     lookup[name].add(n)
         for r in names:
@@ -189,11 +190,11 @@ def main():
     pictured = today_pictured(a.master, a.klass)
     alias_of = {r["Name"]: r["PointsTo"] for r in sci}
     lost = [f"{n} ({p} pictures)" for n, p in sorted(pictured.items(), key=lambda x: -x[1])
-            if n not in species and n not in alias_of]
+            if n not in leaves and n not in alias_of]
     rep.check(f"every pictured species of today is found — as itself or via an alias "
               f"({len(pictured)} checked)", lost)
     total_today = sum(pictured.values())
-    total_new = sum(int(tax[n]["Pictures"] or 0) for n in species)
+    total_new = sum(int(tax[n]["Pictures"] or 0) for n in leaves)
     rep.check("picture count adds up (today = new table)",
               [] if total_today == total_new else [f"today {total_today}, new table {total_new}"])
 
