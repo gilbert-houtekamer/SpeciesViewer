@@ -63,17 +63,18 @@ reads <em>No current work planned</em>.</p>
       trip readiness, refactors, installable v1, modern RAW bodies, emptying a card). Those chapters'
       shipped detail still lives here, in the Backlog.</li>
   </ul>
-  <strong>Deliberately not scheduled in the coming month:</strong> ch. 6 Taxonomy &amp; Species
-  and ch. 17 Capture time &amp; time zones. Both work as they stand; revisit after mid-September.
+  <strong>In progress since 15 October:</strong> ch. 6 Taxonomy &amp; Species &mdash; the species
+  order. <strong>Deliberately not scheduled:</strong> ch. 17 Capture time &amp; time zones; it works
+  as it stands.
   <strong>Not planned, but relevant — don't forget:</strong>
   <ul style="margin-bottom:0;">
     <li><strong>The 791 already-coarse coordinates</strong> <span class="tag-open">OPEN / NEW</span> —
       pictures whose GPS looks hand-entered but carries no record of it; a South Africa photo
       tagged Country=Spain and a Galapagos coordinate reused across many pictures already turned up
       as real errors (ch. 2).</li>
-    <li><strong>Taxonomy &amp; Species</strong> <span class="tag-parked">PARKED (by design)</span> —
-      sequence redesign, obscure-flag auto-detect, placeholder-species cleanup, regional
-      most-likely-birds (ch. 6).</li>
+    <li><strong>Taxonomy &amp; Species</strong> <span class="tag-progress">IN PROGRESS</span> —
+      the species order is being worked on; obscure-flag auto-detect, placeholder-species cleanup
+      and regional most-likely-birds stay parked (ch. 6).</li>
     <li><strong>Master delete "step 3" — delete JPG-bearing UPNs</strong>
       <span class="tag-parked">PARKED (by design)</span> — depends on Taxonomy &amp; Species (ch. 6)
       landing first (ch. 3).</li>
@@ -465,11 +466,29 @@ reads <em>No current work planned</em>.</p>
 <p class="none">No current work planned. Complete — see <em>Capabilities Added</em>.</p>
 
 <!-- ============================================================ -->
-<h2>6. Taxonomy &amp; Species <span class="tag-parked">PARKED (by design)</span></h2>
-<p class="note">Not scheduled in the coming month (agreed 18 August 2026).</p>
+<h2>6. Taxonomy &amp; Species <span class="tag-progress">IN PROGRESS</span></h2>
+<p class="note">Restarted 15 October 2026, because the 2&nbsp;TB master makes every later
+reorganisation more expensive. Design and findings: <code>docs/plans/taxonomy_order_research.md</code>
+and <code>docs/plans/taxonomy_order_design.md</code>.</p>
 <ul>
-  <li><span class="tag-parked">PARKED</span> <strong>Sequence redesign</strong> — replace the
-    “040 passeriformes” prefix with a Sequence float column (eBird TAXON_ORDER).</li>
+  <li><span class="tag-progress">IN PROGRESS</span> <strong>Species order</strong> — the
+    &ldquo;040 passeriformes&rdquo; number leaves the name and becomes a sort number among siblings.
+    Decided: <strong>GBIF</strong> gives names and placement for every group; the order comes from
+    <strong>AviList</strong> for birds (what Observation.org follows), from a hand table for
+    kingdoms, classes and the orders of insects, mammals and plants, and from the author's own
+    book order for dragonflies and butterflies; the rest is alphabetical. <strong>A GBIF merge is
+    never followed on its own</strong> &mdash; too many are wrong (the European Large Skipper filed
+    under the Asian one, recent damselflies lumped into a relative); the author decides per species
+    after review. Built so far, all beside the master and without changing it: the new tables for
+    the whole list (18,699 species), a checker, a review page with the choices, and a first
+    conversion of a throw-away master &mdash; folders, CSVs and a rebuilt website with no broken
+    links. Next: sort by the new number on screen and on the website.</li>
+  <li><span class="tag-new">NEW</span> <strong>Wikipedia beside the species</strong> &mdash;
+    reviewing the 29 species GBIF calls a synonym went fastest with Wikipedia open: almost none
+    needed merging, and it gave better English names (Western Swamphen, Wild Water Buffalo,
+    Eastern and Western Black-eared Wheatear). Wanted: a Wikipedia link (or summary) on the species
+    page of the website and in the desktop app, in English and Dutch. Wikipedia text is CC&nbsp;BY-SA:
+    a link is free, quoting text needs attribution.</li>
   <li><span class="tag-parked">PARKED</span> <strong>Auto-detect obscure flag</strong> — derive from
     the GBIF family, no extra API call.</li>
   <li><span class="tag-parked">PARKED</span> <strong>Placeholder-species cleanup</strong> — the

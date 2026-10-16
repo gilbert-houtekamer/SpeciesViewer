@@ -41,6 +41,9 @@ RANKS = ["kingdom", "phylum", "class", "order", "family", "species"]
 HIGHER = RANKS[:-1]
 SAME_STATUS = {"ACCEPTED", "DOUBTFUL"}
 KEPT = "kept — GBIF synonym"
+KEPT_CHOICE = "kept — your choice"
+MERGED_CHOICE = "merged — your choice"
+OVERRIDES = Path(__file__).with_name("taxonomy_overrides.csv")
 HAND_TABLE = Path(__file__).with_name("taxonomy_hand_order.csv")
 AFTER_HAND = 1000          # unknown siblings sort after the hand-placed ones
 
@@ -135,6 +138,27 @@ def load_today(master):
     return species, higher
 
 
+def load_overrides(path=OVERRIDES):
+    """Your decisions after review (tools/taxonomy_overrides.csv):
+      keep      the species stays as it is, whatever GBIF says (merge, rename, spelling)
+      merge     the species joins Value (or, without Value, the species GBIF names)
+      en / nl   the name to show; the one shown before stays, for searching
+      alias-en / alias-nl   an extra name to search by"""
+    ov = {"keep": {}, "merge": {}, "names": []}
+    if not path.exists():
+        return ov
+    for r in read_csv(path):
+        name, act = r["Name"].strip().lower(), r["Action"].strip().lower()
+        val, note = r["Value"].strip().lower(), r["Note"].strip()
+        if act == "keep":
+            ov["keep"].setdefault(name, note)
+        elif act == "merge":
+            ov["merge"][name] = (val, note)
+        elif act in ("en", "nl", "alias-en", "alias-nl"):
+            ov["names"].append((name, act, val, note))
+    return ov
+
+
 def load_hand_table(path=HAND_TABLE):
     return {(r["Rank"], r["Parent"], r["Name"]): (float(r["Sequence"]), r["Source"])
             for r in read_csv(path)}
@@ -226,7 +250,7 @@ def chain_of(place):
 
 
 # ---------------------------------------------------------------- build
-def build(species, higher, avi, gbif, hand):
+def build(species, higher, avi, gbif, hand, ov):
     av_species, av_genus, av_family_en, av_epithet = avi
     rows = {}          # new species name -> row
     names = []         # alias rows
@@ -234,6 +258,10 @@ def build(species, higher, avi, gbif, hand):
 
     def new_name(s):
         g = gbif_view(gbif.get(s["name"]))
+        if s["name"] in ov["merge"]:
+            return ov["merge"][s["name"]][0] or (g["species"] if g else s["name"])
+        if s["name"] in ov["keep"]:
+            return s["name"]
         if not g or not g["species"] or change_kind(s["name"], g["species"]) == "merged":
             return s["name"]    # GBIF merges are never followed: the species stays
         return g["species"]
@@ -263,6 +291,14 @@ def build(species, higher, avi, gbif, hand):
             new, kind, place, genus = s["name"], "not in GBIF", today, s["name"].split()[0]
         if kind != KEPT:
             gbif_target = ""
+        decision = ""
+        if s["name"] in ov["merge"]:                # your choice after review
+            target, decision = ov["merge"][s["name"]]
+            new, kind, gbif_target = target or gbif_target or new, MERGED_CHOICE, ""
+        elif s["name"] in ov["keep"]:
+            decision = ov["keep"][s["name"]]
+            if gbif_target or new != s["name"]:
+                gbif_target, new, kind = gbif_target or new, s["name"], KEPT_CHOICE
         bird = place["class"] == "aves"
 
         # sort number for a bird; other species are numbered per family below
@@ -286,7 +322,7 @@ def build(species, higher, avi, gbif, hand):
 
         changes.append({**s, "new": new, "kind": kind, "new_order": place["order"],
                         "new_family": place["family"], "new_class": place["class"],
-                        "seq_src": src, "gbif": gbif_target})
+                        "seq_src": src, "gbif": gbif_target, "decision": decision})
 
         if new in rows:                     # a second of today's species lands here
             row = rows[new]
@@ -312,11 +348,46 @@ def build(species, higher, avi, gbif, hand):
                      "nl": [s["nl"]] if s["nl"] else [], "en": en,
                      "avibase": av["avibase"] if av else "", "gbif_key": g["key"] if g else "",
                      "pics": s["pics"], "merged_from": [],
-                     "note": f"GBIF: synonym of {gbif_target}" if gbif_target else ""}
+                     "note": "; ".join(x for x in (
+                         f"GBIF: {gbif_target}" if gbif_target else "",
+                         f"your choice: {decision}" if decision else "") if x)}
         if gbif_target:
             rows[new]["gbif_key"] = ""      # GBIF's key is the other species'
         if new != s["name"]:
             names.append([s["name"], "sci", new, kind, "GBIF match"])
+
+    # names you chose: shown first; the one shown before stays, for searching —
+    # unless it is (now) another species' name: then it would find the wrong one
+    claimed = defaultdict(set)              # (lang, name) -> species it names by choice
+    dropped, pending = [], []
+    for name, act, val, note in ov["names"]:
+        if act in ("en", "nl") and val:
+            claimed[(act, val)].add(name)
+    for name, act, val, note in ov["names"]:
+        if name not in rows or not val:
+            continue
+        lang = act[-2:]
+        lst = rows[name][lang]
+        if act.startswith("alias"):
+            if val not in lst:
+                lst.append(val)
+                names.append([val, lang, name, "other name — your choice", note or "your list"])
+            continue
+        before = lst[0] if lst else ""
+        if val in lst:
+            lst.remove(val)
+        lst.insert(0, val)
+        if before and before != val:
+            pending.append((name, lang, before))
+    # decided after ALL names are applied, so the file's row order doesn't matter
+    for name, lang, before in pending:
+        others = (claimed.get((lang, before), set()) |
+                  {n for n, r in rows.items() if r[lang][:1] == [before]}) - {name}
+        if others:
+            rows[name][lang].remove(before)
+            dropped.append((name, lang, before, sorted(others)))
+        else:
+            names.append([before, lang, name, "name shown before", "today's list"])
 
     for r in rows.values():
         r["parent"] = r["chain"][-1][1] if r["chain"] else ""
@@ -390,6 +461,8 @@ def build(species, higher, avi, gbif, hand):
                      "avibase": "", "gbif_key": "", "pics": "", "note": ""})
     for r in rows.values():
         taxa.append({"rank": "species", **r})
+    for name, lang, before, others in dropped:
+        print(f"  name dropped: '{before}' ({lang}) no longer finds {name} — it names {', '.join(others)}")
     return taxa, rows, names, changes
 
 
@@ -410,10 +483,12 @@ def write_outputs(out, taxa, rows, names, changes, av_species):
     with open(out / "changes.csv", "w", encoding="utf-8", newline="") as f:
         w = csv.writer(f, delimiter=";")
         w.writerow(["Today", "Class", "OrderToday", "FamilyToday", "Kind", "New", "GBIFSynonymOf",
-                    "OrderNew", "FamilyNew", "DutchName", "EnglishName", "Pictures", "SequenceSource"])
+                    "OrderNew", "FamilyNew", "DutchName", "EnglishName", "Pictures", "SequenceSource",
+                    "Decision"])
         for c in sorted(changes, key=lambda c: (c["class"], c["name"])):
             w.writerow([c["name"], c["class"], c["order"], c["family"], c["kind"], c["new"], c["gbif"],
-                        c["new_order"], c["new_family"], c["nl"], c["en"], c["pics"], c["seq_src"]])
+                        c["new_order"], c["new_family"], c["nl"], c["en"], c["pics"], c["seq_src"],
+                        c["decision"]])
 
     # preview: the tree in the new order
     by_parent = defaultdict(list)
@@ -457,9 +532,10 @@ def write_outputs(out, taxa, rows, names, changes, av_species):
     for k, cs in sorted(per_class.items(), key=lambda kv: -len(kv[1])):
         kc = Counter(c["kind"] for c in cs)
         L.append(f"| {k} | {len(cs)} | {sum(1 for c in cs if c['pics'])} | "
-                 f"{kc['renamed'] + kc['spelling']} | {kc[KEPT]} | {kc['not in GBIF']} |")
+                 f"{kc['renamed'] + kc['spelling']} | {kc[KEPT] + kc[KEPT_CHOICE]} | {kc['not in GBIF']} |")
     L += ["", "| what happens | all | with pictures |", "|---|---:|---:|"]
-    for k in ("same", "spelling", "renamed", "subspecies → species", KEPT, "not in GBIF"):
+    for k in ("same", "spelling", "renamed", "subspecies → species", KEPT, KEPT_CHOICE,
+              MERGED_CHOICE, "not in GBIF"):
         L.append(f"| {k} | {kinds_all[k]} | {kinds_pic[k]} |")
 
     def table(title, items, cols):
@@ -523,7 +599,8 @@ def main():
     species, higher = load_today(a.master)
     avi = load_avilist(a.avilist)
     gbif = gbif_match(species, out / "gbif_cache.json")
-    taxa, rows, names, changes = build(species, higher, avi, gbif, load_hand_table())
+    taxa, rows, names, changes = build(species, higher, avi, gbif, load_hand_table(),
+                                       load_overrides())
     write_outputs(out, taxa, rows, names, changes, avi[0])
     print(f"{len(species)} species today -> {len(rows)} species, {len(taxa)} taxa, "
           f"{len(names)} alias rows. Written to {out}")

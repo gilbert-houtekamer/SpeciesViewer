@@ -1,0 +1,37 @@
+Name;Action;Value;Note
+bos primigenius;merge;bos taurus;aurochs is extinct: merge is right (en.wikipedia.org/wiki/Aurochs, /Cattle)
+colias crocea;keep;;crocea and croceus are used for different taxa: keep the split (en.wikipedia.org/wiki/Colias_croceus)
+caracara cheriway;keep;;northern crested caracara = C. p. cheriway; later as subspecies (see design doc)
+eristalis horticola;keep;;bosbijvlieg; Cheilosia morio is a very different fly (nl.wikipedia.org/wiki/Bosbijvlieg)
+papaver hybridum;keep;;no international agreement (en.wikipedia.org/wiki/Roemeria_sicula)
+sus domesticus;keep;;no international agreement (en.wikipedia.org/wiki/Pig)
+oenanthe melanoleuca;keep;;en.wikipedia.org/wiki/Eastern_black-eared_wheatear
+bubalus arnee;keep;;en.wikipedia.org/wiki/Wild_water_buffalo
+ochlodes sylvanus;keep;;Ochlodes venatus is the Far Eastern Large Skipper (en.wikipedia.org/wiki/Large_skipper)
+gallinula galeata;keep;;en.wikipedia.org/wiki/Common_gallinule
+icterus croconotus;keep;;en.wikipedia.org/wiki/Venezuelan_troupial
+trachyphonus usambiro;keep;;en.wikipedia.org/wiki/Usambiro_barbet
+porphyrio madagascariensis;keep;;en.wikipedia.org/wiki/African_swamphen
+fluvicola albiventer;keep;;en.wikipedia.org/wiki/Black-backed_water_tyrant
+polioptila bilineata;keep;;en.wikipedia.org/wiki/White-browed_gnatcatcher
+zimmerius parvus;keep;;en.wikipedia.org/wiki/Mistletoe_tyrannulet
+icterus pyrrhopterus;keep;;en.wikipedia.org/wiki/Variable_oriole
+phacellodomus ferrugineigula;keep;;en.wikipedia.org/wiki/Orange-breasted_thornbird
+tangara brasiliensis;keep;;en.wikipedia.org/wiki/White-bellied_tanager
+vireo chivi;keep;;en.wikipedia.org/wiki/Chivi_vireo
+ardea brachyrhyncha;keep;;yellow-billed egret, Africa; split by region, see egretta intermedia
+caracara cheriway;en;northern crested caracara;C. p. cheriway
+caracara plancus;en;southern crested caracara;C. p. plancus
+porphyrio porphyrio;en;western swamphen;was purple swamphen (en.wikipedia.org/wiki/Western_swamphen)
+bubalus arnee;en;wild water buffalo;en.wikipedia.org/wiki/Wild_water_buffalo
+bubalus bubalis;en;water buffalo;en.wikipedia.org/wiki/Water_buffalo
+ochlodes venata;en;far eastern large skipper;en.wikipedia.org/wiki/Ochlodes_venatus
+sus domesticus;en;pig;en.wikipedia.org/wiki/Pig
+sus scrofa;en;wild boar;also: wild pig
+sus scrofa;alias-en;wild pig;
+oenanthe melanoleuca;en;eastern black-eared wheatear;en.wikipedia.org/wiki/Eastern_black-eared_wheatear
+oenanthe hispanica;en;western black-eared wheatear;
+ardea brachyrhyncha;en;yellow-billed egret;Africa south of the Sahara
+ardea brachyrhyncha;nl;geelsnavelzilverreiger;nl.wikipedia.org/wiki/Geelsnavelzilverreiger
+egretta intermedia;alias-en;median egret;Ardea intermedia = intermediate / median / smaller egret
+egretta intermedia;alias-en;smaller egret;

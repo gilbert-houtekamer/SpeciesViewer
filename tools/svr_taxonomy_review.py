@@ -25,6 +25,8 @@ from pathlib import Path
 
 PREFIX_RE = re.compile(r"^\d+\s+")
 KEPT = "kept — GBIF synonym"
+KEPT_CHOICE = "kept — your choice"
+MERGED_CHOICE = "merged — your choice"
 
 
 def read_csv(path):
@@ -112,13 +114,16 @@ def main():
 
     pic = [c for c in changes if int(c["Pictures"] or 0) > 0]
     decisions = {
-        "synonym": [c for c in pic if c["Kind"] == KEPT],
+        "synonym": [c for c in pic if c["Kind"] in (KEPT, KEPT_CHOICE, MERGED_CHOICE)],
         "renamed": [c for c in pic if c["Kind"] == "renamed"],
         "subspecies": [c for c in pic if c["Kind"] == "subspecies → species"],
     }
     for group in decisions.values():
         group.sort(key=lambda c: -int(c["Pictures"]))
-    slim = {k: [{"today": c["Today"], "new": c["New"], "gbif": c["GBIFSynonymOf"],
+    slim = {k: [{"today": c["Today"], "new": c["New"], "gbif": c["GBIFSynonymOf"] or c["New"],
+                 "decided": "follow" if c["Kind"] == MERGED_CHOICE else
+                            "keep" if c["Kind"] == KEPT_CHOICE else "",
+                 "why": c.get("Decision", ""),
                  "name": c["EnglishName"] or c["DutchName"], "pics": int(c["Pictures"]),
                  "family": c["FamilyNew"]} for c in v] for k, v in decisions.items()}
 
@@ -203,6 +208,7 @@ details details{margin-left:14px}
 .cmp h4{margin:4px 0;font-size:12px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted)}
 .up{color:var(--up)}.down{color:var(--down)}.only{color:var(--only)}
 .tag{font-size:12px;margin-left:6px}
+.mine{font-size:12px;color:var(--accent)}
 .legend span{margin-right:14px}
 @media (max-width:640px){.cmp{grid-template-columns:1fr}label.opt{white-space:normal}}
 </style></head><body><main>
@@ -266,11 +272,12 @@ function decisions(){
      <p class="muted" style="margin:0 0 8px">${esc(g.intro)}</p><table><thead><tr><th>Today</th>
      <th>${g.key==="synonym"?"GBIF says":"New"}</th><th class="num">Pictures</th><th>Your choice</th></tr></thead><tbody>`;
     for (const r of rows){
-      const id = g.key+":"+r.today, cur = choices[id] || g.def;
+      const def = r.decided || g.def, id = g.key+":"+r.today, cur = choices[id] || def;
       const [a,b] = g.cols(r);
       const opts = g.opts.map(([v,l]) => `<label class="opt"><input type="radio" name="${esc(id)}" value="${v}"
         ${cur===v?"checked":""}> ${esc(typeof l==="function"?l(r):l)}</label>`).join("");
-      out += `<tr data-id="${esc(id)}" data-def="${g.def}" class="${cur!==g.def?"changed":""}"><td>${a}</td><td>${b}</td>
+      const why = r.decided ? `<br><span class="mine">your decision${r.why ? ": "+esc(r.why) : ""}</span>` : "";
+      out += `<tr data-id="${esc(id)}" data-def="${def}" class="${cur!==def?"changed":""}"><td>${a}${why}</td><td>${b}</td>
         <td class="num">${r.pics}</td><td>${opts}</td></tr>`;
     }
     out += "</tbody></table></div>";
@@ -294,7 +301,7 @@ function download(){
   const lines = ["Group;Today;Choice"];
   for (const g of GROUPS) for (const r of D.decisions[g.key]){
     const id = g.key+":"+r.today;
-    lines.push([g.key, r.today, choices[id] || g.def].join(";"));
+    lines.push([g.key, r.today, choices[id] || r.decided || g.def].join(";"));
   }
   const blob = new Blob([lines.join("\n")+"\n"], {type:"text/csv"});
   const a = document.createElement("a");
