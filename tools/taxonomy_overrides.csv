@@ -57,7 +57,7 @@ phalacrocorax lucidus;subspecies;phalacrocorax carbo lucidus;own name is good as
 corvus cornix;subspecies;corvus corone cornix;own name is good as subspecies name — review 16 Oct
 caracara cheriway;subspecies;caracara plancus cheriway;own name is good as subspecies name — review 16 Oct
 pycnonotus tricolor;subspecies;pycnonotus barbatus tricolor;own name is good as subspecies name — review 16 Oct
-cyanocorax luxuosus;subspecies;cyanocorax yncas luxuosus;own name is good as subspecies name — review 16 Oct
+cyanocorax luxuosus;avilist;cyanocorax yncas;no own name for the subspecies: follow AviList — review 16 Oct
 ramphocelus icteronotus;subspecies;ramphocelus flammigerus icteronotus;own name is good as subspecies name — review 16 Oct
 anas carolinensis;subspecies;anas crecca carolinensis;own name is good as subspecies name — review 16 Oct
 camaroptera brevicaudata;subspecies;camaroptera brachyura brevicaudata;own name is good as subspecies name — review 16 Oct
@@ -69,7 +69,7 @@ oxyura ferruginea;subspecies;oxyura jamaicensis ferruginea;own name is good as s
 aulacorhynchus caeruleogularis;subspecies;aulacorhynchus prasinus caeruleogularis;own name is good as subspecies name — review 16 Oct
 upupa africana;subspecies;upupa epops africana;own name is good as subspecies name — review 16 Oct
 fringilla coelebs africana;subspecies;fringilla coelebs africana;subspecies, with new names — review 16 Oct
-buteo rufinus cirtensis;subspecies;buteo rufinus cirtensis;own name is good as subspecies name — review 16 Oct
+buteo rufinus cirtensis;avilist;buteo rufinus;no own name for the subspecies: follow AviList — review 16 Oct
 motacilla flava feldegg;subspecies;motacilla flava feldegg;own name is good as subspecies name — review 16 Oct
 cathartes aura ruficollis;subspecies;cathartes aura ruficollis;own name is good as subspecies name — review 16 Oct
 formicivora littoralis;avilist;formicivora serrana;not internationally recognised: follow AviList, no subspecies — review 16 Oct
@@ -86,3 +86,9 @@ exochomus quadripustulatus;keep;;genus move not followed — review 16 Oct
 sus domesticus;nl;varken;was 'wild zwijn' (the wild boar's name) — agreed 16 Oct
 bubalus arnee;nl;wilde waterbuffel;was 'gedomesticeerde waterbuffel' — agreed 16 Oct
 caracara plancus;nl;kuifcaracara;one species now — agreed 16 Oct
+pericrocotus flammeus;en;orange minivet;scarlet minivet stays with P. speciosus (kept as a species) — review 16 Oct
+anas crecca carolinensis;en;american green-winged teal;review 16 Oct
+cathartes aura ruficollis;en;tropical turkey vulture;review 16 Oct
+cathartes aura ruficollis;nl;kalkoengier (ssp ruficollis);review 16 Oct
+motacilla flava feldegg;en;western yellow wagtail (ssp feldegg);review 16 Oct
+motacilla flava feldegg;nl;gele kwikstaart (ssp feldegg);review 16 Oct
