@@ -1,7 +1,6 @@
 Name;Action;Value;Note
 bos primigenius;merge;bos taurus;aurochs is extinct: merge is right (en.wikipedia.org/wiki/Aurochs, /Cattle)
 colias crocea;keep;;crocea and croceus are used for different taxa: keep the split (en.wikipedia.org/wiki/Colias_croceus)
-caracara cheriway;merge;caracara plancus;one species; northern = C. p. cheriway, southern = C. p. plancus; later as subspecies (see design doc)
 malva pseudolavatera;merge;malva multiflora;review 16 Oct
 orthotrichum affine;merge;lewinskya affinis;the rename is real; the Lewinskya affinis complex is split by region (researchgate 344417048)
 eristalis horticola;keep;;bosbijvlieg; Cheilosia morio is a very different fly (nl.wikipedia.org/wiki/Bosbijvlieg)
