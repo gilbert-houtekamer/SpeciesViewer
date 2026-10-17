@@ -273,7 +273,9 @@ def rewrite_csvs(root, P):
                         a[c] = r[c]
             else:
                 out[new] = r
-        elif r["Level"] in ("Level.TOPICS", "Level.TOPIC", "Level.TOPICLEAF"):
+        elif r["Level"] in ("Level.TOPICS", "Level.TOPIC", "Level.TOPICLEAF")                 or not r["TargetPath"].startswith("biota/"):
+            # topics (a landscape year is a species-level row under topics/):
+            # not part of the species list, kept exactly as they are
             other.append(r)
     higher = {}
     for new, r in out.items():
