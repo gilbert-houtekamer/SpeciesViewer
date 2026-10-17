@@ -225,3 +225,24 @@ master's conversion (Taxonomy 3's `spaindb`) is refused at Publish Day, at the s
 when adding learned species to the master — it would bring the numbered names back. Converting a
 trip along with its master is the next design question (its species list, `species.csv`, review
 days); until then such a trip can be viewed, not published.
+
+---
+
+## The main master is converted — 17 Oct 2026, 14:39
+
+Backup first (F:\Backup\naturedb, 13:35, after the heal, FAILED 0). Tables `D:/code/taxonomy_main`
+(birds AviList, mammals MDD, 0 checker failures). `svr_taxonomy_convert.py --main-master --apply`:
+**167,959 files moved in 5½ minutes**, 6,088 web pages to `E:\Dropbox\naturedb\.trash\taxonomy-20261017-143904`,
+2,109 empty folders removed, 189 new names. Undo log: `E:\Dropbox\naturedb\admin\taxonomy_convert_20261017-143904.csv`.
+
+- Totals identical before/after: 81,161 picture rows, 182,361 file rows, 183,986 files in `biota/`.
+  The stored biota total went 82,850 → 82,841: the old total was 9 above the sum of its species
+  (every species kept its exact count); it is now consistent.
+- No folder with a number left. The app's readers load it (2,779 aliases).
+- Admin check: REMOVE 0, REPOINT 0, RECLASSIFY 0, ADD 19 — the same 19 as before.
+- Found in the dry run and fixed: a species can have a twin folder under the other copy of a doubled
+  order (the moved egret pictures); every same-once-unnumbered folder now moves along.
+
+**Still to do (with the author):** rename the `biota` root on the web server aside and publish the
+fresh site with the pictures (Rebuild Entire Website + "Also send the full-size pictures"); Rebuild
+all album websites with blogs; Reset Trip + Read & Summarize for the remaining trips; Count Species.
