@@ -179,3 +179,30 @@ Side by side: `D:/code/taxonomy_trial` (GBIF), `…_reference` (GBIF checked by 
 Still to do before the next conversion: the converter must put subspecies pictures in the folder of
 their species (today it would make a subfolder), and Dutch names for the ~14,800 species of AviList
 and MDD that the author's list never had.
+
+---
+
+## Second conversion test — Taxonomy 3 (0.4.2, Spain + Brazil), 17 Oct
+
+Birds from AviList, mammals from MDD (`--authority`), subspecies beside their species.
+449 pictured species, 28 new names, 4 subspecies; 17,602 files moved in 19 s, 1,272 web pages to
+`.trash`, 493 empty folders removed. Undo log:
+`C:\SpeciesViewer\Taxonomy 3\nature\admin\taxonomy_convert_20261017-093057.csv`.
+
+- Totals unchanged: 6,459 pictures, 6,549 picture rows, 20,546 file rows. No numbered folder left.
+- Admin check: REPOINT 0, ADD 0; REMOVE 407 = landscape pictures (the check doesn't scan `topics/`);
+  **SPECIES 42 = the four subspecies** — their pictures sit in the species folder by design.
+  ⚠ The Master menu's heal would "reclassify" them back to the species: the admin check must learn
+  `SubspeciesOf` before anyone runs heal on a converted master.
+- The app's readers load the result; Hooded Crow is a species-level entry beside *Corvus corone*,
+  in its folder.
+- Local website: 430 pages per language, 63,602 links, **0 broken** apart from the blog index (this
+  master has none yet) — after copying 842 full-size JPGs to their new paths by hand (known gap 3).
+
+**New for the code step**
+- Numbered names are hard-coded: `HTMLtemplates/intro-en.html` / `intro-nl.html` (the dragonfly and
+  butterfly tiles link to `003 odonata/` and `022 lepidoptera/`), `batch/sv1MakeReposity.py:213-214`
+  (a new master's link pages), and comments/logic in `db/master_db.py:726, 1636` and
+  `gui/biota_source.py:293` that rely on the numbers for sorting.
+- The admin check / heal must treat a picture whose species is a `SubspeciesOf` its folder's species
+  as in place.
