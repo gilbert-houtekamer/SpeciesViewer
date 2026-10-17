@@ -258,6 +258,8 @@ def retire_trip_dialog(main_window, trip_db):
         except Exception:
             tname = ""
         from gui.wait_picture import run_waiting
+        from gui.force_delete_dialog import _release_watches
+        _release_watches(rep["trip_db"])      # an open viewer holds watched folders
         ok, err = run_waiting(dlg, f"Deleting {trs._fmt_size(rep['size_bytes'])} of trip data…",
                               lambda: trs.execute_retire(rep["trip_db"]))
         if not ok:

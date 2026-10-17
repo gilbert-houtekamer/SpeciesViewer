@@ -232,6 +232,8 @@ class DeleteDialog(QDialog):
         if was_active and self.kind == "trip":       # GUI: before the folder goes
             from gui.trip_retire import _deselect_active_trip
             _deselect_active_trip(self.main_window)
+        if do_folder:
+            _release_watches(r["folder"])
 
         def work():                              # off the GUI thread, in a wait box
             out = []
@@ -282,6 +284,37 @@ class DeleteDialog(QDialog):
             logger.info(f"{self.text['title']}: cleanup skipped: {e}")
         return (f"✅ Deleted {folder} ({fd.human(r['size'])})"
                 + (" — backup in .trash." if backup else "."))
+
+
+def _release_watches(folder) -> int:
+    """Make every open window stop watching paths inside `folder`.
+
+    The culling viewer and the Trip Species Viewer watch a day's folders for
+    PhotoLab edits, and on Windows a watched folder is held open — the delete
+    then stops on WinError 32 for as long as SpeciesViewer runs (Greece and
+    waarneming, 2026-10-17: gone at once after closing the app). Returns how
+    many paths were let go."""
+    from PyQt6.QtCore import QFileSystemWatcher
+    try:
+        root = Path(folder).resolve()
+    except OSError:
+        return 0
+    released = 0
+    for top in QApplication.topLevelWidgets():
+        for w in top.findChildren(QFileSystemWatcher):
+            inside = []
+            for p in w.files() + w.directories():
+                try:
+                    if Path(p).resolve().is_relative_to(root):
+                        inside.append(p)
+                except OSError:
+                    continue
+            if inside:
+                w.removePaths(inside)
+                released += len(inside)
+    if released:
+        logger.info(f"Stopped watching {released} path(s) in {root.name} before the delete.")
+    return released
 
 
 def _same(a, b) -> bool:
