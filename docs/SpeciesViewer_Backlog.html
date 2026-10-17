@@ -483,6 +483,15 @@ and <code>docs/plans/taxonomy_order_design.md</code>.</p>
     the whole list (18,699 species), a checker, a review page with the choices, and a first
     conversion of a throw-away master &mdash; folders, CSVs and a rebuilt website with no broken
     links. Next: sort by the new number on screen and on the website.</li>
+  <li><span class="tag-open">OPEN</span> <strong>Converting the main master &mdash; the plan</strong>
+    (agreed 17 Oct). <em>Trips</em> are not converted: the remaining ones are reset and read
+    again &mdash; Reset Trip now takes the master's new species list and puts the lifer baseline
+    into the new names. <em>Albums</em> need no conversion of their own: their species pages and
+    blogs are built live from the master, and the blog pictures are the album's own copies, so
+    Rebuild all album websites <em>with blogs</em> fixes their species links. <em>The website</em>
+    has never been cleaned: rename the <code>biota</code> root on the web server out of the way and
+    publish a fresh copy (Rebuild Entire Website with &ldquo;Also send the full-size
+    pictures&rdquo;), rather than deleting old pages one by one.</li>
   <li><span class="tag-new">NEW</span> <strong>Wikipedia beside the species</strong> &mdash;
     reviewing the 29 species GBIF calls a synonym went fastest with Wikipedia open: almost none
     needed merging, and it gave better English names (Western Swamphen, Wild Water Buffalo,
@@ -545,6 +554,10 @@ alongside.</p>
 <h2>7. Rating &amp; Website</h2>
 <h3>To do</h3>
 <ul>
+  <li><span class="tag-bug">BUG</span> <strong>The blog index on the server is not updated</strong>
+    (17 Oct) &mdash; publishing a trip updates
+    <code>nature/tripindex-nl.html</code>, but not <code>nature/biotablog/blog index-nl.html</code>.
+    Probably unrelated to the species-list conversion; to be found and fixed.</li>
   <li><span class="tag-parked">PARKED</span> <strong>Canon <code>.HIF</code> is invisible</strong> (not pursued in 2026: no sample file, and none will be sought this year) —
     now that the sidecar question is answered, the remaining work is one entry: <code>.hif</code>
     appears nowhere in the extension table or the code, so such a file is not even offered as a
