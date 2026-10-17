@@ -128,6 +128,10 @@ HOUSEKEEPING_DIRS = {
 }
 
 
+THUMBNAIL_SUFFIX = "-small.jpg"
+THUMBNAIL_LABEL = "-small.jpg (website thumbnails)"
+
+
 def scan_source(source):
     """ONE walk of the source → (pictures, ignored) where `ignored` is
     {extension: count} for files this ingest will NOT take.
@@ -162,6 +166,13 @@ def scan_source(source):
                        if not d.startswith(".") and d.lower() not in HOUSEKEEPING_DIRS]
         for name in filenames:
             if name.startswith(".") or name == _CardCache._FILENAME:
+                continue
+            if name.lower().endswith(THUMBNAIL_SUFFIX):
+                # SpeciesViewer's own website thumbnail (600x450, no capture date):
+                # never a picture to read in. Taken along, it was filed by its
+                # file date — the day a website build made it — and showed up as
+                # days of its own (TaxoGreece: 93 on 2026-05-23, 28 on 2026-07-08).
+                ignored[THUMBNAIL_LABEL] = ignored.get(THUMBNAIL_LABEL, 0) + 1
                 continue
             ext = Path(name).suffix.lower()
             if ext in PICTURE_EXTENSIONS:
@@ -801,7 +812,8 @@ def pictures_on_disk_by_day(dest):
             continue
         try:
             n = sum(1 for f in day_dir.iterdir()
-                    if f.suffix.lower() in PICTURE_EXTENSIONS and f.is_file())
+                    if f.suffix.lower() in PICTURE_EXTENSIONS and f.is_file()
+                    and not f.name.lower().endswith(THUMBNAIL_SUFFIX))
         except OSError:
             continue
         if n:
