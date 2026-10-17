@@ -336,12 +336,24 @@ def apply(root, tables, P):
             log.writerow(["backup", aliases, backup / "speciesnames.csv"])
         else:
             log.writerow(["new", "", aliases])
-        shutil.copy2(tables / "names.csv", aliases)
+        merge_aliases(aliases, tables / "names.csv")
         lf.flush()
     rewrite_csvs(root, P)
     removed = remove_empty_dirs(root / "biota")
     print(f"Applied. {len(P['moves'])} files moved, {len(P['trash'])} web pages to {trash}, "
           f"{removed} empty folders removed.\nLog (for --undo): {log_path}")
+
+
+def merge_aliases(target, new_names):
+    """Add the new alias rows to the master's table, never replace it: a second
+    run knows only today's names, and the old names from the first run must keep
+    working. One row per (name, language, points-to); a new row wins."""
+    header, rows = read_csv(new_names)
+    if target.exists():
+        _h, old = read_csv(target)
+        new_keys = {(r["Name"], r["Language"], r["PointsTo"]) for r in rows}
+        rows = [r for r in old if (r["Name"], r["Language"], r["PointsTo"]) not in new_keys] + rows
+    write_csv(target, header, rows)
 
 
 def remove_empty_dirs(top):

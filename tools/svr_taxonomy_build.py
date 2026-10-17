@@ -126,6 +126,7 @@ def load_today(master):
             "class": strip(ch.get("class")), "order": strip(ch.get("order")),
             "family": real_family(fam_raw), "family_raw": strip(fam_raw),
             "book": legacy_number(fam_raw), "pics": pics.get(name, 0),
+            "subspecies_of": (r.get("SubspeciesOf") or "").strip().lower(),
         })
     # names of higher taxa, keyed by the name without its number; a fused
     # 'zygoptera lestidae' also names the family 'lestidae'
@@ -379,7 +380,9 @@ def resolve_authority(species_today, ref, ov):
         n, w = s["name"], s["name"].split()
         target, sub, kind, decision = None, None, "", ""
         by_en = unique(ref["by_en"].get(_norm_en(s["en"]), ())) if s["en"] else None
-        if n in ov["merge"]:
+        if s.get("subspecies_of") and s["subspecies_of"] in sp:
+            sub, target, kind = n, s["subspecies_of"], "subspecies — already converted"
+        elif n in ov["merge"]:
             (target, decision), kind = ov["merge"][n], MERGED_CHOICE
         elif n in ov["subspecies"]:
             sub, decision = ov["subspecies"][n]
@@ -626,6 +629,17 @@ def build(species, higher, avi, gbif, hand, ov, mdd=None, refcheck=False, auth=N
             dropped.append((name, lang, before, sorted(others)))
         else:
             names.append([before, lang, name, "name shown before", "today's list"])
+
+    # a subspecies without a name of its own (or with just its species' name):
+    # "<species name> (ssp <epithet>)", like "kalkoengier (ssp ruficollis)"
+    for name, sb in subs.items():
+        species_row = rows.get(sb["parent"], {})
+        for lang in ("en", "nl"):
+            species_names = species_row.get(lang, [])
+            # a name the species also has finds the species: not the subspecies'
+            sb[lang] = [n for n in sb[lang] if n not in species_names]
+            if not sb[lang] and species_names:
+                sb[lang] = [f"{species_names[0]} (ssp {name.split()[-1]})"]
 
     for r in rows.values():
         r["parent"] = r["chain"][-1][1] if r["chain"] else ""

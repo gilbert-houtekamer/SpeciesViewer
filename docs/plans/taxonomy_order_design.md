@@ -206,3 +206,12 @@ Birds from AviList, mammals from MDD (`--authority`), subspecies beside their sp
   `gui/biota_source.py:293` that rely on the numbers for sorting.
 - The admin check / heal must treat a picture whose species is a `SubspeciesOf` its folder's species
   as in place.
+
+**17 Oct — subspecies names and a second run.** A subspecies never keeps a name its species also
+has; without a name of its own it is called "*species name* (ssp *epithet*)" in English and Dutch,
+as the author did for the Western Yellow Wagtail and the Turkey Vulture. Green Jay and Long-legged
+Buzzard are subspecies again (regional): "green jay (ssp luxuosus)" / "groene gaai",
+"long-legged buzzard (ssp cirtensis)" / "arendbuizerd (ssp cirtensis)".
+**Running the conversion twice changes nothing:** tables built from the converted Taxonomy 3
+give 444 same, 4 "subspecies — already converted", 0 files to move, 0 new names; the alias table is
+merged, never replaced (a second run knows only today's names).
