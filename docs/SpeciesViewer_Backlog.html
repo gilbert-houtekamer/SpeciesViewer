@@ -496,6 +496,11 @@ and <code>docs/plans/taxonomy_order_design.md</code>.</p>
     <code>dist/installation files/initial_speciescollection.csv</code> is still the old list
     (numbered orders, no Sequence, old names). Replace it with the converted list and its alias
     table, so a new master starts where the main master is now.</li>
+  <li><span class="tag-open">OPEN</span> <strong>Leftovers found during the conversion</strong> (17 Oct) &mdash;
+    report only so far: the Kingdom&hellip;Family columns in the master's <code>data_pictures.csv</code> sit
+    one level off; 516 pictures that may be black; 19 files the admin check proposes to add; 5 old
+    <code>.preview_cache</code> folders in old picture folders; and the unlinked
+    <code>nature/biotablog/</code> folder on the server (remove only with the author's go-ahead).</li>
   <li><span class="tag-open">OPEN</span> <strong>Subspecies step 2</strong> &mdash; a real subspecies level in
     the app, with the species page linking to its subspecies (web and app).</li>
   <li><span class="tag-new">NEW</span> <strong>Wikipedia beside the species</strong> &mdash;
@@ -560,6 +565,9 @@ alongside.</p>
 <h2>7. Rating &amp; Website</h2>
 <h3>To do</h3>
 <ul>
+  <li><span class="tag-bug">BUG</span> <strong>Album menus link to groups that are not there</strong>
+    (17 Oct, older than ch.6) &mdash; an album's menu offers groups the album has no pictures of, and some
+    group pages show tiles whose image links contain backslashes, so the image does not load.</li>
   <li><span class="tag-shipped">SHIPPED</span> <strong>The blog index on the server is not updated</strong>
     (17 Oct, 5b5e14c) &mdash; nothing ever wrote a master blog index; the page on the server was a 2024
     leftover. On master pages "Blogs" now opens the trip index, which lists every trip with its blog.
