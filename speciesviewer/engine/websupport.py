@@ -20,6 +20,7 @@ from engine.specieslib import Level
 import engine.projectlib
 import engine.breadcrumb
 from utils.exiftool_path import exe as exiftool_exe
+from utils.atomic_replace import copy_with_retry
 
 logger = logging.getLogger("speciesviewer")
 
@@ -513,6 +514,17 @@ def webParent(url_path):
     return posixpath.dirname(str(url_path).replace("\\", "/").rstrip("/"))
 
 
+def blogIndexHref(MyProject, BiotaWebRoot):
+    """Where a page's "Blogs" link goes: the site's own blog index for a trip or
+    album, the trip index for the master (which has no blog of its own). The
+    master is recognised as the site whose root IS the master root."""
+    master = masterWebRoot(MyProject, BiotaWebRoot)
+    language = MyProject.getLanguage()
+    if BiotaWebRoot.rstrip("/") == master.rstrip("/"):
+        return f"{master}tripindex-{language}.html"
+    return f"{BiotaWebRoot}biotablog/blog index-{language}.html"
+
+
 def masterWebRoot(MyProject, fallback=""):
     """The web root of the MASTER site, whatever project happens to be loaded.
 
@@ -806,12 +818,18 @@ def formatToken(tokenno, MyProject, species_param, file, picture):
             # Web root of the MASTER site. Use this, not %%90%%, on any page the
             # master owns but that may be rendered while a trip/album is loaded.
             return masterWebRoot(MyProject, BiotaWebRoot)
+        elif tokenno == 181:
+            # The "Blogs" / "Recent" link. A trip or album has its own blog
+            # index; the master has none (nothing writes nature/biotablog/ —
+            # the copy on the server was a 2024 leftover that never updated), so
+            # there it opens the trip index, which lists every trip's blog.
+            return blogIndexHref(MyProject, BiotaWebRoot)
         elif tokenno == 91:
             language = MyProject.getLanguage()
             if MyProject.Trip != None:
                 directory = MyProject.Trip.getMasterBiotaWebRoot()     # path to current main repository, NOT to trip also for subdirectories
             workstr = "	<h4>Links</h4>\n	<div class=""\"content\""">\n		<ul class= ""\"w3-ul w3-hoverable\""">\n"
-            workstr += '			<li class=""\"first\"""><a href="'+ BiotaWebRoot +'biotablog/blog index-' + language +'.html">Recent</a></li>\n'
+            workstr += '			<li class=""\"first\"""><a href="'+ blogIndexHref(MyProject, BiotaWebRoot) +'">Recent</a></li>\n'
             if MyProject.Trip != None:
                 workstr += '            <li><a href="' + directory + 'tripindex-' + language + '.html">Trips</a></li>'
                 if language == 'nl':
@@ -1439,7 +1457,7 @@ def writeOneSpecies(MyProject, leaf, temptextfile):
                 MyProject.addAllSpeciesFiles(sourcestr, os.path.join(
                     MyProject.getBiotaWebRoot(), species['TargetPath'], species['BestJPG']))
             else:
-                rc = shutil.copy(sourcestr, targetstr)
+                rc = copy_with_retry(sourcestr, targetstr)
                 # Register the FROZEN biota copy (targetstr), not the transient
                 # source (sourcestr), as the -small.jpg resize source. sourcestr
                 # can be a temp drop-pool path (sv_droppool_…) or a trip-local
@@ -1605,7 +1623,7 @@ def addOneSpeciesPage(MyProject, species_param):
                             if not _src_already_at_final(MyProject,
                                     JPGname_no_path['WindowsFileName'],
                                     picture['TargetPath'], picture['BestJPG']):
-                                shutil.copy(JPGname_no_path['WindowsFileName'], targetstr)
+                                copy_with_retry(JPGname_no_path['WindowsFileName'], targetstr)
                         filesfound += 1
                     else:
                         rejectUPNs += 1
@@ -1725,7 +1743,7 @@ def addOneSpeciesJPG(MyProject, jpgname, textCreated, templatehtml):
         targetstr = MyProject.getBiotaBlogDir() + MyProject.Blog.getBlogDay() + '/' + filedata['File:FileName']
         #print(f'from {sourcestr} to {targetstr}')
         if not MyProject.getSkipJPGs():
-            shutil.copy(sourcestr, targetstr)
+            copy_with_retry(sourcestr, targetstr)
             if species is not None and isObscure(MyProject, species):
                 result = subprocess.run([exiftool_exe(), '-GPS:all=', '-overwrite_original', targetstr],
                                         stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)

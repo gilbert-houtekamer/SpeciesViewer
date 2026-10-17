@@ -28,3 +28,21 @@ def replace_with_retry(tmp, dest, attempts: int = 12, delay: float = 0.25) -> No
             if attempt == attempts - 1:
                 raise
             time.sleep(delay)
+
+
+def copy_with_retry(src, dest, attempts: int = 12, delay: float = 0.25):
+    """shutil.copy(src, dest), retried for about three seconds when a sync client
+    holds dest. Copying a JPG into an album's Dropbox folder while Dropbox is
+    reading the previous copy failed with "[Errno 22] Invalid argument"
+    (Tanzania, rebuilding all album websites 2026-10-17). A missing source is
+    not transient and is raised at once."""
+    import shutil
+    for attempt in range(attempts):
+        try:
+            return shutil.copy(src, dest)
+        except FileNotFoundError:
+            raise
+        except OSError:
+            if attempt == attempts - 1:
+                raise
+            time.sleep(delay)
