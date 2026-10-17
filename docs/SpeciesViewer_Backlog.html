@@ -1278,6 +1278,16 @@ UTC offset. Treating these as one thing caused everything below.</p>
 
 <h3>To do</h3>
 <ul>
+  <li><span class="tag-new">NEW</span> <strong>&ldquo;Review the date range&rdquo;</strong> (17 Oct) &mdash;
+    a trip's stored dates and the days it actually holds can disagree, and nothing says so. The
+    Zwin test trip was created with the dialog's default 31 Oct &ndash; 14 Nov 2026 while its pictures
+    are from 13&ndash;14 Sep 2025; nothing used the dates until Retire Trip to Album built an album on
+    them, which found no pictures. Retire now takes the days when the stored range misses them
+    (9bc61eb), but the real fix is earlier and visible: at some point &mdash; creating the trip, the
+    first Read &amp; Summarize, Publish Trip &mdash; SpeciesViewer shows <em>&ldquo;Review the date
+    range&rdquo;</em> with the defined range next to the days and files actually worked on, and offers
+    to set the range from the days. Create Trip itself could propose the range from the day folders
+    it reads instead of future dates.</li>
   <li><strong>Decide how capture time is stored</strong> — the one open decision, and a big one,
     because it touches sidecars, <code>data_files.csv</code>, the website and the master.
     Today the instant is known but only lives in the sidecar; nothing downstream uses it.
