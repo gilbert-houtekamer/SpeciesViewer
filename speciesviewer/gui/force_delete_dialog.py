@@ -22,6 +22,7 @@ from PyQt6.QtWidgets import (QAbstractItemView, QApplication, QCheckBox, QDialog
 
 from engine import force_delete as fd
 from gui import theme
+from gui.wait_picture import run_waiting
 from gui.widgets import wrapped
 from utils.config import _config, get_trips_root, get_virttrips_root, set_setting
 
@@ -99,13 +100,15 @@ class DeleteDialog(QDialog):
     # ── the list ─────────────────────────────────────────────────────────────
     def _load(self):
         master = _config.get("master", "masterbiotadatabase", fallback="").strip()
-        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
-        try:
-            listed, published, self._web_problem = fd.website_state(master)
-            self._rows = fd.scan(self.kind, get_trips_root(), get_virttrips_root(),
-                                 master, listed, published or set())
-        finally:
-            QApplication.restoreOverrideCursor()
+
+        def look():                          # off the GUI thread: the website is asked
+            listed, published, problem = fd.website_state(master)
+            rows = fd.scan(self.kind, get_trips_root(), get_virttrips_root(),
+                           master, listed, published or set())
+            return listed, published, problem, rows
+        listed, published, self._web_problem, self._rows = run_waiting(
+            self.main_window, f"Looking up your {'trips' if self.kind == 'trip' else 'albums'} "
+                              f"and what is on the website…", look)
         self._published_known = published is not None
         self.table.setRowCount(len(self._rows))
         for i, r in enumerate(self._rows):
@@ -225,27 +228,32 @@ class DeleteDialog(QDialog):
                 QMessageBox.StandardButton.No) != QMessageBox.StandardButton.Yes:
             return
 
-        report = []
-        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
-        try:
+        was_active = do_folder and _same(r["folder"], self._active_folder())
+        if was_active and self.kind == "trip":       # GUI: before the folder goes
+            from gui.trip_retire import _deselect_active_trip
+            _deselect_active_trip(self.main_window)
+
+        def work():                              # off the GUI thread, in a wait box
+            out = []
             # Website first, folder last: a website failure leaves the folder
             # to try again with.
             if do_list:
                 try:
                     fd.remove_from_trip_list(r["name"], self.kind)
-                    report.append(f"✅ Removed “{r['name']}” from the trip list.")
+                    out.append(f"✅ Removed “{r['name']}” from the trip list.")
                 except Exception as e:
-                    report.append(f"❌ Trip list: {e}")
+                    out.append(f"❌ Trip list: {e}")
             if do_pages:
                 try:
                     fd.remove_pages(r["name"])
-                    report.append(f"✅ Removed the published pages /trips/{r['name']}/.")
+                    out.append(f"✅ Removed the published pages /trips/{r['name']}/.")
                 except Exception as e:
-                    report.append(f"❌ Published pages: {e}")
-            if do_folder:
-                report.append(self._delete_folder(r, backup))
-        finally:
-            QApplication.restoreOverrideCursor()
+                    out.append(f"❌ Published pages: {e}")
+            folder_err = fd.delete_folder(r["folder"], backup=backup) if do_folder else None
+            return out, folder_err
+        report, folder_err = run_waiting(self, f"Deleting “{r['name']}”…", work)
+        if do_folder:
+            report.append(self._after_folder(r, backup, was_active, folder_err))
 
         for line in report:
             (logger.warning if line.startswith("❌") else logger.info)(f"{title} — {line}")
@@ -254,13 +262,9 @@ class DeleteDialog(QDialog):
         QMessageBox.information(self, title, "\n".join(report))
         self._load()
 
-    def _delete_folder(self, r, backup) -> str:
+    def _after_folder(self, r, backup, was_active, err) -> str:
+        """The GUI follow-up once the folder delete (in the wait box) is done."""
         folder = r["folder"]
-        was_active = _same(folder, self._active_folder())
-        if was_active and self.kind == "trip":
-            from gui.trip_retire import _deselect_active_trip
-            _deselect_active_trip(self.main_window)
-        err = fd.delete_folder(folder, backup=backup)
         if err:
             return f"❌ Folder: {err}"
         try:

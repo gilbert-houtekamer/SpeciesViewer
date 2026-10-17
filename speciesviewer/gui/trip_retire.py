@@ -155,8 +155,11 @@ def retire_trip_dialog(main_window, trip_db):
         prior = _snapshot_trip_selection()
         _deselect_active_trip(main_window)
         active = ""
-    rep = trs.scan(trip_db, get_virttrips_root(), active,
-                   master_db=_config.get("master", "masterbiotadatabase", fallback=""))
+    from gui.wait_picture import run_waiting
+    master_db = _config.get("master", "masterbiotadatabase", fallback="")
+    virt_root = get_virttrips_root()
+    rep = run_waiting(main_window, "Measuring the trip…",
+                      lambda: trs.scan(trip_db, virt_root, active, master_db=master_db))
     if not rep.get("ok"):
         if not os.path.isdir(str(trip_db)):
             # Folder already deleted outside the app: nothing to scan, but the
@@ -254,7 +257,9 @@ def retire_trip_dialog(main_window, trip_db):
             tname = (read_trip_ini(Path(rep["trip_db"])).get("trip_name", "") or "").strip()
         except Exception:
             tname = ""
-        ok, err = trs.execute_retire(rep["trip_db"])
+        from gui.wait_picture import run_waiting
+        ok, err = run_waiting(dlg, f"Deleting {trs._fmt_size(rep['size_bytes'])} of trip data…",
+                              lambda: trs.execute_retire(rep["trip_db"]))
         if not ok:
             QMessageBox.warning(dlg, verb, f"Delete failed:\n{err}")
             return

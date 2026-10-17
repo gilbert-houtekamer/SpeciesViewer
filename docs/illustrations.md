@@ -29,6 +29,7 @@ out against the app's sand and grey.
 | Chameleon | `assets/wait_chameleon.jpg` | To Master ▸ Merge Pictures into Master (steps 2–4) |
 | Vitelline masked weaver | `assets/wait_weaver.jpg` | Trips ▸ Read SD-card or Folder (and Days ▸ Copy Day from Card) — a collection is woven strand by strand; Master ▸ Rebuild Entire Website — the whole site rewoven |
 | Eurasian jay | `assets/wait_jay.jpg` | Metadata backup and RAW backup — the jay buries acorns and finds them back |
+| Hyacinth macaws | `assets/wait_macaws.jpg` | the short waits: Delete Trip Completely / Delete Album (looking up, deleting), Retire Trip (measuring, deleting) — `run_waiting` in `gui/wait_picture.py`; more to come |
 
 A wait picture is `assets/wait_<name>.jpg`, about 512×512; a step shows it with
 `'wait_picture': '<name>'` (see `gui/wait_picture.py`). Keep the 2048-pixel originals out
