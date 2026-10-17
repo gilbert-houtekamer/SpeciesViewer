@@ -131,7 +131,7 @@ def main(args, config):
     sv7WriteCommit.putRecursiveTreeWeb(MyProject, config)
     # After the tree itself changed (a species-list conversion, ch.6) the site
     # has the full-size pictures only at their old paths: send them once.
-    if getattr(args, "pictures", False):
+    if getattr(args, "pictures", False) or config.getboolean("rebuild", "pictures", fallback=False):
         sv7WriteCommit.putAllPictures(MyProject, config)
 
     logger.info(f"✅ svMasterRebuildWeb complete in {time.time() - starttime:.1f}s.")

@@ -55,6 +55,34 @@ def clear_review_directories(repo_path):
     return removed
 
 
+def refresh_species_list_from_master(repo_path, master_path):
+    """After the master's species list was converted (ch.6), a reset trip takes
+    the master's list and alias table, so re-reading it files every species under
+    the new names. The trip's old list is kept as a backup. Nothing is lost: the
+    species a trip learned were added to the master's list when they were found.
+    Returns True when the list was refreshed."""
+    from engine.conversion_guard import trip_behind_master
+    if not trip_behind_master(repo_path, master_path):
+        return False
+    active = os.path.join(repo_path, 'metadata', 'active')
+    master_active = os.path.join(master_path, 'metadata', 'active')
+    backup = os.path.join(active, 'backup')
+    os.makedirs(backup, exist_ok=True)
+    stamp = time.strftime("%Y%m%d-%H%M%S")
+    shutil.copy2(os.path.join(active, 'speciescollection.csv'),
+                 os.path.join(backup, f"pre-conversion-{stamp}_speciescollection.csv"))
+    for name in ('speciescollection.csv', 'speciesnames.csv'):
+        src = os.path.join(master_active, name)
+        if os.path.exists(src):
+            shutil.copy2(src, os.path.join(active, name))
+    # the lifer baseline too: same species, new names
+    from engine.species_baseline import translate_baseline
+    translate_baseline(repo_path, master_path)
+    logger.info("The trip now uses the master's converted species list "
+                f"(its old list is in {backup}).")
+    return True
+
+
 def reset_active_data(repo_path):
     """Reset the active data CSV files to empty templates."""
     dist_dir = str(Path(__file__).resolve().parent.parent / "dist" / "installation files")

@@ -30,6 +30,7 @@ import csv
 import logging
 import os
 import re
+import shutil
 import sys
 from datetime import datetime
 
@@ -294,6 +295,46 @@ def write_baseline(master_repo, trip_repo, source_csv=None, taken_at=None,
             f.write(name + "\n")
     logger.info(f"Species baseline: froze {len(names)} master species into {target}.")
     return target
+
+
+def translate_baseline(trip_repo, master_repo):
+    """After the master's species list was converted (ch.6), put the trip's frozen
+    baseline into the new names: 'bubulcus ibis' -> 'ardea ibis', through the
+    master's alias table (speciesnames.csv). NOT re-taken from today's master — by
+    now that holds the trip's own species and would hide its lifers. A name that
+    has no single new name stays as it is. Returns the number of names changed."""
+    path = baseline_path(trip_repo)
+    aliases_csv = os.path.join(master_repo, "metadata", "active", "speciesnames.csv")
+    if not os.path.exists(path) or not os.path.exists(aliases_csv):
+        return 0
+    targets = {}
+    with open(aliases_csv, encoding="utf-8", newline="") as f:
+        for row in csv.DictReader(f, delimiter=";"):
+            if (row.get("Language") or "") == "sci":
+                name = (row.get("Name") or "").strip().lower()
+                targets.setdefault(name, set()).add((row.get("PointsTo") or "").strip().lower())
+    names, meta = read_baseline(path)
+    new_names, changed = set(), 0
+    for n in names:
+        to = targets.get(n)
+        if to and len(to) == 1:
+            new_names.add(next(iter(to)))
+            changed += 1
+        else:
+            new_names.add(n)
+    if not changed:
+        return 0
+    shutil.copy2(path, path + ".pre-conversion")
+    with open(path, "w", encoding="utf-8", newline="") as f:
+        for k, v in meta.items():
+            f.write(f"# {k}={v}\n")
+        f.write(f"# translated_to_converted_list={datetime.now().strftime('%Y-%m-%d %H:%M')}"
+                f" ({changed} names)\n")
+        f.write("ScientificName\n")
+        for name in sorted(new_names):
+            f.write(name + "\n")
+    logger.info(f"Species baseline: {changed} names put into the master's new species list.")
+    return changed
 
 
 def read_baseline(path):

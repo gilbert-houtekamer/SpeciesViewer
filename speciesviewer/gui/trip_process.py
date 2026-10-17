@@ -4785,6 +4785,14 @@ class MasterRebuildWebsiteDialog(QDialog):
             "upload, but a full master can still take several minutes.</p>"
         ))
 
+        # After a species-list conversion the site has the full-size pictures
+        # at their OLD paths only: send each once to its current place (ch.6).
+        self.pictures_box = QCheckBox("Also send the full-size pictures")
+        self.pictures_box.setToolTip(
+            "Needed once after the species list was converted: the website still has "
+            "the pictures in the old folders. Pictures already in place are skipped.")
+        layout.addWidget(self.pictures_box)
+
         self.status_label = QLabel("")
         self.status_label.setWordWrap(True)
         layout.addWidget(self.status_label)
@@ -4805,6 +4813,9 @@ class MasterRebuildWebsiteDialog(QDialog):
         # on_success passes no args, on_failure passes the error string — accept both.
         def _reenable(*_args):
             self.run_btn.setEnabled(True)
+        # set per run, so the choice never sticks to the shared menu spec
+        self.menu_spec.batch_parms["extra_config"] = (
+            [("rebuild", "pictures", "yes")] if self.pictures_box.isChecked() else [])
         runner = BatchModuleRunner(self, self.passed_parent)
         runner.run(self.menu_spec, on_success=_reenable, on_failure=_reenable)
 

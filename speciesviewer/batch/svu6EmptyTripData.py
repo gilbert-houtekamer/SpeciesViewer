@@ -16,7 +16,8 @@ if __name__ == "__main__":
     sys.path.append(modpath)
 
 import engine.projectlib
-from engine.tripresetlib import clear_review_directories, reset_active_data
+from engine.tripresetlib import (clear_review_directories, reset_active_data,
+                                  refresh_species_list_from_master)
 from engine import SVException
 from utils.ini_io import read_ini
 from utils.runtime_files import svconfig_path
@@ -39,9 +40,14 @@ def main(args, config):
     repo = MyProject.getRepositoryPath()
     removed = clear_review_directories(repo)
     reset_active_data(repo)
+    # a trip made before its master's species list was converted (ch.6) takes
+    # the new list now, so Read & Summarize files everything under the new names
+    refreshed = refresh_species_list_from_master(repo, MyProject.MasterRepository)
 
     totaltime = time.time() - starttime
     msg = f"Cleared {removed} day directories and reset active data in {totaltime:.1f}s."
+    if refreshed:
+        msg += " The trip now uses the master's converted species list."
     logger.info(msg)
     return msg
 

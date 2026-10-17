@@ -36,5 +36,6 @@ def refuse_if_behind(trip_repository, master_repository, step):
         raise SVException(
             f"{step} is stopped for this trip: it was made before the master's species list "
             f"was converted, and it still uses the old names (such as '040 passeriformes'). "
-            f"Going on would bring those back into the master. Converting a trip along with "
-            f"its master is not built yet — this trip can be viewed, not published.")
+            f"Going on would bring those back into the master. To continue with this trip: "
+            f"Reset Trip (it then takes the master's new species list) and run Read & "
+            f"Summarize again.")
