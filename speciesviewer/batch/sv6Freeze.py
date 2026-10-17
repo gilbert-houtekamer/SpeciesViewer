@@ -420,6 +420,10 @@ def main(args, config):
                                           config.get("repository","BiotaWebRoot"))
     # if trip, initialze master
     MyProject.initMasterAndTrip(config, inittrip=True)
+    if not MyProject.isMasterRepository():
+        from engine.conversion_guard import refuse_if_behind
+        refuse_if_behind(MyProject.getRepositoryPath(), MyProject.getMasterRepository(),
+                         "Publish Day")
 
     # metafiles
     # get repository-wide sc and per project sp.

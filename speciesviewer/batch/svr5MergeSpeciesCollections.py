@@ -49,6 +49,9 @@ def main(args, config):
 
     # Read the trip's species collection first (this is the source of new
     # entries to fold into master).
+    from engine.conversion_guard import refuse_if_behind
+    refuse_if_behind(MyProject.getRepositoryPath(), MyProject.MasterRepository,
+                     "Merging this trip's species list into the master")
     metadatadir = MyProject.getMetaDir()
     sc.readSpeciesCollection(os.path.join(metadatadir, "active", "speciescollection.csv"), False)
     newSC = sc.scCopy()

@@ -133,6 +133,9 @@ def main(args, config):
     if learned and not MyProject.isMasterRepository():
         master_sc_csv = os.path.join(MyProject.getMasterRepository(),
                                      "metadata", "active", "speciescollection.csv")
+        from engine.conversion_guard import refuse_if_behind
+        refuse_if_behind(MyProject.getRepositoryPath(), MyProject.getMasterRepository(),
+                         "Adding this trip's newly recognised species to the master")
         if not os.path.exists(master_sc_csv):
             raise SVException(
                 f"{len(learned)} newly recognised species cannot be saved: the master "

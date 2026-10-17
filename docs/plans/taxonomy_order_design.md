@@ -215,3 +215,13 @@ Buzzard are subspecies again (regional): "green jay (ssp luxuosus)" / "groene ga
 **Running the conversion twice changes nothing:** tables built from the converted Taxonomy 3
 give 444 same, 4 "subspecies — already converted", 0 files to move, 0 new names; the alias table is
 merged, never replaced (a second run knows only today's names).
+
+**17 Oct — after the second test (code).** Taxa sorted by Sequence (website, Biota Browser);
+aliases (`speciesnames.csv`) checked before GBIF; GBIF never adds a bird or mammal on a converted
+list; the intro tiles follow the list; the admin check accepts subspecies and now also walks
+`topics/` (it reported every landscape picture as dead — on every master); `svMasterRebuildWeb
+--pictures` sends every picture to its current place once. **Guard:** a trip made before its
+master's conversion (Taxonomy 3's `spaindb`) is refused at Publish Day, at the species-list merge and
+when adding learned species to the master — it would bring the numbered names back. Converting a
+trip along with its master is the next design question (its species list, `species.csv`, review
+days); until then such a trip can be viewed, not published.
