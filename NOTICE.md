@@ -110,6 +110,15 @@ OpenStreetMap data.
 **GBIF** — the Global Biodiversity Information Facility (`api.gbif.org`), for species names
 and their classification.
 
+**Species lists** — the species list a new collection starts from is built from these
+sources, each under the **Creative Commons Attribution 4.0** licence (CC BY 4.0):
+- **AviList** — the AviList Global Avian Checklist (`avilist.org`): names, placement and
+  order of the birds.
+- **Mammal Diversity Database** (MDD) of the American Society of Mammalogists
+  (`mammaldiversity.org`): names, placement and order of the mammals.
+- **IOC World Bird List** (`worldbirdnames.org`), Gill, F., D. Donsker & P. Rasmussen (eds):
+  the Dutch bird names, from its multilingual list.
+
 **Avibase** (`avibase.bsc-eoc.org`) and the **Netherlands Biodiversity API**
 (`api.biodiversitydata.nl`) — for checklists and species names.
 

@@ -193,6 +193,7 @@ class SpeciesClassification:
         self.dutch_dict = {}
         self.english_dict = {}
         self.alias_dict = {}      # old/other name -> scientific name (ch.6, speciesnames.csv)
+        self.contested = set()    # old names a split gave to another species: not used
         self.converted = False    # True when the list carries Sequence (ch.6 conversion)
         # Species learned since this object was built, buffered rather than
         # written per species: flushSpeciesLearned() appends them in one go
@@ -338,15 +339,32 @@ class SpeciesClassification:
         unresolved than filed under the wrong bird. A name that is itself a taxon
         keeps its own meaning."""
         self.alias_dict = {}
+        self.contested = set()
         if not os.path.exists(path):
             return
         targets = {}
+        indices = {'nl': self.dutch_dict, 'en': self.english_dict}
         with open(path, encoding='utf-8', newline="") as f:
             for row in csv.DictReader(f, delimiter=';'):
                 name = (row.get('Name') or "").strip().lower()
                 to = (row.get('PointsTo') or "").strip().lower()
                 if name and to in self.sc_dict and name not in self.sc_dict:
                     targets.setdefault(name, set()).add(to)
+                # CONTESTED: an old name that a split handed to the OTHER half —
+                # "mangrovereiger" meant Butorides striata, IOC 15.2 gives it to
+                # B. atricapilla. A keyword with it is then neither: it resolves
+                # to nothing, so the species step asks (decided 2026-10-17).
+                index = indices.get((row.get('Language') or "").strip().lower())
+                if index is not None and name in index and index[name].strip().lower() != to:
+                    self.contested.add(name)
+        for name in self.contested:
+            self.dutch_dict.pop(name, None)
+            self.english_dict.pop(name, None)
+            targets.pop(name, None)
+        if self.contested:
+            logger.info(f"{len(self.contested)} name(s) now mean another species than before "
+                        f"and are not used: {', '.join(sorted(self.contested)[:8])}"
+                        + (" …" if len(self.contested) > 8 else ""))
         refused = 0
         for name, tos in targets.items():
             if len(tos) == 1:
