@@ -92,11 +92,12 @@ def backup_album(album_root, trash_dir=None) -> Path | None:
     return Path(archive)
 
 
-def _rmtree_retry(path, attempts: int = 5) -> bool:
+def _rmtree_retry(path, attempts: int = 10) -> bool:
     """rmtree with backoff. Dropbox holds file handles for a moment while it
     syncs a deletion, so a first rmtree of a Dropbox folder often hits a
-    transient WinError 32 that is gone a fraction of a second later. Returns True
-    if the folder is gone."""
+    transient WinError 32 that is gone a fraction of a second later. A big trip
+    (Greece: ~550 folders) keeps Dropbox busy longer than 4 s, so the waits grow
+    to ~22 s in all. Returns True if the folder is gone."""
     import time
 
     path = Path(path)
@@ -109,7 +110,7 @@ def _rmtree_retry(path, attempts: int = 5) -> bool:
                 logger.warning(f"could not remove {path.name} after {attempts} "
                                f"tries: {e}")
                 return not path.exists()
-            time.sleep(0.4 * (i + 1))          # 0.4, 0.8, 1.2, 1.6s
+            time.sleep(0.4 * (i + 1))          # 0.4, 0.8 … 3.6s
     return not path.exists()
 
 
@@ -163,7 +164,9 @@ def delete_local(album_root) -> str:
     # Retry the recursive delete — the album is already gone under its real name,
     # this just clears the renamed staging past a transient Dropbox lock. If it
     # STILL loses the race the staging lingers, but the next delete sweeps it.
-    _rmtree_retry(staging)
+    if not _rmtree_retry(staging):
+        logger.info(f"{root.name} is deleted; the hidden {staging.name} is left behind "
+                    f"and goes at the next delete.")
     return "" if not root.exists() else f"{root.name} could not be fully removed."
 
 

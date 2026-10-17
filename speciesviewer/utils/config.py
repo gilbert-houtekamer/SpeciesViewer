@@ -106,6 +106,14 @@ for _section, _keys in _ALWAYS_PRESENT.items():
 if not _config.get("master", "masterbiotawebroot").strip():
     _config.set("master", "masterbiotawebroot", "/nature/")
 
+# A ".<name>.deleting" folder is the leftover of a delete (a Dropbox lock kept
+# it from going), never a trip or album. The trip list showed it, so it could be
+# clicked and saved as the active trip (Greece, 2026-10-17); start with none.
+for _section, _key in (("trip", "tripbiotadatabase"), ("virttrip", "virttripbiotadatabase")):
+    _name = Path(_config.get(_section, _key)).name
+    if _name.startswith(".") and _name.endswith(".deleting"):
+        _config.set(_section, _key, "")
+
 # ✅ Centralized write function
 def persist_config():
     with open(CONFIG_PATH, 'w', encoding='utf-8') as f:

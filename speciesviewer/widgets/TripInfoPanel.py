@@ -70,7 +70,10 @@ class TripInfoPanel(QWidget):
         trip_root = Path(trips_root_str) if trips_root_str else None
         if trip_root is not None and trip_root.is_dir():
             usage = get_all_gui_usage()
-            trip_dirs = [d for d in trip_root.iterdir() if d.is_dir()]
+            # Skip hidden / housekeeping folders, as the album panel does: the
+            # ".<name>.deleting" staging a delete leaves behind is not a trip.
+            trip_dirs = [d for d in trip_root.iterdir()
+                         if d.is_dir() and not d.name.startswith(".")]
             for trip_dir in sort_items(trip_dirs, self._sort_mode, usage):
                 trip_item = QTreeWidgetItem([trip_dir.name])
                 trip_item.setData(0, Qt.ItemDataRole.UserRole, None)  # default
