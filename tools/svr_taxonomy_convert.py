@@ -79,14 +79,22 @@ def plan(root, tables):
     change = {r["Today"]: r for r in read_csv(tables / "changes.csv")[1]}
     sp_header, sp_rows = read_csv(active / "species.csv")
 
+    def up(name):
+        """The parent in the app's tree. A subspecies is (for now) a species-level
+        entry BESIDE its species: its parent there is the species' family."""
+        t = taxa[name]
+        return taxa[t["Parent"]]["Parent"] if t["Rank"] == "subspecies" else t["Parent"]
+
     def chain(name):                      # [(rank, name)] from kingdom down to name
         out = []
         while name in taxa:
             out.insert(0, (taxa[name]["Rank"], name))
-            name = taxa[name]["Parent"]
+            name = up(name)
         return out
 
     def path_of(name):
+        if taxa[name]["Rank"] == "subspecies":      # pictures sit in the species folder
+            name = taxa[name]["Parent"]
         return "biota/" + "/".join(n for _, n in chain(name)) + "/"
 
     species_map, dir_map, problems = {}, {}, []
@@ -138,7 +146,7 @@ def plan(root, tables):
                 problems.append(f"file outside a species folder, left alone: {p}")
     return {"taxa": taxa, "change": change, "species_map": species_map, "dir_map": dir_map,
             "moves": moves, "trash": trash, "collisions": collisions, "problems": problems,
-            "chain": chain, "path_of": path_of, "sp": (sp_header, sp_rows)}
+            "chain": chain, "path_of": path_of, "up": up, "sp": (sp_header, sp_rows)}
 
 
 # ---------------------------------------------------------------- CSV rewrites
@@ -172,7 +180,7 @@ def shifted_groups(new_species, P):
     """Kingdom..Family exactly as projectlib writes them (one level up)."""
     taxa = P["taxa"]
     g = {c: "" for c in ("Kingdom", "Phylum", "Class", "Order", "Family")}
-    fam = taxa[new_species]["Parent"]
+    fam = P["up"](new_species)
     g["Family"] = fam
     node = fam
     while node:
@@ -196,9 +204,10 @@ def rewrite_csvs(root, P):
     sc_header, sc_rows = read_csv(active / "speciescollection.csv")
     keep = [r for r in sc_rows if r["Level"] in ("Level.BIOTA", "Level.TOPICS", "Level.TOPIC",
                                                     "Level.TOPICLEAF")]
+    up = P["up"]
     kids = defaultdict(list)
     for n, t in taxa.items():
-        kids[t["Parent"] or "biota"].append(n)
+        kids[up(n) or "biota"].append(n)
     order = lambda names: sorted(names, key=lambda n: float(taxa[n]["Sequence"]))
     rows = []
     for r in keep:
@@ -206,12 +215,15 @@ def rewrite_csvs(root, P):
             r = dict(r, Leaves=str(order(kids["biota"])))
         rows.append(dict(r, Sequence=""))
     for n, t in taxa.items():
-        rows.append({"Level": "Level." + t["Rank"].upper(), "ScientificName": n,
+        sub = t["Rank"] == "subspecies"
+        rows.append({"Level": "Level.SPECIES" if sub else "Level." + t["Rank"].upper(),
+                     "ScientificName": n,
                      "DutchName": first(t["DutchNames"]), "EnglishName": first(t["EnglishNames"]),
-                     "Up": t["Parent"] or "biota", "Leaves": str(order(kids[n])),
-                     "Sequence": t["Sequence"]})
+                     "Up": up(n) or "biota", "Leaves": str(order(kids[n])),
+                     "Sequence": t["Sequence"], "SubspeciesOf": t["Parent"] if sub else ""})
     write_csv(active / "speciescollection.csv",
-              [c for c in sc_header if c != "Sequence"] + ["Sequence"], rows)
+              [c for c in sc_header if c not in ("Sequence", "SubspeciesOf")]
+              + ["Sequence", "SubspeciesOf"], rows)
 
     # data_pictures
     dp_header, dp_rows = read_csv(active / "data_pictures.csv")
@@ -244,7 +256,7 @@ def rewrite_csvs(root, P):
         if r["Level"] == "Level.SPECIES" and old in smap:
             new = smap[old]
             r = dict(r)
-            r.update(ScientificName=new, Up=taxa[new]["Parent"],
+            r.update(ScientificName=new, Up=up(new),
                      DutchName=first(taxa[new]["DutchNames"]) or r["DutchName"],
                      EnglishName=first(taxa[new]["EnglishNames"]) or r["EnglishName"],
                      TargetPath=P["path_of"](new))
@@ -268,7 +280,7 @@ def rewrite_csvs(root, P):
             higher.setdefault(name, rank)
     present = defaultdict(list)
     for n in list(out) + list(higher):
-        present[taxa[n]["Parent"] or "biota"].append(n)
+        present[up(n) or "biota"].append(n)
 
     def agg(name, rank):
         kids_ = [agg(k, taxa[k]["Rank"]) if k in higher else out[k] for k in order(present[name])]
@@ -277,7 +289,7 @@ def rewrite_csvs(root, P):
         row.update(Level="Level." + rank.upper(), ScientificName=name,
                    DutchName=first(taxa[name]["DutchNames"]) if name in taxa else "biota",
                    EnglishName=first(taxa[name]["EnglishNames"]) if name in taxa else "biota",
-                   Up=(taxa[name]["Parent"] or "biota") if name in taxa else "",
+                   Up=(up(name) or "biota") if name in taxa else "",
                    Leaves=str(order(present[name])), JPGmap="[]",
                    currentHighestRating=best["currentHighestRating"], BestJPG=best["BestJPG"],
                    BestUPN=best["BestUPN"], BestJPGPathName=best["BestJPGPathName"],
