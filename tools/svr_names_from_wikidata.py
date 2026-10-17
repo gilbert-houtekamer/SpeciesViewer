@@ -11,7 +11,8 @@ there is never replaced: Wikidata is less authoritative than IOC.
         dry run: writes <out>/wikidata_dutch_review.csv, changes nothing
     edit that file: set Action to "skip" for a wrong name, or correct the Dutch column
     python tools/svr_names_from_wikidata.py --master E:/Dropbox/naturedb --out D:/code/taxonomy_main --apply
-        writes the rows with Action "fill" from the REVIEWED file into
+        writes the rows with Action "fill" from the REVIEWED file (Dutch, and an
+        English name where the list has none) into
         speciescollection.csv and species.csv (backups first). Close SpeciesViewer first.
 
 The dry run marks a label "check" when it looks English (shares words with the
@@ -150,21 +151,34 @@ def main():
         return 0
 
     with open(review_path, encoding="utf-8-sig", newline="") as fh:
-        reviewed = list(csv.DictReader(fh, delimiter=";"))
+        text = fh.read()
+    # Excel may save it back tab-separated
+    first = text.splitlines()[0] if text else ""
+    sep = "\t" if first.count("\t") > first.count(";") else ";"
+    reviewed = [r for r in csv.DictReader(text.splitlines(), delimiter=sep)
+                if r["Action"].strip().lower() == "fill"]
     fill = {r["ScientificName"].strip().lower(): r["Dutch"].strip().lower()
-            for r in reviewed if r["Action"].strip().lower() == "fill" and r["Dutch"].strip()}
+            for r in reviewed if r["Dutch"].strip()}
+    # an English name the reviewer typed is filled the same way: only where none
+    fill_en = {r["ScientificName"].strip().lower(): r["EnglishName"].strip().lower()
+               for r in reviewed if r["EnglishName"].strip()}
     stamp = time.strftime("%Y%m%d-%H%M%S")
     for name in ("speciescollection.csv", "species.csv"):
         path = active / name
         header, rows = read_csv(path)
-        n = 0
+        n = n_en = 0
         for r in rows:
             sci = r["ScientificName"].strip().lower()
-            if r["Level"] == "Level.SPECIES" and sci in fill and not r["DutchName"].strip():
+            if r["Level"] != "Level.SPECIES":
+                continue
+            if sci in fill and not r["DutchName"].strip():
                 r["DutchName"] = fill[sci]
                 n += 1
+            if sci in fill_en and not r["EnglishName"].strip():
+                r["EnglishName"] = fill_en[sci]
+                n_en += 1
         write_csv(path, header, rows, active / "backup", stamp)
-        print(f"  {name}: {n} Dutch names filled")
+        print(f"  {name}: {n} Dutch and {n_en} English names filled")
     print(f"  backups: {active / 'backup'}\\pre-wikidata-dutch-{stamp}_*")
     return 0
 
