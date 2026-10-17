@@ -60,7 +60,7 @@ def _seed_empty_kingdom_stubs(project) -> int:
     if biota is None:
         return 0
     count = 0
-    for leaf in sorted(biota.get("Leaves", [])):
+    for leaf in project.orderedLeaves(biota.get("Leaves", [])):
         sp = project.sp.species_dict.get(leaf)
         if sp is None:
             continue

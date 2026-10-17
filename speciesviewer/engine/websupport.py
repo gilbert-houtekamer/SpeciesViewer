@@ -620,7 +620,7 @@ def formatToken(tokenno, MyProject, species_param, file, picture):
             else: languageName = 'EnglishName'                
             if species_param['Level'] == Level.SPECIES and len(class_local)>0:
                 workstr = "<li class=""\"first""\">\n"
-                for leaf in class_local['Leaves']:
+                for leaf in MyProject.orderedLeaves(class_local['Leaves']):
                     leaf_sp = MyProject.getSpecies(leaf)
                     # Only link taxa that actually have a page in THIS web tree;
                     # on a trip/album the tree holds a subset of the master, so a
@@ -644,7 +644,7 @@ def formatToken(tokenno, MyProject, species_param, file, picture):
             else: languageName = 'EnglishName'   
             if species_param['Level'] == Level.SPECIES and len(family_local)>0:
                 workstr = "<li class=""\"first""\">\n"
-                for leaf in family_local['Leaves']:
+                for leaf in MyProject.orderedLeaves(family_local['Leaves']):
                     leaf_sp = MyProject.getSpecies(leaf)
                     # Only link siblings that actually have a page in THIS web
                     # tree; on a trip/album the tree holds a subset of the
@@ -860,7 +860,7 @@ def formatToken(tokenno, MyProject, species_param, file, picture):
         elif tokenno == 93:         # Plaatjes en namen, zelfde voor beide talen
             language = MyProject.getLanguage()
             workstr = "<div id=""\"grid\""">\n"
-            for speciesname in sorted(species_param['Leaves']):
+            for speciesname in MyProject.orderedLeaves(species_param['Leaves']):
                 if speciesname not in MyProject.sp.species_dict:
                     continue
                 species = MyProject.sp.species_dict[speciesname]
@@ -1487,7 +1487,7 @@ def addAllSpeciesWrapper(MyProject, speciesname, textCreated):
 
 # create overview page for all species, in order of classification
 def addAllSpeciesPage(MyProject, speciesname, temptextfile):
-    leaves = sorted(MyProject.getSpecies(speciesname)['Leaves'])
+    leaves = MyProject.orderedLeaves(MyProject.getSpecies(speciesname)['Leaves'])
     for leaf in leaves:
         species = MyProject.sp.species_dict[leaf]
         if (int(species['iPicturesWithJPGsCollection']) + int(species['iPicturesWithJPGsThisRun'])) > 0:

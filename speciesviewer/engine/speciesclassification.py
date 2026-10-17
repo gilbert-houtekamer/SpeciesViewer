@@ -17,6 +17,16 @@ logger = logging.getLogger("speciesviewer")
 # writer and the appender alike — an appended row whose columns disagree with
 # the header would be silently misread.
 SC_HEADERS = ['Level', 'ScientificName', 'DutchName', 'EnglishName', 'Up', 'Leaves']
+# A converted species list (ch.6) adds these at the end: the sort number among
+# siblings, and for a subspecies-beside-its-species the species it belongs to.
+SC_OPTIONAL = ['Sequence', 'SubspeciesOf']
+
+
+def _fileHeaders(path):
+    """The column names on the first line of an existing collection file."""
+    with open(path, encoding='utf-8', newline="") as f:
+        first = f.readline().strip()
+    return first.split(';') if first else list(SC_HEADERS)
 
 
 # Names GBIF has no answer for, shared by every SpeciesClassification in this
@@ -313,18 +323,28 @@ class SpeciesClassification:
     # save last version, always save last version under .csv_old  
     def _csvRow(self, name):
         spec_dict = self.sc_dict[name]
-        return {"Level":          spec_dict['Level'],
-                "ScientificName": spec_dict['ScientificName'],
-                "DutchName":      spec_dict['DutchName'],
-                "EnglishName":    spec_dict['EnglishName'],
-                "Up":             spec_dict['Up'],
-                "Leaves":         spec_dict['Leaves']}
+        row = {"Level":          spec_dict['Level'],
+               "ScientificName": spec_dict['ScientificName'],
+               "DutchName":      spec_dict['DutchName'],
+               "EnglishName":    spec_dict['EnglishName'],
+               "Up":             spec_dict['Up'],
+               "Leaves":         spec_dict['Leaves']}
+        for col in SC_OPTIONAL:        # a converted list (ch.6) carries these too
+            if col in spec_dict:
+                row[col] = spec_dict[col]
+        return row
+
+    def _headers(self):
+        """SC_HEADERS, plus the optional columns when this list has them — so a
+        rewrite never drops the sort number (ch.6)."""
+        return SC_HEADERS + [c for c in SC_OPTIONAL
+                             if any(c in r for r in self.sc_dict.values())]
 
     def writeSpeciesCollection(self, speciesfilename):
         # Write Picture CSV file
         logger.info(f'Write {len(self.sc_dict)} updated species data CSV file "{speciesfilename}".')
         with open(speciesfilename, "w", newline="", encoding='utf-8') as csvfile:
-            writer = csv.DictWriter(csvfile, fieldnames=SC_HEADERS,
+            writer = csv.DictWriter(csvfile, fieldnames=self._headers(), restval="",
                                     quoting=csv.QUOTE_MINIMAL, delimiter=';')
             writer.writeheader()
             for species in self.sc_dict:
@@ -387,7 +407,9 @@ class SpeciesClassification:
         with open(speciesfilename, "a", newline="", encoding='utf-8') as csvfile:
             if not _endsWithNewline(speciesfilename):
                 csvfile.write("\r\n")
-            writer = csv.DictWriter(csvfile, fieldnames=SC_HEADERS,
+            # the file's own columns, so an appended row lines up with its header
+            writer = csv.DictWriter(csvfile, fieldnames=_fileHeaders(speciesfilename),
+                                    restval="", extrasaction="ignore",
                                     quoting=csv.QUOTE_MINIMAL, delimiter=';')
             for name in to_write:
                 writer.writerow(self._csvRow(name))

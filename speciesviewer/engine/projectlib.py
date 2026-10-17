@@ -238,6 +238,14 @@ class Project:
     # 
     def registerSpeciesClassification(self, sc):
         self.sc = sc
+
+    def orderedLeaves(self, leaves):
+        """Sibling taxa in display order: the species list's Sequence when it has
+        one (ch.6), otherwise as before — sorted by name, which on an unconverted
+        list follows its '040 passeriformes' prefixes."""
+        from engine.taxon_order import ordered
+        rows = getattr(getattr(self, "sc", None), "sc_dict", None) or {}
+        return ordered(list(leaves), rows)
     def registerSpecies(self, sp):
         self.sp = sp
         self.sp.register_sc_with_sp(self.sc)
@@ -385,7 +393,7 @@ class Project:
         biotadatabase = self.getRepositoryPath()
         directoryname = os.path.join(biotadatabase, species['TargetPath']).lower()
         os.makedirs(directoryname, exist_ok=True)
-        for leaf in sorted(species['Leaves']):
+        for leaf in self.orderedLeaves(species['Leaves']):
             species = self.getSpecies(leaf)
             if int(species['iPicturesWithJPGsThisRun']) > 0:
                 if species['Level'] != Level.SPECIES:
@@ -462,7 +470,7 @@ class Project:
         # set of pages actually written this build.
         self.force_all = force_all
         self.makeWebLevel(species, all_or_new)
-        for leaf in sorted(species['Leaves']):
+        for leaf in self.orderedLeaves(species['Leaves']):
             species = self.sp.species_dict[leaf]
             if (int(species['iPicturesWithJPGsThisRun']) + int(species['iPicturesWithJPGsCollection'])) > 0:
                 render_it = all_or_new == 'All' or force_all or (int(species['iPicturesWithJPGsThisRun']) > 0)

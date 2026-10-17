@@ -20,6 +20,7 @@ Node dict (what the browser consumes):
 import logging
 from pathlib import Path
 from utils.raw_extensions import RAW
+from engine.taxon_order import load_sequence, sort_key
 
 logger = logging.getLogger("speciesviewer")
 
@@ -85,9 +86,18 @@ class MasterBiotaSource:
             up = (r["up"] or "").strip().lower()
             if up and up in self._by_sci:
                 self._kids.setdefault(up, []).append(key)
+        # the species list's Sequence when it has one (ch.6); otherwise the old
+        # order: the target path, which carries the '040 passeriformes' prefix
+        seq = self._sequence()
         for up, kids in self._kids.items():
-            kids.sort(key=lambda k: (self._by_sci[k]["target_path"].lower(),
-                                     self._by_sci[k]["sci"].lower()))
+            kids.sort(key=lambda k: sort_key(seq.get(k), (self._by_sci[k]["target_path"].lower(),
+                                                          self._by_sci[k]["sci"].lower())))
+
+    def _sequence(self) -> dict:
+        """{sci_lower: Sequence} from the master's species list; {} when it has none."""
+        if self.master_root is None:
+            return {}
+        return load_sequence(str(self.master_root / "metadata" / "active" / "speciescollection.csv"))
 
     def _own_pics_map(self) -> dict:
         """{species_key: picture count} — the master's ground truth (every species
