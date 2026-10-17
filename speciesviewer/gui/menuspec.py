@@ -1368,6 +1368,51 @@ def build_menu_spec(main_window):
         showsubdirectory=False,
     )
 
+    # The apply step the audit was written to be followed by: recount the
+    # master's species counters from its pictures (deletes and trims never
+    # lowered them). Shows what would change, asks, backs up, writes.
+    def _recount_species_counters():
+        from PyQt6.QtWidgets import QApplication, QMessageBox
+        from PyQt6.QtCore import Qt
+        import engine.master_recount as mr
+        master = _config.get("master", "masterbiotadatabase", fallback="").replace('"', "").replace("'", "")
+        if not master:
+            QMessageBox.warning(main_window, "Recount Species Counters", "No master is configured.")
+            return
+        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+        try:
+            p = mr.plan(master)
+        finally:
+            QApplication.restoreOverrideCursor()
+        if not p["changes"]:
+            QMessageBox.information(main_window, "Recount Species Counters",
+                                    "The species counters already match the pictures.")
+            return
+        worst = sorted((c for c in p["changes"] if c[0] == "Level.SPECIES"
+                        and c[2] == "iPictureCollectionCount"),
+                       key=lambda c: -abs(int(c[3] or 0) - int(c[4] or 0)))[:5]
+        examples = "\n".join(f"   {n}: {o} → {v}" for _l, n, _c, o, v in worst)
+        if QMessageBox.question(
+                main_window, "Recount Species Counters",
+                f"{p['species']} species have counters that do not match their pictures "
+                f"({len(p['changes'])} values; {p['picks']} best pictures that no longer exist).\n\n"
+                f"Pictures, for example:\n{examples}\n\n"
+                f"The whole collection would count {p['biota_pictures']} pictures.\n\n"
+                f"Recount now? species.csv is backed up first.",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No) != QMessageBox.StandardButton.Yes:
+            return
+        r = mr.apply(master)
+        QMessageBox.information(main_window, "Recount Species Counters — done",
+                                f"Recounted {r['species']} species.\nBackup: {r['backup']}")
+
+    recount_species_item = MenuSpec(
+        callback=_recount_species_counters,
+        title="Recount Species Counters…",
+        enabled=has_master,
+        showsubdirectory=False,
+    )
+
     def _species_no_display():
         import gui.master_no_display as nd
         nd.show(main_window, _config)
@@ -1427,8 +1472,8 @@ def build_menu_spec(main_window):
         logger.info(
             f"Master database refreshed and safely backed up. Cleared "
             f"{r['removed_files']} stale entries, fixed {r['repointed']} moved pictures, "
-            f"and tidied {r['pictures_dropped']} empty ones. Tip: run Count Species to "
-            f"update the totals.")
+            f"and tidied {r['pictures_dropped']} empty ones. Next: Recount Species Counters "
+            f"to update the totals.")
         QMessageBox.information(
             main_window, "Refresh Master Database — Apply — done",
             f"Removed {r['removed_files']} dead file rows.\n"
@@ -1437,8 +1482,8 @@ def build_menu_spec(main_window):
             f"Dropped {r['pictures_dropped']} phantom pictures "
             f"(cleaned {r['files_cleaned']} Files lists).\n\n"
             f"Backups in: {r['backup_dir']}\n\n"
-            f"Next: re-run Count Species to refresh per-species counts; the master "
-            f"DB cache rebuilds itself.")
+            f"Next: Master ▸ Maintain Master Database ▸ Recount Species Counters, so "
+            f"the per-species counts match the pictures; the master DB cache rebuilds itself.")
 
     heal_admin_item = MenuSpec(
         callback=_heal_admin,
@@ -1721,6 +1766,7 @@ def build_menu_spec(main_window):
     maintain_master_menu = {
         "Refresh Master Database — Review…": refresh_review_item,
         "Refresh Master Database — Apply…": heal_admin_item,
+        "Recount Species Counters…": recount_species_item,
         f"{MenuSpec.separator()}_maint_gps": None,
         "Add Missing Place Names…": add_place_names_item,
         "Fill Picture GPS from Files…": consolidate_gps_item,
