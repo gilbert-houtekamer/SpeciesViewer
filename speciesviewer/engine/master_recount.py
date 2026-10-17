@@ -9,8 +9,8 @@
 #
 #   species   pictures, pictures with a JPG (counted as the audit counts them),
 #             species count 1 when it has pictures
-#   best pick redone only when it points at a picture that no longer exists
-#             (a pick that still exists, chosen by hand or not, stays)
+#   best pick redone when it points at a picture that no longer exists, or is
+#             empty while pictures with a JPG exist (a pick that exists stays)
 #   groups    counts summed from their children (by Up); a group's best pick
 #             redone only when its picture no longer exists
 #   untouched the "this run" counters (they belong to the pipeline), names, paths
@@ -76,6 +76,9 @@ def _recount(master_root):
     def gone(r):
         return bool((r.get("BestUPN") or "").strip()) and r["BestUPN"].strip() not in upns
 
+    def empty(r):
+        return not (r.get("BestJPG") or "").strip()
+
     def set_pick(r, rate, jpg, upn, path):
         r["currentHighestRating"], r["BestJPG"], r["BestUPN"], r["BestJPGPathName"] = \
             str(rate), jpg, upn, path
@@ -93,7 +96,10 @@ def _recount(master_root):
             r["iPictureCollectionCount"] = str(a["pics"])
             r["iPicturesWithJPGsCollection"] = str(a["jpgs"])
             r["iSpeciesCollectionCount"] = "1" if a["pics"] else "0"
-            if gone(r):
+            # no best picture, or one whose picture is gone: the best picture
+            # with a JPG (Nemosia pileata: 3 with a JPG, none picked — the
+            # website left the species off the All Species page)
+            if gone(r) or (empty(r) and best.get(name.lower())):
                 b = best.get(name.lower())
                 set_pick(r, *(b if b else (0, "", "", "")))
             return
@@ -101,14 +107,14 @@ def _recount(master_root):
             walk(k)
         for c in COUNTS:
             r[c] = str(sum(_int(by_name[k][c]) for k in children))
-        if gone(r):
+        if gone(r) or empty(r):
             top = max((by_name[k] for k in children if (by_name[k].get("BestUPN") or "").strip()
-                       and not gone(by_name[k])),
+                       and not gone(by_name[k]) and not empty(by_name[k])),
                       key=lambda k: _int(k["currentHighestRating"]), default=None)
             if top is not None:
                 set_pick(r, top["currentHighestRating"], top["BestJPG"], top["BestUPN"],
                          top["BestJPGPathName"])
-            else:
+            elif gone(r):
                 set_pick(r, 0, "", "", "")
 
     for r in rows:

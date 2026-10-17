@@ -1747,6 +1747,7 @@ def build_menu_spec(main_window):
             'before_msg':     "Re-rendering and uploading every master page…",
             'after_msg':      "✅ Master website fully rebuilt and uploaded.",
             'master_mode':    True,
+            'wait_picture':   "weaver",   # a long wait (an hour with the pictures)
         },
     )
     rebuild_master_web_item = MenuSpec(

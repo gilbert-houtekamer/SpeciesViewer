@@ -27,7 +27,7 @@ out against the app's sand and grey.
 | African Pygmy-goose | `assets/about_duck.jpg` | Help ▸ About |
 | Leopard tortoise | `assets/wait_tortoise.jpg` | Retire Trip to Album — the longest wait |
 | Chameleon | `assets/wait_chameleon.jpg` | To Master ▸ Merge Pictures into Master (steps 2–4) |
-| Vitelline masked weaver | `assets/wait_weaver.jpg` | Trips ▸ Read SD-card or Folder (and Days ▸ Copy Day from Card) — a collection is woven strand by strand |
+| Vitelline masked weaver | `assets/wait_weaver.jpg` | Trips ▸ Read SD-card or Folder (and Days ▸ Copy Day from Card) — a collection is woven strand by strand; Master ▸ Rebuild Entire Website — the whole site rewoven |
 | Eurasian jay | `assets/wait_jay.jpg` | Metadata backup and RAW backup — the jay buries acorns and finds them back |
 
 A wait picture is `assets/wait_<name>.jpg`, about 512×512; a step shows it with
