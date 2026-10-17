@@ -341,7 +341,9 @@ def apply(root, tables, P):
     rewrite_csvs(root, P)
     removed = remove_empty_dirs(root / "biota")
     print(f"Applied. {len(P['moves'])} files moved, {len(P['trash'])} web pages to {trash}, "
-          f"{removed} empty folders removed.\nLog (for --undo): {log_path}")
+          f"{removed} empty folders removed.\nLog (for --undo): {log_path}\n"
+          f"Next: rebuild the website WITH the pictures, once (the site has them only at "
+          f"their old paths):\n  python batch/svMasterRebuildWeb.py --pictures")
 
 
 def merge_aliases(target, new_names):
