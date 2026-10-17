@@ -213,6 +213,45 @@ def putRecursiveTreeWeb(MyProject, config):
 
     return
 
+def putAllPictures(MyProject, config):
+    """Publish every JPG of the master's biota/ tree to the same path on the site.
+
+    A normal build publishes a full-size JPG only in the run that adds it; after
+    that the picture sits at its final place in the master and is never sent
+    again. When the tree itself changes (ch.6: a species-list conversion moves
+    folders) the site still has the pictures at their OLD paths only. This sends
+    each one once to its current path; the upload cache skips any file already
+    there, so a second run costs nothing. Old copies are not deleted here."""
+    password = config.get("websettings", "Sftppwd").strip("'")
+    sftp = engine.sftplib.open_site(password=password)
+    location_cache = os.path.join(MyProject.getRepositoryPath(), 'admin/FTPcache.json')
+    sftp.openFTPCache(location_cache)
+    sftp.connect()
+    root = MyProject.getRepositoryPath()
+    toweb = sftp.remotePrefix() + MyProject.getBiotaWebRoot()
+    sent = skipped = 0
+    try:
+        for dirpath, dirs, files in os.walk(os.path.join(root, 'biota')):
+            dirs[:] = [d for d in dirs if not d.startswith('.')]
+            for f in files:
+                if not f.lower().endswith('.jpg'):
+                    continue
+                local = os.path.join(dirpath, f)
+                remote = toweb + os.path.relpath(local, root).replace('\\', '/')
+                # both publishers: True = already there (skipped), False = sent
+                if sftp.cachedUpload(local, remote, preserve_mtime=True):
+                    skipped += 1
+                else:
+                    sent += 1
+                    if sent % 250 == 0:
+                        logger.info(f"  pictures published: {sent}…")
+    finally:
+        sftp.closeFTPCache(location_cache)
+        sftp.disconnect()
+    logger.info(f"Pictures published to their current place: {sent} sent, {skipped} already there.")
+    return sent
+
+
 def putRecursiveTreeDisk(MyProject):
     fromlastproject  = MyProject.ReviewFrozen()
     tomainrepository = MyProject.getRepositoryPath()
