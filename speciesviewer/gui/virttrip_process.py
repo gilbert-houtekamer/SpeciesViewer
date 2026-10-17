@@ -447,12 +447,18 @@ def retire_trip_to_virttrip(parent):
     trip_name = ident.web_slug or leaf          # the web slug (may differ from leaf)
     fromdate = g("trip_config", "fromdate")
     todate = g("trip_config", "todate")
-    if not (fromdate and todate):
-        review = os.path.join(trip_db, "metadata", "review")
-        days = sorted(d for d in (os.listdir(review) if os.path.isdir(review) else [])
-                      if _re.match(r"^\d{4}-\d{2}-\d{2}$", d))
-        if days:
-            fromdate, todate = fromdate or days[0], todate or days[-1]
+    # The trip's days are the truth. The stored range can be a default the trip
+    # was created with (Zwin, 2026-10-17: stored 2026-10-31..11-14, pictures of
+    # 2025-09-13..14), and an album built on it finds no pictures at all. A stored
+    # range that covers every day stays — it may be wider on purpose.
+    review = os.path.join(trip_db, "metadata", "review")
+    days = sorted(d for d in (os.listdir(review) if os.path.isdir(review) else [])
+                  if _re.match(r"^\d{4}-\d{2}-\d{2}$", d))
+    if days and not (fromdate and todate and fromdate <= days[0] and days[-1] <= todate):
+        if fromdate and todate:
+            logger.warning(f"Retire Trip: the trip's stored dates {fromdate} → {todate} do not "
+                           f"cover its days {days[0]} → {days[-1]}; the album uses the days.")
+        fromdate, todate = days[0], days[-1]
     if not (fromdate and todate):
         QMessageBox.warning(parent, "Retire Trip", "Could not determine the trip's date range.")
         return
