@@ -18,6 +18,16 @@ import logging
 
 logger = logging.getLogger("speciesviewer")
 
+# The intro template's tiles: '…/insecta/003 odonata/003 odonata' (ch.6 — the
+# number goes when a species list is converted).
+_INTRO_TILE = re.compile(r"biota/animalia/arthropoda/insecta/\d+ (odonata|lepidoptera)/\d+ \1")
+
+
+def intro_taxon_name(names, bare):
+    """'003 odonata' when the list still numbers it, else 'odonata'."""
+    numbered = sorted(n for n in names if n != bare and n.lstrip("0123456789 ") == bare)
+    return numbered[0] if numbered else bare
+
 
 def _same_file_on_disk(src, dst):
     """True when src and dst refer to the same on-disk file even if
@@ -569,6 +579,19 @@ class Project:
     
     # Intro pages, can be used generically
     # 
+    def introTaxonName(self, bare):
+        """The intro page's dragonfly and butterfly tiles link to an order whose
+        folder is '003 odonata' on an unconverted species list and 'odonata' on a
+        converted one (ch.6): the name as THIS list has it."""
+        rows = getattr(getattr(self, "sc", None), "sc_dict", None)
+        if rows:
+            names = set(rows)
+        else:
+            from engine.speciesclassification import namesInSpeciesCollection
+            names = namesInSpeciesCollection(os.path.join(
+                self.getRepositoryPath(), "metadata", "active", "speciescollection.csv"))
+        return intro_taxon_name(names, bare)
+
     def makeIntro(self, simplepage, language):
         # beadcrumb
         self.breadcrumb.clearBreadCrumb()        
@@ -586,6 +609,8 @@ class Project:
             for templateline in speciesOverview:
                 species = self.sp.species_dict["biota"] if self.sp != None else ""
                 line = getTemplateOutputString(self, species, '', '', templateline.rstrip('\n'))
+                line = _INTRO_TILE.sub(lambda m: "biota/animalia/arthropoda/insecta/{0}/{0}".format(
+                    self.introTaxonName(m.group(1))), line)
                 print(line, file=IntroFile)
         
             IntroFile.close()

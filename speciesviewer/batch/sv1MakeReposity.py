@@ -210,8 +210,11 @@ def main(args, config):
     copyMissingLinkPages("biota/animalia/chordata/mammalia", exist_ok=True)
     copyMissingLinkPages("biota/animalia/chordata/aves", exist_ok=True)
     copyMissingLinkPages("biota/animalia/arthropoda/insecta", exist_ok=True)
-    copyMissingLinkPages("biota/animalia/arthropoda/insecta/003 odonata", exist_ok=True)
-    copyMissingLinkPages("biota/animalia/arthropoda/insecta/022 lepidoptera", exist_ok=True)
+    # the order's folder as the species list names it: '003 odonata' on an
+    # unconverted list, 'odonata' on a converted one (ch.6)
+    for bare in ("odonata", "lepidoptera"):
+        copyMissingLinkPages("biota/animalia/arthropoda/insecta/" + MyProject.introTaxonName(bare),
+                             exist_ok=True)
     copyMissingLinkPages("biota/plantae", exist_ok=True)
     copyMissingLinkPages("biota/fungi", exist_ok=True)
     copyMissingLinkPages("summaries/all biota species", exist_ok=True)

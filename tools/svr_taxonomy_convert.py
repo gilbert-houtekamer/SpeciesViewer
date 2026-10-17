@@ -4,7 +4,8 @@ Dry run by default: prints what it would do and touches nothing.
   --apply   do it: moves species folders to their new place, moves every
             generated web page (*.html) in biota/ to <master>/.trash/, rewrites
             speciescollection.csv, species.csv, data_pictures.csv and
-            data_files.csv (backups first), logs every step.
+            data_files.csv (backups first), installs the alias table as
+            speciesnames.csv, logs every step.
   --undo L  put everything back from log L (moves reversed, CSVs restored).
 
 Refuses a master inside Dropbox or registered as a main master. The tables come
@@ -328,6 +329,14 @@ def apply(root, tables, P):
             dst.parent.mkdir(parents=True, exist_ok=True)
             os.replace(src, dst)
             log.writerow(["move", src, dst])
+        # the alias table: old and other names -> the species they mean now
+        aliases = active / "speciesnames.csv"
+        if aliases.exists():
+            shutil.copy2(aliases, backup / "speciesnames.csv")
+            log.writerow(["backup", aliases, backup / "speciesnames.csv"])
+        else:
+            log.writerow(["new", "", aliases])
+        shutil.copy2(tables / "names.csv", aliases)
         lf.flush()
     rewrite_csvs(root, P)
     removed = remove_empty_dirs(root / "biota")
@@ -353,9 +362,12 @@ def undo(root, log_path):
             os.replace(s["To"], s["From"])
         elif s["Kind"] == "backup":
             shutil.copy2(s["To"], s["From"])
+        elif s["Kind"] == "new" and os.path.exists(s["To"]):
+            os.remove(s["To"])
     removed = remove_empty_dirs(root / "biota")
-    print(f"Undone from {log_path}: {sum(s['Kind'] != 'backup' for s in steps)} files put back, "
-          f"4 CSVs restored, {removed} empty folders removed.")
+    print(f"Undone from {log_path}: {sum(s['Kind'] in ('move', 'trash') for s in steps)} files put "
+          f"back, {sum(s['Kind'] == 'backup' for s in steps)} CSVs restored, {removed} empty folders "
+          f"removed.")
 
 
 def main():

@@ -38,11 +38,14 @@ def _index_disk(master_repo):
                 effectively unique here),
       species : {UPN: parent-folder-name} for image files (the folder a picture
                 sits in = its species).
-    Only biota/ — NOT metadata/review/.../frozen copies or root leftovers, which
-    are not the canonical location a rebuild should point at."""
+    biota/ and topics/ — NOT metadata/review/.../frozen copies or root leftovers,
+    which are not the canonical location a rebuild should point at. topics/ holds
+    the landscape pictures (topics/landscape/<year>/, the year being their 'species');
+    leaving it out reported every landscape picture as a dead row that a heal
+    would REMOVE, though the files are right there."""
     paths, byname, species = set(), {}, {}
-    biota = os.path.join(master_repo, "biota")
-    for dirpath, dirs, files in os.walk(biota):
+    for dirpath, dirs, files in (step for top in ("biota", "topics")
+                                 for step in os.walk(os.path.join(master_repo, top))):
         # Skip hidden helper dirs (.preview_cache thumbnails, etc.) — they are
         # not canonical pictures and would masquerade as adds / repoint targets.
         dirs[:] = [d for d in dirs if not d.startswith(".")]
@@ -58,6 +61,24 @@ def _index_disk(master_repo):
     return paths, byname, species
 
 
+def _subspecies_of(master_repo):
+    """{subspecies: species} from a converted species list (ch.6). A subspecies'
+    pictures sit in its SPECIES folder by design, so a picture recorded as
+    'corvus corone cornix' in folder 'corvus corone' is in place — not a
+    species change to 'repair'. Empty for an unconverted list."""
+    path = os.path.join(master_repo, "metadata", "active", "speciescollection.csv")
+    out = {}
+    try:
+        with open(path, "r", encoding="utf-8", errors="replace", newline="") as fh:
+            for row in csv.DictReader(fh, delimiter=";"):
+                parent = (row.get("SubspeciesOf") or "").strip().lower()
+                if parent:
+                    out[(row.get("ScientificName") or "").strip().lower()] = parent
+    except OSError:
+        pass
+    return out
+
+
 def plan_rebuild(master_repo, out_dir=None):
     files_csv = os.path.join(master_repo, "metadata", "active", "data_files.csv")
     pics_csv = os.path.join(master_repo, "metadata", "active", "data_pictures.csv")
@@ -65,6 +86,7 @@ def plan_rebuild(master_repo, out_dir=None):
         return {"ok": False, "error": "master data_files.csv / data_pictures.csv not found"}
 
     disk_paths, disk_byname, disk_species = _index_disk(master_repo)
+    subspecies_of = _subspecies_of(master_repo)
 
     remove, repoint = [], []          # (filename, recorded_path[, real_path])
     admin_names = set()
@@ -101,7 +123,7 @@ def plan_rebuild(master_repo, out_dir=None):
             if not upn or not rec:
                 continue
             folder = disk_species.get(upn)
-            if folder is not None and folder != rec:
+            if folder is not None and folder != rec and subspecies_of.get(rec) != folder:
                 species_change.append((upn, rec, folder))
 
     # Files on disk the admin doesn't list. Classify each (report only — never

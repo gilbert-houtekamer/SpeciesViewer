@@ -22,6 +22,13 @@ SC_HEADERS = ['Level', 'ScientificName', 'DutchName', 'EnglishName', 'Up', 'Leav
 SC_OPTIONAL = ['Sequence', 'SubspeciesOf']
 
 
+# The alias table beside a converted speciescollection.csv (ch.6).
+ALIAS_FILE = 'speciesnames.csv'
+# On a converted list these classes come from their own list only (AviList,
+# MDD) — GBIF is never asked to add one.
+AUTHORITY_CLASSES = {'aves': 'AviList', 'mammalia': 'MDD'}
+
+
 def _fileHeaders(path):
     """The column names on the first line of an existing collection file."""
     with open(path, encoding='utf-8', newline="") as f:
@@ -185,6 +192,8 @@ class SpeciesClassification:
         self.sc_dict = {}
         self.dutch_dict = {}
         self.english_dict = {}
+        self.alias_dict = {}      # old/other name -> scientific name (ch.6, speciesnames.csv)
+        self.converted = False    # True when the list carries Sequence (ch.6 conversion)
         # Species learned since this object was built, buffered rather than
         # written per species: flushSpeciesLearned() appends them in one go
         # when the viewer or batch run ends. Losing the buffer to a crash only
@@ -318,7 +327,34 @@ class SpeciesClassification:
             logger.error(f"{len(broken)} row(s) in {speciesfilename} have an "
                          f"inconsistent reference and were not linked: {shown}")
         logger.info(f'Read {len(self.sc_dict)} predefined species from {speciesfilename}.')
+        self.converted = any('Sequence' in r for r in self.sc_dict.values())
+        self._readAliases(os.path.join(os.path.dirname(speciesfilename), ALIAS_FILE))
         return
+
+    def _readAliases(self, path):
+        """The alias table of a converted list (ch.6): an old scientific name, an
+        older or other Dutch/English name -> the scientific name it means now.
+        A name that points at two species is refused, never guessed: better
+        unresolved than filed under the wrong bird. A name that is itself a taxon
+        keeps its own meaning."""
+        self.alias_dict = {}
+        if not os.path.exists(path):
+            return
+        targets = {}
+        with open(path, encoding='utf-8', newline="") as f:
+            for row in csv.DictReader(f, delimiter=';'):
+                name = (row.get('Name') or "").strip().lower()
+                to = (row.get('PointsTo') or "").strip().lower()
+                if name and to in self.sc_dict and name not in self.sc_dict:
+                    targets.setdefault(name, set()).add(to)
+        refused = 0
+        for name, tos in targets.items():
+            if len(tos) == 1:
+                self.alias_dict[name] = next(iter(tos))
+            else:
+                refused += 1
+        logger.info(f"Read {len(self.alias_dict)} alias(es) from {path}"
+                    + (f"; {refused} pointing at two species refused." if refused else "."))
 
     # save last version, always save last version under .csv_old  
     def _csvRow(self, name):
@@ -568,6 +604,14 @@ class SpeciesClassification:
 
     # add species based on metadata from GBIF
     def addSpecies(self, gbif):
+        # A converted list takes birds from AviList and mammals from MDD only:
+        # GBIF never adds one (its names and families differ, and it lags splits).
+        source = AUTHORITY_CLASSES.get((gbif.get('class') or "").lower())
+        if getattr(self, "converted", False) and source:
+            logger.warning(f"'{gbif.get('canonicalName', '')}' is not in this collection's {source} "
+                           f"list; GBIF is not used for this group. Check the spelling, or add "
+                           f"the name to the species list's aliases.")
+            return ""
         namen = self.getNldEngVernacularNames(gbif, 'kingdom') if 'kingdomKey' in gbif else ("", "")
         self.addSpeciesLevel(Level.KINGDOM, gbif['kingdom'].lower(), namen[0], namen[1], 'biota')
         namen = self.getNldEngVernacularNames(gbif, 'phylum') if 'phylumKey' in gbif else ("", "")
@@ -611,6 +655,8 @@ class SpeciesClassification:
             return self.dutch_dict[subject]
         elif subject in self.english_dict:
             return self.english_dict[subject]
+        elif subject in getattr(self, "alias_dict", {}):
+            return self.alias_dict[subject]
         elif LookUpInGBIF and not getattr(self, "_gbif_offline", False) and (',' not in subject):
             # Normalize subspecies qualifiers before lookup
             normalized = self._normalize_subspecies(subject)
