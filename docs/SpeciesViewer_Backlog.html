@@ -472,27 +472,32 @@ reads <em>No current work planned</em>.</p>
 reorganisation more expensive. Design and findings: <code>docs/plans/taxonomy_order_research.md</code>
 and <code>docs/plans/taxonomy_order_design.md</code>.</p>
 <ul>
-  <li><span class="tag-progress">IN PROGRESS</span> <strong>Species order</strong> — the
-    &ldquo;040 passeriformes&rdquo; number leaves the name and becomes a sort number among siblings.
-    Decided: <strong>GBIF</strong> gives names and placement for every group; the order comes from
-    <strong>AviList</strong> for birds (what Observation.org follows), from a hand table for
-    kingdoms, classes and the orders of insects, mammals and plants, and from the author's own
-    book order for dragonflies and butterflies; the rest is alphabetical. <strong>A GBIF merge is
-    never followed on its own</strong> &mdash; too many are wrong (the European Large Skipper filed
-    under the Asian one, recent damselflies lumped into a relative); the author decides per species
-    after review. Built so far, all beside the master and without changing it: the new tables for
-    the whole list (18,699 species), a checker, a review page with the choices, and a first
-    conversion of a throw-away master &mdash; folders, CSVs and a rebuilt website with no broken
-    links. Next: sort by the new number on screen and on the website.</li>
-  <li><span class="tag-open">OPEN</span> <strong>Converting the main master &mdash; the plan</strong>
-    (agreed 17 Oct). <em>Trips</em> are not converted: the remaining ones are reset and read
-    again &mdash; Reset Trip now takes the master's new species list and puts the lifer baseline
-    into the new names. <em>Albums</em> need no conversion of their own: their species pages and
-    blogs are built live from the master, and the blog pictures are the album's own copies, so
-    Rebuild all album websites <em>with blogs</em> fixes their species links. <em>The website</em>
-    has never been cleaned: rename the <code>biota</code> root on the web server out of the way and
-    publish a fresh copy (Rebuild Entire Website with &ldquo;Also send the full-size
-    pictures&rdquo;), rather than deleting old pages one by one.</li>
+  <li><span class="tag-shipped">SHIPPED</span> <strong>Species order</strong> (15&ndash;17 Oct) &mdash; the
+    &ldquo;040 passeriformes&rdquo; number left the name and became a sort number among siblings
+    (Sequence), on screen and on the website. Birds come from AviList, mammals from the Mammal
+    Diversity Database (both CC&nbsp;BY&nbsp;4.0); GBIF is asked only about the other groups and a GBIF
+    merge is never followed on its own. The author's decisions live in
+    <code>tools/taxonomy_overrides.csv</code>; subspecies step 1 is a row beside its species, pictures
+    in the species' folder. Old names keep working through the alias table <code>speciesnames.csv</code>.</li>
+  <li><span class="tag-shipped">SHIPPED</span> <strong>The main master converted</strong> (17 Oct) &mdash;
+    167,959 files moved, totals identical, admin check clean; species counters recounted (new menu
+    item Recount Species Counters); the website published fresh with the full-size pictures after
+    renaming the old biota root on the server; all 19 albums rebuilt with blogs. Trips are not
+    converted: Reset Trip gives a trip the new list, and a trip still on the old list cannot publish
+    into the converted master.</li>
+  <li><span class="tag-shipped">SHIPPED</span> <strong>Dutch names</strong> (17 Oct) &mdash; every bird now
+    carries the Dutch name of the IOC World Bird List 15.2 (689 filled, 513 replaced; the old name
+    stays as an alias). An old name that a split handed to another species &mdash;
+    &ldquo;mangrovereiger&rdquo;, &ldquo;roodstuitzwaluw&rdquo;, &ldquo;klapperral&rdquo; &mdash; is used for
+    neither, so the species step asks. For pictured non-birds Wikidata gave 36 Dutch names after
+    review; most American and African insects and plants simply have none. Tools:
+    <code>svr_names_from_ioc.py</code>, <code>svr_names_from_wikidata.py</code>.</li>
+  <li><span class="tag-open">OPEN</span> <strong>The starter list of a new master</strong> &mdash;
+    <code>dist/installation files/initial_speciescollection.csv</code> is still the old list
+    (numbered orders, no Sequence, old names). Replace it with the converted list and its alias
+    table, so a new master starts where the main master is now.</li>
+  <li><span class="tag-open">OPEN</span> <strong>Subspecies step 2</strong> &mdash; a real subspecies level in
+    the app, with the species page linking to its subspecies (web and app).</li>
   <li><span class="tag-new">NEW</span> <strong>Wikipedia beside the species</strong> &mdash;
     reviewing the 29 species GBIF calls a synonym went fastest with Wikipedia open: almost none
     needed merging, and it gave better English names (Western Swamphen, Wild Water Buffalo,
