@@ -24,6 +24,7 @@ import csv
 import datetime
 import glob
 import os
+import re
 import shutil
 import sys
 from collections import defaultdict
@@ -31,7 +32,9 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent / "speciesviewer"))
+from utils.atomic_replace import replace_with_retry   # Dropbox holds a file now and then
 
+PREFIX_NUM = re.compile(r"^\d+\s+")
 RANK_VALUE = {"species": 1, "family": 2, "order": 3, "class": 4, "phylum": 5, "kingdom": 6, "biota": 7}
 GROUP_COLUMN = ["Species", "Family", "Order", "Class", "Phylum", "Kingdom", "Biota"]
 COUNTS = ["iSpeciesThisRunCount", "iSpeciesCollectionCount", "iPictureThisRunCount",
@@ -50,7 +53,7 @@ def write_csv(path, header, rows):
         w = csv.DictWriter(f, fieldnames=header, delimiter=";", extrasaction="ignore")
         w.writeheader()
         w.writerows(rows)
-    os.replace(tmp, path)
+    replace_with_retry(tmp, path)
 
 
 def first(cell):
@@ -58,7 +61,10 @@ def first(cell):
     return v[0] if v else ""
 
 
-def refuse_unsafe(root):
+def refuse_unsafe(root, main_master=False):
+    if main_master:
+        print(f"--main-master: converting {root} — the real collection. Backup first, app closed.")
+        return
     if "dropbox" in str(root).lower():
         sys.exit(f"Refused: {root} is inside Dropbox. This test runs on a throw-away master only.")
     from utils.ini_io import read_ini
@@ -112,6 +118,23 @@ def plan(root, tables):
             continue
         species_map[old] = new
         dir_map[r["TargetPath"]] = path_of(new)
+
+    # A species can have a second folder under the other twin of a doubled order
+    # ('015 pelecaniformes/…/ardea brachyrhyncha' beside 'pelecaniformes/…/ardea
+    # brachyrhyncha' — a Move to species follows the folder it finds). Every
+    # folder whose path is the same once the numbers are left out moves along.
+    def bare(rel):
+        return "/".join(PREFIX_NUM.sub("", s) for s in rel.strip("/").lower().split("/"))
+    on_disk = defaultdict(list)
+    for dirpath, dirs, files in os.walk(root / "biota"):
+        dirs[:] = [d for d in dirs if not d.startswith(".")]
+        if any(not f.lower().endswith(".html") for f in files):
+            rel = Path(dirpath).relative_to(root).as_posix() + "/"
+            on_disk[bare(rel)].append(rel)
+    for old_rel, new_rel in list(dir_map.items()):
+        for twin in on_disk.get(bare(old_rel), []):
+            if twin.lower() != old_rel.lower() and twin not in dir_map:
+                dir_map[twin] = new_rel
 
     # file moves: every file in a species folder; every web page goes to trash
     moves, trash, collisions = [], [], []
@@ -325,11 +348,11 @@ def apply(root, tables, P):
         for src in P["trash"]:
             dst = trash / src.relative_to(root)
             dst.parent.mkdir(parents=True, exist_ok=True)
-            os.replace(src, dst)
+            replace_with_retry(src, dst)
             log.writerow(["trash", src, dst])
         for src, dst in P["moves"]:
             dst.parent.mkdir(parents=True, exist_ok=True)
-            os.replace(src, dst)
+            replace_with_retry(src, dst)
             log.writerow(["move", src, dst])
         # the alias table: old and other names -> the species they mean now
         aliases = active / "speciesnames.csv"
@@ -375,7 +398,7 @@ def undo(root, log_path):
     for s in reversed(steps):
         if s["Kind"] in ("move", "trash"):
             Path(s["From"]).parent.mkdir(parents=True, exist_ok=True)
-            os.replace(s["To"], s["From"])
+            replace_with_retry(s["To"], s["From"])
         elif s["Kind"] == "backup":
             shutil.copy2(s["To"], s["From"])
         elif s["Kind"] == "new" and os.path.exists(s["To"]):
@@ -392,10 +415,12 @@ def main():
     ap.add_argument("--tables", help="folder with taxa.csv and changes.csv for this master")
     ap.add_argument("--apply", action="store_true")
     ap.add_argument("--undo", metavar="LOG")
+    ap.add_argument("--main-master", action="store_true",
+                    help="allow converting a master in Dropbox / the main master (after a backup)")
     a = ap.parse_args()
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     root = Path(a.master)
-    refuse_unsafe(root)
+    refuse_unsafe(root, a.main_master)
     if a.undo:
         return undo(root, Path(a.undo))
     if not a.tables:
