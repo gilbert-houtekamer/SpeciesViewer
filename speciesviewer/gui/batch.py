@@ -79,6 +79,24 @@ def _should_invalidate(pre, post):
     return not (pre is not None and post is not None and pre == post)
 
 
+# A running QThread must outlive the Python objects that started it. Callers
+# keep no reference to their runner (`runner = BatchModuleRunner(...)` in a
+# method that returns at once), so a runner, its worker and its finished-handler
+# only referred to each other — a cycle the garbage collector may clear at any
+# moment, destroying the QThread while the job still ran: "QThread: Destroyed
+# while thread '' is still running", now and then, mostly in long bulk runs.
+# Each started thread is held here until its job has finished.
+_LIVE = {}
+
+
+def _keep_alive(owner, thread, worker):
+    _LIVE[id(thread)] = (owner, thread, worker)
+
+
+def _let_go(thread):
+    _LIVE.pop(id(thread), None)
+
+
 class _BatchWorker(QObject):
     finished = pyqtSignal(str, str)  # (errorstring, result_msg) — both empty means clean success
 
@@ -185,6 +203,7 @@ class BatchModuleRunner:
         def on_finished(errorstring, result_msg):
             self._thread.quit()
             self._thread.wait()
+            _let_go(self._thread)
             spinner.close()
 
             after = logger.warning_counter.count
@@ -241,6 +260,7 @@ class BatchModuleRunner:
             )
 
         self._worker.finished.connect(on_finished)
+        _keep_alive(self, self._thread, self._worker)
         self._thread.start()
 
 
@@ -313,6 +333,7 @@ class ChainedBatchRunner:
                     pre=pre_fingerprint):
             self._thread.quit()
             self._thread.wait()
+            _let_go(self._thread)
             cell_key = _EXPECTED_CELLS.get(sname)
             if errorstring:
                 self._logger.warning(f"❌ {sname} failed: {errorstring}")
@@ -335,6 +356,7 @@ class ChainedBatchRunner:
                 self._run_step(idx + 1)
 
         self._worker.finished.connect(on_done)
+        _keep_alive(self, self._thread, self._worker)
         self._thread.start()
 
     def _all_done(self):
@@ -473,6 +495,7 @@ class ColumnBatchRunner:
                     extras=extra_statusnames, pre=pre_fingerprints):
             self._thread.quit()
             self._thread.wait()
+            _let_go(self._thread)
             cell_key = _EXPECTED_CELLS.get(sname)
             if errorstring:
                 self._errors += 1
@@ -503,6 +526,7 @@ class ColumnBatchRunner:
             self._run_step(idx + 1)
 
         self._worker.finished.connect(on_done)
+        _keep_alive(self, self._thread, self._worker)
         self._thread.start()
 
     def _all_done(self):
