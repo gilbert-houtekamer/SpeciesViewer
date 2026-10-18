@@ -965,6 +965,18 @@ class Project:
                     subject_in_jpg = thisfile['IPTC:Keywords']
                 if subject_in_jpg != "":
                     scientificname = sp.getSpecies(subject_in_jpg)
+                    known = picture.get('WetSoortNaam', '')
+                    if (not scientificname and known in self.sc.sc_dict
+                            and not self.sc.isBlogExtra(subject_in_jpg)):
+                        # The keyword no longer resolves — an old name that a
+                        # split gave to another species resolves to nothing on
+                        # purpose (contested, 2026-10-17) — but this picture's
+                        # record already knows its species (an album reads the
+                        # master's). Keep it: Greece's 22 red-rumped swallows
+                        # ("Roodstuitzwaluw") vanished from its blog (2026-10-18).
+                        logger.info(f'"{subject_in_jpg}" does not name one species; '
+                                    f'keeping {known} for {upn["UniquePictureName"]}.')
+                        scientificname = known
                     if (scientificname == "" or scientificname is None) and self.sc.isBlogExtra(subject_in_jpg):
                         # Non-species blog extra (landscape/context photo). It
                         # carries no taxon, so it must not warn as an unknown
