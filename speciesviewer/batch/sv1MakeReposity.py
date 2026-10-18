@@ -131,6 +131,9 @@ def main(args, config):
                 os.path.join(initspeciesdir, 'initial_speciescollection.csv'))
     shutil.copy(os.path.join(MY_GHEXIF_DIR, 'installation files/initial_speciescollection.csv'), 
                 os.path.join(NEW_DB_TREE, 'metadata/active/speciescollection.csv'))
+    # the alias table that goes with the list (old and other names, ch.6)
+    shutil.copy(os.path.join(MY_GHEXIF_DIR, 'installation files/speciesnames.csv'),
+                os.path.join(NEW_DB_TREE, 'metadata/active/speciesnames.csv'))
     shutil.copy(os.path.join(MY_GHEXIF_DIR, 'installation files/empty_data_files.csv'), 
                 os.path.join(initspeciesdir, 'empty_data_files.csv'))
     shutil.copy(os.path.join(MY_GHEXIF_DIR, 'installation files/empty_data_files.csv'), 
@@ -177,6 +180,9 @@ def main(args, config):
     if not MyProject.isMasterRepository() and not restore_mode:
         shutil.copy(os.path.join(MyProject.getMasterRepository(), 'metadata/active/speciescollection.csv'),
                 os.path.join(NEW_DB_TREE, 'metadata/active/speciescollection.csv'))
+        master_aliases = os.path.join(MyProject.getMasterRepository(), 'metadata/active/speciesnames.csv')
+        if os.path.exists(master_aliases):
+            shutil.copy(master_aliases, os.path.join(NEW_DB_TREE, 'metadata/active/speciesnames.csv'))
         # Freeze what the master already has pictures of, so Count Species can
         # still tell lifers apart after this trip has been merged into the
         # master. Never fatal: a missing baseline only means Count Species

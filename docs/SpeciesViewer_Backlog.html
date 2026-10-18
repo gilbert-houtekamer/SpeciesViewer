@@ -492,10 +492,13 @@ and <code>docs/plans/taxonomy_order_design.md</code>.</p>
     neither, so the species step asks. For pictured non-birds Wikidata gave 36 Dutch names after
     review; most American and African insects and plants simply have none. Tools:
     <code>svr_names_from_ioc.py</code>, <code>svr_names_from_wikidata.py</code>.</li>
-  <li><span class="tag-open">OPEN</span> <strong>The starter list of a new master</strong> &mdash;
-    <code>dist/installation files/initial_speciescollection.csv</code> is still the old list
-    (numbered orders, no Sequence, old names). Replace it with the converted list and its alias
-    table, so a new master starts where the main master is now.</li>
+  <li><span class="tag-shipped">SHIPPED</span> <strong>The starter list of a new master</strong> (18 Oct) &mdash;
+    a new master now starts with the converted list (26,002 species in the new order, IOC Dutch
+    names) and its alias table <code>speciesnames.csv</code> (3,299 old and other names). Left out:
+    the author's landscape rows and the placeholder &ldquo;? phacelia&rdquo; (also removed from the
+    main master, with its two garbled names). A new trip or album now also gets its master's alias
+    table &mdash; before, old names only worked in a trip after Reset Trip. Made again from a master
+    with <code>tools/svr_make_starter_list.py</code>. Tested in a new master.</li>
   <li><span class="tag-open">OPEN</span> <strong>Leftovers found during the conversion</strong> (17 Oct) &mdash;
     report only so far: the Kingdom&hellip;Family columns in the master's <code>data_pictures.csv</code> sit
     one level off; 516 pictures that may be black; 19 files the admin check proposes to add; 5 old
@@ -566,8 +569,11 @@ alongside.</p>
 <h3>To do</h3>
 <ul>
   <li><span class="tag-bug">BUG</span> <strong>Album menus link to groups that are not there</strong>
-    (17 Oct, older than ch.6) &mdash; an album's menu offers groups the album has no pictures of, and some
-    group pages show tiles whose image links contain backslashes, so the image does not load.</li>
+    (17 Oct, older than ch.6) &mdash; an album's menu offers groups the album has no pictures of.
+    <em>Fixed 18 Oct:</em> the tiles whose picture did not load &mdash; nine page templates had
+    Windows backslashes in their links (the intro pages, and the placeholder pages for groups without
+    pictures, which are copies of them). Existing sites heal at their next build; a smoke test keeps
+    backslashes out.</li>
   <li><span class="tag-shipped">SHIPPED</span> <strong>The blog index on the server is not updated</strong>
     (17 Oct, 5b5e14c) &mdash; nothing ever wrote a master blog index; the page on the server was a 2024
     leftover. On master pages "Blogs" now opens the trip index, which lists every trip with its blog.

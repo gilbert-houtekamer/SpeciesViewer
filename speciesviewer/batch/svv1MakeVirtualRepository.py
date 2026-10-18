@@ -50,10 +50,15 @@ def main(args, config):
     master_species = os.path.join(master_db, "metadata/active/speciescollection.csv") if master_db else ""
     if master_db and os.path.isfile(master_species):
         shutil.copy(master_species, os.path.join(NEW_DB_TREE, "metadata/active/speciescollection.csv"))
+        master_aliases = os.path.join(master_db, "metadata/active/speciesnames.csv")
+        if os.path.isfile(master_aliases):
+            shutil.copy(master_aliases, os.path.join(NEW_DB_TREE, "metadata/active/speciesnames.csv"))
         logger.info("Copied speciescollection.csv from master.")
     else:
         shutil.copy(os.path.join(inst, "initial_speciescollection.csv"),
                     os.path.join(NEW_DB_TREE, "metadata/active/speciescollection.csv"))
+        shutil.copy(os.path.join(inst, "speciesnames.csv"),
+                    os.path.join(NEW_DB_TREE, "metadata/active/speciesnames.csv"))
 
     os.makedirs(os.path.join(NEW_DB_TREE, "web"),              exist_ok=True)
     os.makedirs(os.path.join(NEW_DB_TREE, "web/biota"),        exist_ok=True)

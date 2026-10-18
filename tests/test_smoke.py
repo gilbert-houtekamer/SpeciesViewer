@@ -83,13 +83,26 @@ def test_starter_species_list_is_a_tree():
     """A new master starts from this list: it must parse, and every row's
     parent ('Up') must itself be in the list."""
     rows = _starter_rows()
-    assert rows[0] == ["Level", "ScientificName", "DutchName", "EnglishName", "Up", "Leaves"]
+    assert rows[0] == ["Level", "ScientificName", "DutchName", "EnglishName", "Up", "Leaves",
+                       "Sequence", "SubspeciesOf"]
     body = rows[1:]
     assert len(body) > 1000
-    assert all(len(r) == 6 for r in body), "a row without exactly 6 fields"
+    assert all(len(r) == 8 for r in body), "a row without exactly 8 fields"
     names = {r[1] for r in body}
     orphans = [r[1] for r in body if r[4] and r[4] not in names]
     assert not orphans, f"rows whose parent is missing: {orphans[:10]}"
+    numbered = [r[1] for r in body if r[1][:1].isdigit() and r[0] != "Level.SPECIES"]
+    assert not numbered, f"old numbered names ('040 passeriformes'): {numbered[:10]}"
+
+
+def test_starter_aliases_point_into_the_list():
+    """The alias table shipped beside the list: every alias names a list entry."""
+    names = {r[1] for r in _starter_rows()[1:]}
+    with open(STARTER.with_name("speciesnames.csv"), encoding="utf-8", newline="") as f:
+        rows = list(csv.reader(f, delimiter=";"))
+    assert rows[0] == ["Name", "Language", "PointsTo", "Kind", "Source"]
+    stray = [r for r in rows[1:] if r[2] not in names]
+    assert not stray, stray[:10]
 
 
 def test_starter_species_list_has_no_garbled_names():
@@ -97,3 +110,14 @@ def test_starter_species_list_has_no_garbled_names():
     garbled = [r[1:4] for r in _starter_rows()
                if any(bad in ";".join(r) for bad in ("â€", "Ã", "\ufffd"))]
     assert not garbled, garbled
+
+
+def test_templates_link_with_forward_slashes():
+    """A web address uses '/'; a Windows '\' in a template link breaks the
+    tile pictures on some browsers and every server (found 2026-10-18)."""
+    link = re.compile(r'(?:href|src)\s*=\s*"([^"]*)"')
+    bad = [(path.name, m.group(1))
+           for path in sorted((SV / "HTMLtemplates").glob("*.html"))
+           for m in link.finditer(path.read_text(encoding="utf-8", errors="replace"))
+           if "\\" in m.group(1)]
+    assert not bad, bad[:10]
