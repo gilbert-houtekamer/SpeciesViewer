@@ -47,6 +47,32 @@ def _src_already_at_final(MyProject, src, target_path, basename):
 
 
 # web support
+# -- subspecies on the website (ch.6 subspecies step 2, 2026-10-18) ----------
+# A subspecies is a row beside its species with SubspeciesOf. When its species
+# has a page, the subspecies is shown THERE (its pictures among the species'
+# own, and in a Subspecies block) instead of as a tile of its own.
+def _subspecies_of(MyProject, name):
+    rows = getattr(getattr(MyProject, "sc", None), "sc_dict", None) or {}
+    return (rows.get(name) or {}).get("SubspeciesOf", "") or ""
+
+
+def _folded_subspecies(MyProject, name):
+    """True when `name` is a subspecies shown on its species' page."""
+    parent = _subspecies_of(MyProject, name)
+    node = MyProject.sp.species_dict.get(parent) if parent else None
+    return node is not None and MyProject.hasWebPage(node)
+
+
+def _subspecies_with_pages(MyProject, species):
+    """The species' subspecies that have pictures here, in list order."""
+    name = species["ScientificName"]
+    family = MyProject.sp.species_dict.get(species.get("Up", ""), {})
+    return [MyProject.sp.species_dict[leaf]
+            for leaf in MyProject.orderedLeaves(family.get("Leaves", []))
+            if leaf in MyProject.sp.species_dict and _subspecies_of(MyProject, leaf) == name
+            and MyProject.hasWebPage(MyProject.sp.species_dict[leaf])]
+
+
 # A template line that is only a link to a group page: a menu item
 # (<a … class="w3-bar-item …">Birds</a>) or a list item (<li><a …>Birds</a></li>).
 _GROUP_LINK = re.compile(r'^\s*(?:<li>)?<a href="%%\d+%%biota/(?:[^"/]+/)*([^"/]+)-(?:en|nl)\.html"[^>]*>[^<]*</a>(?:</li>)?\s*$')
@@ -688,6 +714,8 @@ def formatToken(tokenno, MyProject, species_param, file, picture):
             if species_param['Level'] == Level.SPECIES and len(family_local)>0:
                 workstr = "<li class=""\"first""\">\n"
                 for leaf in MyProject.orderedLeaves(family_local['Leaves']):
+                    if _folded_subspecies(MyProject, leaf):
+                        continue
                     leaf_sp = MyProject.getSpecies(leaf)
                     # Only link siblings that actually have a page in THIS web
                     # tree; on a trip/album the tree holds a subset of the
@@ -910,7 +938,7 @@ def formatToken(tokenno, MyProject, species_param, file, picture):
             language = MyProject.getLanguage()
             workstr = "<div id=""\"grid\""">\n"
             for speciesname in MyProject.orderedLeaves(species_param['Leaves']):
-                if speciesname not in MyProject.sp.species_dict:
+                if speciesname not in MyProject.sp.species_dict or _folded_subspecies(MyProject, speciesname):
                     continue
                 species = MyProject.sp.species_dict[speciesname]
                 if (int(species['iPicturesWithJPGsCollection']) + int(species['iPicturesWithJPGsThisRun'])) > 0:
@@ -1422,6 +1450,39 @@ def formatToken(tokenno, MyProject, species_param, file, picture):
             return buildBlogNavSentence(MyProject)
         elif tokenno == 172:         # slider navigation (Previous / Next slider pages)
             return buildSliderNavSentence(MyProject)
+        elif tokenno == 185:         # species page: its subspecies, as tiles
+            if species_param.get('Level') != Level.SPECIES:
+                return ""
+            subspecies = _subspecies_with_pages(MyProject, species_param)
+            if not subspecies:
+                return ""
+            language = MyProject.getLanguage()
+            name = 'DutchName' if language == 'nl' else 'EnglishName'
+            photos = " foto's" if language == 'nl' else ' photos'
+            workstr = '<h3>' + ('Ondersoorten' if language == 'nl' else 'Subspecies') + '</h3>\n<div id="grid">\n'
+            for ssp in subspecies:
+                count = int(ssp['iPictureCollectionCount'] or 0) + int(ssp['iPictureThisRunCount'] or 0)
+                workstr += ('  <div>\n    <a href="' + BiotaWebRoot + ssp['TargetPath'] + ssp['ScientificName']
+                            + '-' + language + '.html">\n')
+                if ssp['BestJPG'] and ssp['BestJPGPathName']:
+                    workstr += ('      <img src="' + BiotaWebRoot + ssp['BestJPGPathName'] + getSmallJPG(ssp['BestJPG'])
+                                + '" loading="lazy" decoding="async" style="width:100%">\n')
+                workstr += '    </a>'
+                workstr += '<p>' + (ssp[name] or ssp['ScientificName']).capitalize() + '</p>'
+                workstr += '<p><i>' + ssp['ScientificName'].capitalize() + '</i></p>'
+                workstr += '<p>' + str(count) + photos + '</p>\n  </div>\n'
+            return workstr + '</div>\n'
+        elif tokenno == 186:         # subspecies page: "Subspecies of <species>"
+            parent = _subspecies_of(MyProject, species_param.get('ScientificName', ''))
+            node = MyProject.sp.species_dict.get(parent) if parent else None
+            if node is None or not MyProject.hasWebPage(node):
+                return ""
+            language = MyProject.getLanguage()
+            name = 'DutchName' if language == 'nl' else 'EnglishName'
+            label = 'Ondersoort van' if language == 'nl' else 'Subspecies of'
+            return ('<p>' + label + ' <a href="' + BiotaWebRoot + node['TargetPath'] + node['ScientificName']
+                    + '-' + language + '.html">' + (node[name] or node['ScientificName']).capitalize()
+                    + '</a> (<i>' + node['ScientificName'].capitalize() + '</i>)</p>')
         elif tokenno == 180:         # published occurrence map (Maps Phase 4)
             # "Where I have seen this species" — a Leaflet map over the species'
             # own master pictures. Returns "" for an obscure family (a published
@@ -1539,6 +1600,8 @@ def addAllSpeciesPage(MyProject, speciesname, temptextfile):
     leaves = MyProject.orderedLeaves(MyProject.getSpecies(speciesname)['Leaves'])
     for leaf in leaves:
         species = MyProject.sp.species_dict[leaf]
+        if _folded_subspecies(MyProject, leaf):
+            continue
         if (int(species['iPicturesWithJPGsCollection']) + int(species['iPicturesWithJPGsThisRun'])) > 0:
             if species['Level'] == Level.SPECIES:
                 # Suppress orphan species cards: when a picture is renamed
@@ -1567,7 +1630,13 @@ def addOneSpeciesPage(MyProject, species_param):
         skipped_files = 0
         skipped_upn = 0
         skipped_wrong_species = 0
-        for JPGname in list(species_param['JPGmap']):
+        # the species page shows ALL its pictures: its own and its subspecies'
+        subspecies = _subspecies_with_pages(MyProject, species_param)
+        allowed = {species_param['ScientificName']} | {ssp['ScientificName'] for ssp in subspecies}
+        jpgmap = list(species_param['JPGmap'])
+        for ssp in subspecies:
+            jpgmap += list(ssp['JPGmap'])
+        for JPGname in jpgmap:
             basename = os.path.basename(JPGname)
             if basename not in MyProject.files_dict:
                 skipped_files += 1
@@ -1582,10 +1651,15 @@ def addOneSpeciesPage(MyProject, species_param):
             # render those produces a path under the wrong species and a copy
             # error. Only show JPGs whose UPN currently belongs to this species.
             picture = MyProject.UniquePictureName_dict[upn_key]
-            if picture.get('WetSoortNaam', '') != species_param['ScientificName']:
+            if picture.get('WetSoortNaam', '') not in allowed:
                 skipped_wrong_species += 1
                 continue
             diversity = MyProject.getPictureAgeSexePlumage(picture)
+            if picture.get('WetSoortNaam', '') != species_param['ScientificName']:
+                # a subspecies is its own group, like male/female, so its
+                # pictures show beside the species' own (not only when they
+                # happen to out-rate them)
+                diversity = picture['WetSoortNaam'] + ' ' + diversity
             rating = MyProject.computeRatingFile(JPGname_no_path)
             if '-small' not in JPGname:
                 rateorder[(diversity, rating, JPGname)] = JPGname
