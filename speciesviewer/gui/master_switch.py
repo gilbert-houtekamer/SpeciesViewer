@@ -284,9 +284,9 @@ def _remove(main_window) -> None:
     has_data = bool(data_plan and (data_plan["collection"] or data_plan["trips"]
                                    or data_plan["albums"]))
     text = (f"Remove the master “{name}” from SpeciesViewer.\n\n"
-            "Settings only: its settings, remembered state and website on this "
-            "computer are zipped to the trash; its collection, trips and albums "
-            "stay on disk.")
+            "Settings only: its settings and remembered state are zipped to the "
+            "trash; its website on this computer is deleted (it can be published "
+            "again from the collection); its collection, trips and albums stay on disk.")
     master_pictures = 0
     if has_data:
         def _line(kind, f):
@@ -341,14 +341,21 @@ def _remove(main_window) -> None:
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.No) != QMessageBox.StandardButton.Yes:
         return
+    # Zipping the settings and deleting the data can take minutes: both run in
+    # a wait box with a picture, and the window keeps repainting (Gilbert,
+    # 2026-10-18 — was a bare hourglass).
+    from gui.wait_picture import run_waiting
     try:
-        zip_path = masters.remove(name)
+        zip_path = run_waiting(main_window, f"Removing “{name}”…",
+                               lambda: masters.remove(name), picture="hippo")
     except (masters.MasterError, OSError) as e:
         QMessageBox.warning(main_window, "Remove Master", str(e))
         return
     main_window.logger.info(f"Master “{name}” removed; its settings are in {zip_path}")
     if with_data:
-        report = master_purge.delete(data_plan)
+        report = run_waiting(main_window,
+                             f"Deleting {human(data_plan['size'])} of “{name}”’s files…",
+                             lambda: master_purge.delete(data_plan), picture="hippo")
         # With shared folders the deleted trips/albums were in THIS master's
         # lists too; the panels read the folders once at start, so re-read.
         for panel in ("trip_panel", "virttrip_panel"):

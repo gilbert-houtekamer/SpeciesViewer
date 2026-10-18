@@ -198,7 +198,10 @@ def remove(name: str) -> Path:
 
     Refused for the main master, and for the one that is open (here or as
     the next start's). db/*.db is left out of the zip: it is rebuilt from the
-    CSVs and can be hundreds of MB. The pending-writes log beside it is kept."""
+    CSVs and can be hundreds of MB. The pending-writes log beside it is kept.
+    The local website (website/) is left out too and deleted: it is a copy
+    the collection publishes again, and took a 4 GB zip and minutes for
+    Taxonomy 3 (Gilbert, 2026-10-18: a master is hardly ever restored)."""
     import shutil
     import time
     import zipfile
@@ -215,8 +218,10 @@ def remove(name: str) -> Path:
                           "cannot be removed this way.")
     trash_dir().mkdir(parents=True, exist_ok=True)
     zip_path = trash_dir() / f"master {_folder_name(name)} {time.strftime('%Y-%m-%d %H%M%S')}.zip"
-    files = [p for p in folder.rglob("*") if p.is_file()
-             and not (p.parent.name == "db" and p.suffix == ".db")] if folder.exists() else []
+    def _kept(p):
+        rel = p.relative_to(folder).parts
+        return not (rel[0] == "website" or (p.parent.name == "db" and p.suffix == ".db"))
+    files = [p for p in folder.rglob("*") if p.is_file() and _kept(p)] if folder.exists() else []
     with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as z:
         z.writestr(_ENTRY_FILE, json.dumps(entry, indent=2, ensure_ascii=False))
         for p in files:
