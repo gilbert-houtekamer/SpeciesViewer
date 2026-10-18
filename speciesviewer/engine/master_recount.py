@@ -24,6 +24,7 @@ import time
 import logging
 
 from engine.species_counter_audit import _actual_from_pictures
+from engine.subspecies import fold_species_flags, read_subspecies
 from utils.atomic_replace import replace_with_retry
 
 logger = logging.getLogger("speciesviewer")
@@ -69,6 +70,7 @@ def _recount(master_root):
         header, rows = rd.fieldnames, list(rd)
     before = {r["ScientificName"]: {c: r.get(c, "") for c in COUNTS + PICK} for r in rows}
     by_name = {r["ScientificName"]: r for r in rows}
+    subspecies = read_subspecies(os.path.join(active, "speciescollection.csv"))
     kids = {}
     for r in rows:
         kids.setdefault(r["Up"], []).append(r["ScientificName"])
@@ -107,6 +109,9 @@ def _recount(master_root):
             walk(k)
         for c in COUNTS:
             r[c] = str(sum(_int(by_name[k][c]) for k in children))
+        # a species and its subspecies count once (engine/subspecies.py)
+        r["iSpeciesCollectionCount"] = str(fold_species_flags(
+            subspecies, [(k, by_name[k]["iSpeciesCollectionCount"], 0) for k in children])[0])
         if gone(r) or empty(r):
             top = max((by_name[k] for k in children if (by_name[k].get("BestUPN") or "").strip()
                        and not gone(by_name[k]) and not empty(by_name[k])),

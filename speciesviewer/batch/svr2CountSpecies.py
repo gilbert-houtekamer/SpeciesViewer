@@ -24,6 +24,7 @@ import engine.projectlib
 import engine.specieslib
 import engine.speciesclassification
 from engine.specieslib import Level
+from engine.subspecies import species_names, species_of
 import engine.triplib
 import engine.species_baseline
 import engine.topics
@@ -37,6 +38,7 @@ counter = 1
 newcounter = 1
 total_species = 0
 total_new = 0
+counted_groups = set()   # species already listed (a species and its subspecies count once)
 topics_skipped = 0
 jpgneeded = 0
 legacy_days = []         # days summarized before the #Keep column existed
@@ -199,22 +201,30 @@ def scanSpecies(sc, speciesname, report):
                     sci = f"{parts[0]} {parts[1]} ssp. {parts[2]}"
                 english = species['EnglishName'] if species['EnglishName'] else f"*{sci}*"
                 dutch = species['DutchName'] if species['DutchName'] else f"*{sci}*"
-                data_line = str(counter).rjust(3) + ' ' + english.ljust(32) + dutch.ljust(40)
-                row_nr = counter
+                # A species and its subspecies count once (engine/subspecies.py):
+                # the second line of a group is listed but not numbered again.
+                group = species_of(sc.sc_dict, scientific)
+                repeat = group in counted_groups
+                counted_groups.add(group)
+                known = scientific in reference_names or group in reference_names
+                data_line = ('   ' if repeat else str(counter).rjust(3)) + ' ' + english.ljust(32) + dutch.ljust(40)
+                row_nr = '' if repeat else counter
                 row_new = ''
                 day_marks = {}
-                if scientific in reference_names:
+                if known or repeat:
                     data_line += '     '
                 else:
                     data_line += str(newcounter).rjust(3) + '  '
                     row_new = newcounter
                     newcounter += 1
                     total_new += 1
-                counter += 1
+                if not repeat:
+                    counter += 1
                 # counter/newcounter restart at the "Other animals and plants"
                 # subheader; these two never do, so the totals below cover the
                 # whole trip and can be read back without column arithmetic.
-                total_species += 1
+                if not repeat:
+                    total_species += 1
                 seen = 0
                 pics = 0
                 # run by file for which we have data
@@ -265,7 +275,7 @@ def scanSpecies(sc, speciesname, report):
                     # to publish - so this is NOT "No JPG". No JPG means no JPG
                     # at all: only RAW or HEIC.
                     data_line += '   j'
-                elif scientific not in reference_names:
+                elif not known:
                     data_line += '   No JPG     '
                 print(data_line, file=report)
                 # The same row as data, for the spreadsheet export. The text
@@ -319,6 +329,7 @@ def main(args, config):
     global starttime, SpeciesDebug, reference_names
     global result_dict, headers, counter, newcounter, jpgneeded
     global total_species, total_new, topics_skipped, legacy_days, table_rows, colour_counts
+    global counted_groups
     legacy_days = []
     table_rows = []
     colour_counts = {}
@@ -328,6 +339,7 @@ def main(args, config):
     newcounter = 1
     total_species = 0
     total_new = 0
+    counted_groups = set()
     topics_skipped = 0
     jpgneeded = 0
     reference_names = set()
@@ -423,6 +435,9 @@ def main(args, config):
                 reference_note = ("Lifer baseline: NONE FOUND — every species below is "
                                   "reported as new.\n"
                                   "    Do not trust the New column.")
+
+    # a subspecies in the master makes its species known, and vice versa
+    reference_names = set(reference_names) | species_names(sc.sc_dict, reference_names)
 
     # make output file
     reports_dir = Path(config.get("repository","BiotaDatabase")) / "metadata" / "reports"

@@ -6,6 +6,7 @@ import logging
 from collections import OrderedDict
 
 from engine import SPECIES_FIELDS
+from engine.subspecies import fold_species_flags
 
 from enum import Enum, auto
 
@@ -292,10 +293,12 @@ class Species:
             if species['TargetPath'] == "":
                 species['TargetPath'] = self.getPathToSpecies(species['ScientificName'])
             results = []
+            species_flags = []      # (name, collection, new) per child, folded below
             for leave in species['Leaves']:
                 if leave == "agaricomycetes":
                     x = 1
                 tempresults = self.summarizeSpeciesCounters(leave, results, debugfile)
+                species_flags.append((leave, tempresults[4], tempresults[5]))
                 i = 0
                 for number in tempresults:
                     if len(results) > i:
@@ -310,6 +313,9 @@ class Species:
             if results == []:
                 print(f'hoe kan dit??')
             else:
+                # a species and its subspecies count once (engine/subspecies.py)
+                results[4], results[5] = fold_species_flags(
+                    self.sc.sc_dict if self.sc else {}, species_flags)
                 species['iPictureCollectionCount'] = results[0]
                 species['iPictureThisRunCount'] = results[1]
                 species['iPicturesWithJPGsCollection'] = results[2]

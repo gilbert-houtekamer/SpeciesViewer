@@ -110,11 +110,20 @@ class MasterBiotaSource:
         return m
 
     def _apply_counts(self, own_pics: dict):
-        """Aggregate per-species counts UP every ancestor chain."""
+        """Aggregate per-species counts UP every ancestor chain. A species and
+        its subspecies count as ONE species (engine/subspecies.py); a subspecies
+        sits beside its species, so both share every ancestor."""
+        from engine.subspecies import read_subspecies, species_of
+        subs = (read_subspecies(self.master_root / "metadata" / "active" / "speciescollection.csv")
+                if self.master_root is not None else {})
+        counted = set()
         self._own_pics = dict(own_pics)
         for key, n in self._own_pics.items():
             if key not in self._by_sci:
                 continue
+            group = species_of(subs, key)
+            one = 0 if group in counted else 1
+            counted.add(group)
             self._pics[key] = self._pics.get(key, 0) + n
             self._species_n[key] = self._species_n.get(key, 0) + 1
             up = (self._by_sci[key]["up"] or "").strip().lower()
@@ -122,7 +131,7 @@ class MasterBiotaSource:
             while up and up in self._by_sci and up not in seen:
                 seen.add(up)
                 self._pics[up] = self._pics.get(up, 0) + n
-                self._species_n[up] = self._species_n.get(up, 0) + 1
+                self._species_n[up] = self._species_n.get(up, 0) + one
                 up = (self._by_sci[up]["up"] or "").strip().lower()
 
     # ── tree walk ───────────────────────────────────────────────────────────

@@ -313,7 +313,7 @@ def mergeCurrentTripTotals(MyProject):
         up = d['Up']
         if up and up in day and name not in day[up]['Leaves']:
             day[up]['Leaves'].append(name)
-    species_count = _recountSpeciesTotals(day)
+    species_count = _recountSpeciesTotals(day, getattr(getattr(MyProject, 'sc', None), 'sc_dict', {}))
 
     before = _species_with_jpgs(active.species_dict)
     after = _species_with_jpgs(day)
@@ -327,7 +327,7 @@ def mergeCurrentTripTotals(MyProject):
             f"species with a picture. Nothing was published; please report this.")
     return species_count
 
-def _recountSpeciesTotals(day):
+def _recountSpeciesTotals(day, sc_dict=None):
     """Species counters are COUNTED from the tree, never added up.
 
     A species is 1 in the trip collection when the trip already holds a picture
@@ -337,7 +337,10 @@ def _recountSpeciesTotals(day):
     every day before publishing any made each day count each of its species as
     new, and adding those marks up put Brazil 2026 at 705 species instead of
     328 (2026-10-09). Counted here, at publish time, the order of the steps no
-    longer matters. Picture counters are real per-day sums and are untouched."""
+    longer matters. Picture counters are real per-day sums and are untouched.
+    A species and its subspecies count once (engine/subspecies.py)."""
+    from engine.subspecies import fold_species_flags
+
     def walk(name, seen):
         node = day[name]
         if node['Level'] in (Level.SPECIES, 'Level.SPECIES'):
@@ -348,13 +351,13 @@ def _recountSpeciesTotals(day):
             else:
                 coll, new = 0, 0
         else:
-            coll = new = 0
+            children = []
             for leaf in node['Leaves']:
                 if leaf in day and leaf not in seen:
                     seen.add(leaf)
                     c, n = walk(leaf, seen)
-                    coll += c
-                    new += n
+                    children.append((leaf, c, n))
+            coll, new = fold_species_flags(sc_dict or {}, children)
         node['iSpeciesCollectionCount'] = coll
         node['iSpeciesThisRunCount'] = new
         return coll, new

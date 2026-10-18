@@ -27,6 +27,7 @@ project-master-viewer).
 
 from __future__ import annotations
 
+import csv
 import json
 import logging
 import os
@@ -972,6 +973,31 @@ class MasterDB:
             'LOWER("WindowsExtension") IN ("jpg","jpeg") LIMIT 1', (upn,)).fetchone()
         return row is not None
 
+    # ── species groups: a species and its subspecies count once ──────────────
+    def _species_group(self, sci: str) -> list[str]:
+        """The lower-cased names that count as the same species as `sci`: its
+        species and all that species' subspecies (engine/subspecies.py). Read
+        from the species list once per MasterDB; [sci] when there are none."""
+        groups = getattr(self, "_groups", None)
+        if groups is None:
+            from engine.subspecies import read_subspecies
+            groups = {}
+            subs = read_subspecies(Path(self.master_root) / "metadata" / "active" / "speciescollection.csv")
+            for name, row in subs.items():
+                g = groups.setdefault(row["SubspeciesOf"], {row["SubspeciesOf"]})
+                g.add(name)
+                groups[name] = g
+            self._groups = groups
+        sci = (sci or "").strip().lower()
+        return sorted(groups.get(sci, {sci}))
+
+    def _group_picture_count(self, con: sqlite3.Connection, sci: str) -> int:
+        names = self._species_group(sci)
+        marks = ",".join("?" * len(names))
+        return con.execute(
+            f'SELECT COUNT(*) FROM pictures WHERE LOWER(TRIM("WetSoortNaam")) IN ({marks})',
+            names).fetchone()[0]
+
     # ── species count maintenance for a no-JPG delete ─────────────────────────
     def _species_delete_updates(self, con: sqlite3.Connection, sci: str):
         """Compute the species-table changes for removing ONE no-JPG picture of
@@ -998,6 +1024,9 @@ class MasterDB:
             (sciname.lower(),)).fetchone()[0]
         n_left = max(n_before - 1, 0)
         emptied = (n_left == 0)
+        # the species COUNT drops only when the whole group (species + its
+        # subspecies) is left without pictures
+        group_emptied = emptied and self._group_picture_count(con, sciname) - 1 <= 0
 
         # ancestor chain (pre-delete snapshot)
         chain = []
@@ -1026,7 +1055,7 @@ class MasterDB:
         for a in chain:
             u = updates.setdefault(a["ScientificName"], {})
             u["iPictureCollectionCount"] = _coerce_int(a["iPictureCollectionCount"]) - 1
-            if emptied:
+            if group_emptied:
                 u["iSpeciesCollectionCount"] = _coerce_int(a["iSpeciesCollectionCount"]) - 1
         return updates, deleted
 
@@ -1262,14 +1291,21 @@ class MasterDB:
 
         source_empties = bool(src_chain) and (_pic_count(source_sci) - 1 <= 0)
         target_was_empty = (_pic_count(target_sci) == 0)
+        # The species COUNT follows the group (species + its subspecies): a
+        # move inside one group (carrion crow -> hooded crow) changes no count.
+        same_group = self._species_group(source_sci) == self._species_group(target_sci)
+        source_group_empties = (source_empties and not same_group
+                                and self._group_picture_count(con, source_sci) - 1 <= 0)
+        target_group_was_empty = (not same_group
+                                  and self._group_picture_count(con, target_sci) == 0)
 
         # iSpeciesCollectionCount changes only on the ANCESTORS when a species
         # appears/disappears under them.
         spec_delta: dict[str, int] = {}
-        if source_empties:
+        if source_group_empties:
             for r in src_chain[1:]:
                 spec_delta[r["ScientificName"]] = spec_delta.get(r["ScientificName"], 0) - 1
-        if target_was_empty:
+        if target_group_was_empty:
             for r in tgt_chain[1:]:
                 spec_delta[r["ScientificName"]] = spec_delta.get(r["ScientificName"], 0) + 1
 
