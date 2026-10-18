@@ -289,6 +289,9 @@ class SpeciesPanel(QWidget):
         ml = QVBoxLayout(main)
         ml.setContentsMargins(16, 8, 16, 16); ml.setSpacing(6)
         ml.addWidget(self._build_names(src))
+        related = self._build_subspecies(src)
+        if related is not None:
+            ml.addWidget(related)
         ml.addWidget(self._build_photos(pics))
         ml.addStretch(1)
         self._outer.addWidget(main, 1)
@@ -604,6 +607,51 @@ class SpeciesPanel(QWidget):
         bl.addWidget(holder)
         return box
 
+    def _build_subspecies(self, src):
+        """A species' subspecies — or, on a subspecies, the species it belongs
+        to — as a small table under the names; a name opens that page
+        (Gilbert, 2026-10-18). None when there is nothing to show."""
+        parent = src.subspecies_of(self._sci)
+        rows = [src.node(parent)] if parent else src.subspecies(self._sci)
+        rows = [r for r in rows if r is not None]
+        if not rows:
+            return None
+        host = self._host
+        box = QWidget(); bl = QVBoxLayout(box); bl.setContentsMargins(0, 6, 0, 8); bl.setSpacing(6)
+        hdr = QLabel("SUBSPECIES OF" if parent else "SUBSPECIES")
+        hdr.setStyleSheet(f"color:{_INK_SOFT}; font-family:Consolas,monospace; font-size:10px;"
+                          f" letter-spacing:1px;")
+        bl.addWidget(hdr)
+        grid = QGridLayout(); grid.setSpacing(0); grid.setContentsMargins(0, 0, 0, 0)
+
+        def cell(text, r, c, *, head=False, italic=False, link=None):
+            lbl = QLabel(text or "—")
+            style = f"border:1px solid {_LINE}; padding:6px 9px; font-size:12.5px;"
+            if head:
+                style += (f" background:{_SURFACE2}; color:{_INK_SOFT};"
+                          f" font-family:Consolas,monospace; font-size:9.5px; letter-spacing:.5px;")
+            else:
+                style += f" color:{_INK};" + (" font-style:italic;" if italic else "")
+            if link:
+                lbl.setText(f'<a href="{link}" style="color:{_READY}; text-decoration:none;">{text or link}</a>')
+                lbl.setCursor(Qt.CursorShape.PointingHandCursor)
+                lbl.linkActivated.connect(host._open_species)
+            lbl.setStyleSheet(style)
+            grid.addWidget(lbl, r, c)
+
+        for ci, label in enumerate(("EN", "NL", "Sci", "Photos")):
+            cell(label, 0, ci, head=True)
+        for ri, n in enumerate(rows, start=1):
+            cell(n.get("en") or "", ri, 0, link=n["sci"])
+            cell(n.get("nl") or "", ri, 1)
+            cell(n["sci"], ri, 2, italic=True)
+            cell(str(src.counts(n["sci"])[1]), ri, 3)
+        for ci in range(4):
+            grid.setColumnStretch(ci, 0 if ci == 3 else 1)
+        holder = QWidget(); holder.setLayout(grid)
+        bl.addWidget(holder)
+        return box
+
     # photos grouped by age/sex/plumage
     def _build_photos(self, pics):
         host = self._host
@@ -713,10 +761,19 @@ class SpeciesPanel(QWidget):
                                 f" font-size:10px; letter-spacing:1px;")
             sl.addWidget(title)
             sibs = src.children(parent["sci"])
-            for s in sibs[:self._MAX_SIBS]:
+            # a window of _MAX_SIBS around the open species, so it is always in
+            # view (the carrion crow is the 25th corvid; Gilbert, 2026-10-18)
+            here = next((i for i, x in enumerate(sibs) if x["sci"] == node["sci"]), 0)
+            start = max(0, min(here - self._MAX_SIBS // 2, len(sibs) - self._MAX_SIBS))
+            shown = sibs[start:start + self._MAX_SIBS]
+            if start:
+                earlier = QLabel(f"…{start} earlier")
+                earlier.setStyleSheet(f"color:{_INK_SOFT}; font-size:11px; padding:4px 6px; border:none;")
+                sl.addWidget(earlier)
+            for s in shown:
                 sl.addWidget(self._sib_row(s, current=(s["sci"] == node["sci"])))
-            if len(sibs) > self._MAX_SIBS:
-                more = QPushButton(f"…and {len(sibs) - self._MAX_SIBS} more")
+            if len(sibs) > start + len(shown):
+                more = QPushButton(f"…and {len(sibs) - start - len(shown)} more")
                 more.setFlat(True)
                 more.setCursor(Qt.CursorShape.PointingHandCursor)
                 more.setStyleSheet(
@@ -752,7 +809,13 @@ class SpeciesPanel(QWidget):
         row.setStyleSheet(
             f"QPushButton {{ text-align:left; border:none; border-radius:6px; background:{bg}; }}"
             f"QPushButton:hover {{ background:{_SURFACE2}; }}")
-        lay = QHBoxLayout(row); lay.setContentsMargins(6, 3, 8, 3); lay.setSpacing(9)
+        # a subspecies sits indented under its species (ch.6, 2026-10-18)
+        ssp = bool(not order and host._source.subspecies_of(node["sci"]))
+        lay = QHBoxLayout(row); lay.setContentsMargins(26 if ssp else 6, 3, 8, 3); lay.setSpacing(9)
+        if ssp:
+            arrow = QLabel("↳")
+            arrow.setStyleSheet(f"color:{_INK_SOFT}; border:none;")
+            lay.addWidget(arrow)
         thumb = QLabel()
         thumb.setFixedSize(36, 27)
         thumb.setStyleSheet(f"border:2px solid {_FRAME}; border-radius:4px; background:{_SURFACE2};")

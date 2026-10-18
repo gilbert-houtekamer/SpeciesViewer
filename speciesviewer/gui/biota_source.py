@@ -63,10 +63,14 @@ class MasterBiotaSource:
         self._own_pics = {}        # sci_lower -> pictures on THIS species only
         self._cover = {}           # sci_lower -> resolved cover Path | None (memo)
         self._cover_spec = {}      # sci_lower -> ("jpg"|"raw", Path) | None (memo)
+        self._subs = {}            # subspecies sci_lower -> {"SubspeciesOf": species}
         self._load()
 
     # ── build ───────────────────────────────────────────────────────────────
     def _load(self):
+        if self.master_root is not None:
+            from engine.subspecies import read_subspecies
+            self._subs = read_subspecies(self.master_root / "metadata" / "active" / "speciescollection.csv")
         self._load_tree()
         self._apply_counts(self._own_pics_map())
 
@@ -113,9 +117,8 @@ class MasterBiotaSource:
         """Aggregate per-species counts UP every ancestor chain. A species and
         its subspecies count as ONE species (engine/subspecies.py); a subspecies
         sits beside its species, so both share every ancestor."""
-        from engine.subspecies import read_subspecies, species_of
-        subs = (read_subspecies(self.master_root / "metadata" / "active" / "speciescollection.csv")
-                if self.master_root is not None else {})
+        from engine.subspecies import species_of
+        subs = self._subs
         counted = set()
         self._own_pics = dict(own_pics)
         for key, n in self._own_pics.items():
@@ -146,10 +149,35 @@ class MasterBiotaSource:
         return bool(n and n["rank"] == "SPECIES")
 
     def children(self, sci: str) -> list[dict]:
-        """Child nodes that have at least one master picture, in taxonomic order."""
+        """Child nodes that have at least one master picture, in taxonomic order;
+        a subspecies right after its species (ch.6, 2026-10-18)."""
         key = (sci or "").strip().lower()
-        return [self._by_sci[c] for c in self._kids.get(key, [])
-                if self._pics.get(c, 0) > 0]
+        kids = [c for c in self._kids.get(key, []) if self._pics.get(c, 0) > 0]
+        placed = [c for c in kids if self.subspecies_of(c) not in kids]
+        for c in kids:
+            parent = self.subspecies_of(c)
+            if parent in kids:
+                at = placed.index(parent) + 1
+                while at < len(placed) and self.subspecies_of(placed[at]) == parent:
+                    at += 1
+                placed.insert(at, c)
+        return [self._by_sci[c] for c in placed]
+
+    def subspecies_of(self, sci: str) -> str:
+        """The species a subspecies belongs to, when that species has pictures
+        of its own; '' otherwise — a subspecies pictured alone (green jay ssp
+        luxuosus) is shown like a species (Gilbert, 2026-10-18)."""
+        parent = (self._subs.get((sci or "").strip().lower()) or {}).get("SubspeciesOf", "")
+        return parent if parent and self._own_pics.get(parent, 0) > 0 else ""
+
+    def subspecies(self, sci: str) -> list[dict]:
+        """The pictured subspecies of a species, in list order."""
+        key = (sci or "").strip().lower()
+        node = self._by_sci.get(key)
+        if node is None:
+            return []
+        family = (node["up"] or "").strip().lower()
+        return [n for n in self.children(family) if self.subspecies_of(n["sci"]) == key]
 
     def chain(self, sci: str) -> list[dict]:
         """[root … sci] — the breadcrumb, walked via Up."""

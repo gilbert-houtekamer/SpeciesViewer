@@ -1084,19 +1084,28 @@ class BiotaBrowserDialog(MasterCardMenuMixin, QDialog):
             node["_display"] = self._display(node)
             node["_display_lines"] = self._display_lines_for(node)
             n_sp, n_pic = self._source.counts(node["sci"])
-            if node["rank"] == "SPECIES":
+            parent = self._source.subspecies_of(node["sci"])
+            parent_node = self._source.node(parent) if parent else None
+            if parent_node is not None:
+                # a subspecies: right after its species, indented (ch.6, 2026-10-18)
+                sub = (f"↳ ssp {node['sci'].split()[-1]}"
+                       f" &nbsp;·&nbsp; <b style='color:{_FRAME}'>{n_pic}</b> photos")
+            elif node["rank"] == "SPECIES":
                 sub = f"<b style='color:{_FRAME}'>{n_pic}</b> photos"
             else:
                 sub = (f"<b style='color:{_FRAME}'>{n_sp}</b> species"
                        f" &nbsp;·&nbsp; {n_pic} photos")
             cover = self._source.cover_spec(node["sci"])
-            card = TaxonCard(node, sub, card_w, cover, self._loader)
+            indent = 28 if parent_node is not None else 0
+            card = TaxonCard(node, sub, card_w - indent, cover, self._loader)
             card.clicked.connect(self._on_taxon_clicked)
             # Top-align each cell: a card keeps its natural height and sits at the
             # top of its cell, so a taller neighbour in the row never stretches its
             # photo frame, and a short row never balloons to fill the window.
-            self._grid.addWidget(card, idx // self.columns, idx % self.columns,
-                                 Qt.AlignmentFlag.AlignTop)
+            # A subspecies card is a little narrower and right-aligned: indented.
+            align = Qt.AlignmentFlag.AlignTop | (Qt.AlignmentFlag.AlignRight if indent
+                                                 else Qt.AlignmentFlag(0))
+            self._grid.addWidget(card, idx // self.columns, idx % self.columns, align)
         if not offset:
             QTimer.singleShot(0, lambda: self._scroll.verticalScrollBar().setValue(0))
 
