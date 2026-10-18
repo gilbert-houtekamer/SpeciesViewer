@@ -36,3 +36,35 @@ def test_groups_above_the_family_pass_through():
 
 def test_lifer_baseline_by_species():
     assert "corvus corone" in species_names(SC, {"corvus corone cornix"})
+
+
+# A species with THREE subspecies (none in the master yet, 2026-10-18).
+SC3 = {"motacilla flava": {"SubspeciesOf": ""},
+       "motacilla flava feldegg": {"SubspeciesOf": "motacilla flava"},
+       "motacilla flava flavissima": {"SubspeciesOf": "motacilla flava"},
+       "motacilla flava thunbergi": {"SubspeciesOf": "motacilla flava"}}
+
+
+def test_three_subspecies_count_once():
+    family = [("motacilla flava", 1, 0), ("motacilla flava feldegg", 1, 0),
+              ("motacilla flava flavissima", 0, 1), ("motacilla flava thunbergi", 1, 0)]
+    assert fold_species_flags(SC3, family) == (1, 0)
+    only_ssp = [("motacilla flava feldegg", 0, 1), ("motacilla flava thunbergi", 0, 1)]
+    assert fold_species_flags(SC3, only_ssp) == (0, 1)
+
+
+def test_biota_browser_puts_three_subspecies_after_their_species():
+    from gui.biota_source import MasterBiotaSource
+    src = MasterBiotaSource.__new__(MasterBiotaSource)
+    names = ["anthus pratensis", "motacilla flava thunbergi", "motacilla alba",
+             "motacilla flava", "motacilla flava feldegg", "motacilla flava flavissima"]
+    src._by_sci = {n: {"sci": n, "up": "motacillidae"} for n in names}
+    src._kids = {"motacillidae": names}
+    src._pics = {n: 5 for n in names}
+    src._own_pics = dict(src._pics)
+    src._subs = {k: {"SubspeciesOf": v["SubspeciesOf"]} for k, v in SC3.items() if v["SubspeciesOf"]}
+    order = [n["sci"] for n in src.children("motacillidae")]
+    i = order.index("motacilla flava")
+    assert set(order[i + 1:i + 4]) == {"motacilla flava feldegg", "motacilla flava flavissima",
+                                       "motacilla flava thunbergi"}
+    assert [n["sci"] for n in src.subspecies("motacilla flava")] == order[i + 1:i + 4]
