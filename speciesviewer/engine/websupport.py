@@ -1472,17 +1472,37 @@ def formatToken(tokenno, MyProject, species_param, file, picture):
                 workstr += '<p><i>' + ssp['ScientificName'].capitalize() + '</i></p>'
                 workstr += '<p>' + str(count) + photos + '</p>\n  </div>\n'
             return workstr + '</div>\n'
-        elif tokenno == 186:         # subspecies page: "Subspecies of <species>"
+        elif tokenno == 186:         # table under the names: subspecies, or "subspecies of"
+            if species_param.get('Level') != Level.SPECIES:
+                return ""
             parent = _subspecies_of(MyProject, species_param.get('ScientificName', ''))
             node = MyProject.sp.species_dict.get(parent) if parent else None
-            if node is None or not MyProject.hasWebPage(node):
+            if node is not None and MyProject.hasWebPage(node):
+                rows, of = [node], True
+            else:
+                rows, of = _subspecies_with_pages(MyProject, species_param), False
+            if not rows:
                 return ""
             language = MyProject.getLanguage()
-            name = 'DutchName' if language == 'nl' else 'EnglishName'
-            label = 'Ondersoort van' if language == 'nl' else 'Subspecies of'
-            return ('<p>' + label + ' <a href="' + BiotaWebRoot + node['TargetPath'] + node['ScientificName']
-                    + '-' + language + '.html">' + (node[name] or node['ScientificName']).capitalize()
-                    + '</a> (<i>' + node['ScientificName'].capitalize() + '</i>)</p>')
+            if language == 'nl':
+                caption = 'Ondersoort van' if of else 'Ondersoorten'
+                heads = ('Nederlands', 'Engels', 'Wetenschappelijk', "Foto's")
+                first, second = 'DutchName', 'EnglishName'
+            else:
+                caption = 'Subspecies of' if of else 'Subspecies'
+                heads = ('English', 'Dutch', 'Scientific', 'Photos')
+                first, second = 'EnglishName', 'DutchName'
+            workstr = ('<TABLE class="w3-table-all w3-hoverable" style="margin-top:12px">\n'
+                       '  <CAPTION><em>' + caption + '</em></CAPTION>\n'
+                       '  <thead><tr class="w3-light-grey">'
+                       + ''.join('<th>' + h + '</th>' for h in heads) + '</tr></thead>\n')
+            for n in rows:
+                count = int(n['iPictureCollectionCount'] or 0) + int(n['iPictureThisRunCount'] or 0)
+                href = BiotaWebRoot + n['TargetPath'] + n['ScientificName'] + '-' + language + '.html'
+                workstr += ('  <tr><td><a href="' + href + '">' + (n[first] or n['ScientificName']).capitalize()
+                            + '</a></td><td>' + (n[second] or '').capitalize() + '</td><td><i>'
+                            + n['ScientificName'].capitalize() + '</i></td><td>' + str(count) + '</td></tr>\n')
+            return workstr + '</TABLE>\n'
         elif tokenno == 180:         # published occurrence map (Maps Phase 4)
             # "Where I have seen this species" — a Leaflet map over the species'
             # own master pictures. Returns "" for an obscure family (a published
