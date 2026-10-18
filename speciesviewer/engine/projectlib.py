@@ -29,6 +29,29 @@ def intro_taxon_name(names, bare):
     return numbered[0] if numbered else bare
 
 
+# The picture columns for the groups above a species, by Level NAME: the
+# tree's nodes carry speciesclassification.Level or specieslib.Level — two
+# separate enums, never equal to each other. A group the tree skips stays empty.
+_TAXON_COLUMN = {"FAMILY": "Family", "ORDER": "Order", "CLASS": "Class",
+                 "PHYLUM": "Phylum", "KINGDOM": "Kingdom"}
+
+
+def taxon_columns(species_dict, species):
+    """{'Kingdom': …, 'Family': …} for a species: each group's OWN name in its
+    own level's column. (Until 2026-10-18 each column got the group's parent —
+    Kingdom 'biota', Family the order — on every picture; only the trip
+    registry report read them.) Raises KeyError for a parent missing from the
+    tree, as the inline walk did."""
+    columns = dict.fromkeys(_TAXON_COLUMN.values(), "")
+    node = species_dict[species['Up']]
+    while node['Up']:
+        column = _TAXON_COLUMN.get(getattr(node['Level'], 'name', ''))
+        if column:
+            columns[column] = node['ScientificName']
+        node = species_dict[node['Up']]
+    return columns
+
+
 def _same_file_on_disk(src, dst):
     """True when src and dst refer to the same on-disk file even if
     the path strings differ (Windows is case-insensitive, mixes
@@ -918,7 +941,6 @@ class Project:
     #   - this requires a WetSoortNaam, since the path is based on it
     #
     def addSpeciesInformation(self, sp, firstUPNtoProcess):
-        ClassificationGroupName = ["Species","Family", "Order", "Class", "Phylum", "Kingdom", "Biota"]
         MyMagic = sp.getMP()
         # Add properties for picture
         if self.SpeciesDebug > 0:  
@@ -963,9 +985,8 @@ class Project:
                             picture['NLSoortNaam'] = species['DutchName']
                             picture['EngSoortNaam'] = species['EnglishName']
                             # truthy so the JPG loop below fills the leaf's
-                            # BestJPG / JPGmap (topic pictures do NOT walk the
-                            # taxonomic ClassificationGroupName loop — their Level
-                            # values are out of that 7-wide list's range).
+                            # BestJPG / JPGmap (topic pictures do NOT go through
+                            # taxon_columns — their levels are not taxonomic).
                             scientificname = leaf_key
                             recognized_species += 1
                             break
@@ -1000,11 +1021,7 @@ class Project:
                             picture['WetSoortNaam'] = species['ScientificName']
                             picture['NLSoortNaam'] = species['DutchName']
                             picture['EngSoortNaam'] = species['EnglishName']
-                            picture['Family'] = species['Up']
-                            next = sp.species_dict[species['Up']]
-                            while next['Up']:       # may need to skip levels
-                                picture[ClassificationGroupName[next['Level'].value-1]] = next['Up']
-                                next = sp.species_dict[next['Up']]
+                            picture.update(taxon_columns(sp.species_dict, species))
                             # 
                             upn["malefemale"], upn["ageintext"], upn["summerwinter"] = sp.getBirdInfo(thisfile['XMP:Subject'])
 
