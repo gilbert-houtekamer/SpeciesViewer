@@ -499,11 +499,12 @@ and <code>docs/plans/taxonomy_order_design.md</code>.</p>
     main master, with its two garbled names). A new trip or album now also gets its master's alias
     table &mdash; before, old names only worked in a trip after Reset Trip. Made again from a master
     with <code>tools/svr_make_starter_list.py</code>. Tested in a new master.</li>
-  <li><span class="tag-open">OPEN</span> <strong>Leftovers found during the conversion</strong> (17 Oct) &mdash;
-    report only so far: the Kingdom&hellip;Family columns in the master's <code>data_pictures.csv</code> sit
-    one level off; 516 pictures that may be black; 19 files the admin check proposes to add; 5 old
-    <code>.preview_cache</code> folders in old picture folders; and the unlinked
-    <code>nature/biotablog/</code> folder on the server (remove only with the author's go-ahead).</li>
+  <li><span class="tag-shipped">SHIPPED</span> <strong>Leftovers found during the conversion</strong> (18 Oct) &mdash;
+    the Kingdom&hellip;Family picture columns held each group's parent (fixed in the code, 81,055 master rows repaired);
+    the &ldquo;516 black&rdquo; pictures were 9 after the heal (3 repaired, 6 removed); 11 unknown renders attached
+    (<code>tools/svr_attach_renders.py</code>) and 7 trip-page crops moved to <code>.trash</code>; the 5 old
+    <code>.preview_cache</code> folders and the last numbered folders removed; <code>nature/biotablog/</code> removed from
+    the server. The master's admin check is clean (0/0/0/0).</li>
   <li><span class="tag-shipped">SHIPPED</span> <strong>Subspecies step 2</strong> (18 Oct) &mdash; a subspecies
     stays a row beside its species (<code>SubspeciesOf</code>) and is shown <em>with</em> it:
     <ul>
