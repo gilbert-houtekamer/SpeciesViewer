@@ -43,5 +43,5 @@ Questions and ideas
 speciesviewer@houtekamer.com
 https://github.com/gilbert-houtekamer/SpeciesViewer
 
-Copyright (c) 2024-2026 Gilbert Houtekamer. Free software under the
+Copyright (c) 2023-2026 Gilbert Houtekamer. Free software under the
 GNU General Public License, version 3.

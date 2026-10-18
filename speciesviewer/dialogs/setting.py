@@ -18,7 +18,7 @@ _NOTICE = next((p for p in (_HERE.parent.parent / "NOTICE.md",
                             _HERE.parent / "NOTICE.md") if p.exists()),
                _HERE.parent.parent / "NOTICE.md")
 
-COPYRIGHT = "Copyright © 2024–2026 Gilbert Houtekamer"
+COPYRIGHT = "Copyright © 2023–2026 Gilbert Houtekamer"
 GPL_URL = "https://www.gnu.org/licenses/gpl-3.0.html"
 
 # A pastel sand: warm next to the duck's orange, calm next to the grey water.

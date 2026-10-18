@@ -117,5 +117,5 @@ SpeciesViewer is free software under the **GNU General Public License, version 3
 [`NOTICE.md`](NOTICE.md), which the program also shows under *Help ▸ About ▸ Licences and
 credits*.
 
-Copyright © 2024–2026 Gilbert Houtekamer. The pictures in the program and this repository are
+Copyright © 2023–2026 Gilbert Houtekamer. The pictures in the program and this repository are
 the author's own.
