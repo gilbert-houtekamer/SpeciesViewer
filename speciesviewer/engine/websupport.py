@@ -1,5 +1,6 @@
 import os
 import html
+import re
 import posixpath
 import shutil
 import subprocess
@@ -46,7 +47,37 @@ def _src_already_at_final(MyProject, src, target_path, basename):
 
 
 # web support
+# A template line that is only a link to a group page: a menu item
+# (<a … class="w3-bar-item …">Birds</a>) or a list item (<li><a …>Birds</a></li>).
+_GROUP_LINK = re.compile(r'^\s*(?:<li>)?<a href="%%\d+%%biota/(?:[^"/]+/)*([^"/]+)-(?:en|nl)\.html"[^>]*>[^<]*</a>(?:</li>)?\s*$')
+
+
+def _group_has_pictures(MyProject, group):
+    """True when this repository has pictures with a JPG in `group` (what its
+    page would show), or when that cannot be told (no species tree yet).
+    A blog page holds one day's tree; the blog step then sets menu_groups,
+    the whole album's groups (batch/album_source.album_groups)."""
+    menu_groups = getattr(MyProject, "menu_groups", None)
+    if menu_groups is not None:
+        return group in menu_groups
+    sp = getattr(MyProject, "sp", None)
+    if sp is None or "biota" not in sp.species_dict:
+        return True
+    g = sp.species_dict.get(group)
+    if g is None:
+        return False
+    try:
+        return int(g.get("iPicturesWithJPGsCollection") or 0) + int(g.get("iPicturesWithJPGsThisRun") or 0) > 0
+    except ValueError:
+        return True
+
+
 def getTemplateOutputString(MyProject, species, file, picture, TemplateLine):
+    # ONE menu for every repository: leave out the groups this one has no
+    # pictures of — an album without fungi linked an old or empty Fungi page.
+    m = _GROUP_LINK.match(TemplateLine)
+    if m and not _group_has_pictures(MyProject, m.group(1)):
+        return ""
 # 	Parse line in pieces between tokens (%%n%%) with n an integer that refers to a species-related blurp.
 # 	The syntax implies that text and token %% seperators alternate, which we keep track off with TextOrToken 
 # 	probably want nested call for subroutines, ie make this an output string.

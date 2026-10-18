@@ -184,6 +184,8 @@ def main(args, config):
     if not (_from and _to):
         raise SVException("The album has no fromdate/todate in virttrip.ini.")
     db = album_source.open_master_db(master_db)
+    # the site menu on every day's page: the groups of the WHOLE album
+    project.menu_groups = album_source.album_groups(db, _from, _to, sc.sc_dict)
     # Days the user excluded from the blog ("In Blog" unticked) are dropped here too,
     # so a redo re-renders and re-indexes only the days that stay published.
     from utils.virttrip_config import read_excluded_days

@@ -386,6 +386,8 @@ def main(args, config):
     all_labels = album_source.day_labels_in_range(db, from_date, to_date)
     if not all_labels:
         raise SVException("No pictures found in the album's date range.")
+    # the site menu on every day's page: the groups of the WHOLE album
+    project.menu_groups = album_source.album_groups(db, from_date, to_date, sc.sc_dict)
 
     # --- ensure blog directory and auto-create missing ini files ---
     blog_dir = Path(virttrip_root) / "metadata" / "blog"

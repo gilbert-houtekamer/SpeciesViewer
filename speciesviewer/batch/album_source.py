@@ -65,3 +65,19 @@ def load_day_from_master(project, db, day_label: str) -> tuple[str, str]:
         if upn not in project.UniquePictureName_dict:
             project.UniquePictureName_dict[upn] = p   # Files already a list
     return from_time, last_time
+
+
+def album_groups(db, from_date: str, to_date: str, sc_dict: dict) -> set[str]:
+    """Every taxon (species and all the groups above it) with a JPG picture in
+    the album's date range — the WHOLE album, for the site menu on blog pages,
+    which are rendered one day at a time (ch.7, 2026-10-18)."""
+    groups = set()
+    for rows in db.pictures_in_daterange(from_date, to_date).values():
+        for row in rows:
+            if not row.get("BestJPG"):
+                continue
+            name = row.get("WetSoortNaam", "")
+            while name and name in sc_dict and name not in groups:
+                groups.add(name)
+                name = sc_dict[name].get("Up", "")
+    return groups
