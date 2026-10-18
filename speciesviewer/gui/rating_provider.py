@@ -164,6 +164,14 @@ class RatingEditorItem(PictureItem):
                 for k in ("Location", "City", "Municipality", "State")}
 
     @property
+    def subspecies_tag(self) -> str:
+        """'ssp cornix' for a picture of a subspecies, '' otherwise — the species
+        is clear from the context (Gilbert, 2026-10-18)."""
+        sci = (self._row.get("WetSoortNaam") or "").strip().lower()
+        subs = getattr(self._c, "_subspecies", None) or {}
+        return f"ssp {sci.split()[-1]}" if sci in subs else ""
+
+    @property
     def qualifier_suffix(self) -> str:
         from gui.culling_species import (qualifier_suffix_from_fields,
                                          qualifier_suffix_from_subject)
@@ -201,6 +209,15 @@ class RatingEditorItem(PictureItem):
         if suffix:
             text, is_sci = lines[0]
             lines = [(text + suffix, is_sci)] + lines[1:]
+        # a subspecies among its species' pictures: "ssp cornix" — its own line
+        # when there is room (the card has three), else after the last one
+        ssp = self.subspecies_tag
+        if ssp:
+            if len(lines) < 3:
+                lines = lines + [(ssp, True)]
+            else:
+                text, is_sci = lines[-1]
+                lines = lines[:-1] + [(text + " · " + ssp, is_sci)]
         return lines
 
     # read fields
@@ -391,6 +408,9 @@ class RatingEditorCollection(PictureCollection):
         """
         self._master_db = master_db
         self._master_root = Path(master_root) if master_root else None
+        from engine.subspecies import read_subspecies
+        self._subspecies = (read_subspecies(self._master_root / "metadata" / "active" / "speciescollection.csv")
+                            if self._master_root else {})
         self._include_master = bool(include and master_db is not None)
         self._master_read_only = bool(read_only)
         self._master_full = bool(full)
@@ -765,7 +785,10 @@ class RatingEditorCollection(PictureCollection):
         # with forced_sci a caller can name a species before that (an album
         # rebuilding on the way to attaching), so check the DB, not just the name.
         if sci and self._include_master and self._master_db is not None:
-            pics = self._master_db.pictures_for_species(sci)
+            # full-master views (Master Species Viewer, album) show a species
+            # with its subspecies; Trip+Master keeps matching the trip's rows
+            pics = (self._master_db.pictures_for_species_and_subspecies(sci) if self._master_full
+                    else self._master_db.pictures_for_species(sci))
             # An album scope narrows that to its date window (see
             # set_master_scope). The query is the same one the Master Species
             # Viewer runs; the window is the only difference between them.

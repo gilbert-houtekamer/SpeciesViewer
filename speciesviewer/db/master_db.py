@@ -590,6 +590,21 @@ class MasterDB:
             (wet_soort_naam.strip().lower(),)).fetchall()
         return [self._picture_row_to_dict(r) for r in rows]
 
+    def pictures_for_species_and_subspecies(self, wet_soort_naam: str) -> list[dict]:
+        """A species' pictures together with its subspecies' (the Master Species
+        Viewer shows them as one, like the website); a subspecies, or a species
+        without subspecies, gets just its own (ch.6, 2026-10-18)."""
+        from engine.subspecies import read_subspecies
+        sci = (wet_soort_naam or "").strip().lower()
+        subs = read_subspecies(Path(self.master_root) / "metadata" / "active" / "speciescollection.csv")
+        if not sci or sci in subs:
+            return self.pictures_for_species(sci)
+        pics = list(self.pictures_for_species(sci))
+        for name, row in subs.items():
+            if row["SubspeciesOf"] == sci:
+                pics += self.pictures_for_species(name)
+        return pics
+
     @staticmethod
     def _day_key(d) -> str:
         """Coerce a date / 'YYYY-MM-DD' / 'YYYY:MM:DD' into the DateTimeOriginal

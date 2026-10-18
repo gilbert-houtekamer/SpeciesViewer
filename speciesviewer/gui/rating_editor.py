@@ -689,6 +689,13 @@ class PictureCard(QFrame):
         self._lbl_name.setStyleSheet("font-weight: bold; font-size: 10px;")
         self._lbl_name.setWordWrap(True)
         vbox.addWidget(self._lbl_name)
+        # a subspecies shown among its species' pictures: "ssp cornix"
+        ssp = getattr(item, "subspecies_tag", "")
+        if ssp:
+            lbl_ssp = QLabel(ssp)
+            lbl_ssp.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            lbl_ssp.setStyleSheet("font-style: italic; font-size: 9px;")
+            vbox.addWidget(lbl_ssp)
 
         # Location line (place name / coordinates / "No GPS data available") —
         # only for providers that carry the data for free (the culling grid).
@@ -3782,6 +3789,24 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
             act_species = menu.addAction(f"Set species…  ({lbl})")
             act_move = menu.addAction(f"Move to existing species…  ({lbl})")
         master_block("move")
+        # a species shown with its subspecies: jump to the subspecies alone,
+        # or from a subspecies back to its species (Gilbert, 2026-10-18)
+        act_ssp, ssp_target = None, ""
+        subs = getattr(self._collection, "_subspecies", None) or {}
+        cur = (self._current_sci() or "").strip().lower()
+        if clicked_item is not None and subs:
+            pic_sci = (clicked_item.sci_name or "").strip().lower()
+            if cur in subs:
+                ssp_target = subs[cur]["SubspeciesOf"]
+                shown = next((n for n, sc in self._name_to_sci.items()
+                              if (sc or "").strip().lower() == ssp_target), ssp_target)
+                text = f"Show {shown} with its subspecies"
+            elif pic_sci in subs and pic_sci != cur:
+                ssp_target = pic_sci
+                text = f"Show only {clicked_item.display_name} (ssp {pic_sci.split()[-1]})"
+            if ssp_target:
+                menu.addSeparator()
+                act_ssp = menu.addAction(text)
 
         # 2 — this picture
         if not self._view_read_only:
@@ -3842,6 +3867,9 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
             open_batch_exposure_dialog(
                 self, self._collection, keys_for_action,
                 on_written=self._reload_card_image)
+        elif act_ssp is not None and chosen == act_ssp:
+            self.show_species(ssp_target)
+            return set()
         elif chosen == act_fullres:
             self._cull_full_res(keys_for_action)
         elif act_create_jpg is not None and chosen == act_create_jpg:
