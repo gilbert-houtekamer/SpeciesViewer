@@ -50,7 +50,10 @@ def run_waiting(parent, message: str, work, picture: str | None = "macaws"):
     column = wait_layout(box, picture, 360, 120)
     text = QLabel(message)
     text.setWordWrap(True)
-    column.addWidget(text, alignment=Qt.AlignmentFlag.AlignVCenter)
+    # full width, text aligned inside — with an addWidget alignment a
+    # word-wrapped label kept its own narrow width (2026-10-18)
+    text.setAlignment(Qt.AlignmentFlag.AlignVCenter)
+    column.addWidget(text)
     result = {}
 
     def run():
@@ -100,3 +103,47 @@ def wait_layout(dialog: QDialog, picture: str | None,
     row.addLayout(column, 1)
     dialog.setFixedSize(width + SIDE + 16, max(height, SIDE + 32))
     return column
+
+
+def picture_text(picture: str, text: str, side: int = 120) -> str:
+    """Rich text for a QProgressDialog label: the picture beside `text` (the
+    progress dialog has no picture slot of its own). Plain `text` when the
+    picture is missing."""
+    path = _ASSETS / f"wait_{picture}.jpg"
+    if not path.is_file():
+        return text
+    import html
+    return (f'<table><tr><td><img src="{path.as_posix()}" width="{side}" height="{side}"></td>'
+            f'<td style="padding-left:12px; vertical-align:middle">{html.escape(text)}</td></tr></table>')
+
+
+from contextlib import contextmanager
+
+
+@contextmanager
+def waiting_box(parent, message: str, picture: str | None):
+    """A wait box (picture + message) for a SHORT job that must stay on the GUI
+    thread — one touching the master's SQLite connection, which refuses other
+    threads. Drawn before the job starts, closed when it ends; it does not
+    repaint in between, so keep it for waits of a few seconds (Add new files)."""
+    from PyQt6.QtWidgets import QApplication
+    box = QDialog(parent)
+    box.setWindowTitle("Please wait…")
+    box.setWindowFlag(Qt.WindowType.WindowCloseButtonHint, False)
+    column = wait_layout(box, picture, 300, 110)
+    text = QLabel(message)
+    text.setWordWrap(True)
+    # full width, text aligned inside — with an addWidget alignment a
+    # word-wrapped label kept its own narrow width (2026-10-18)
+    text.setAlignment(Qt.AlignmentFlag.AlignVCenter)
+    column.addWidget(text)
+    box.show()
+    for _ in range(3):                  # let the window paint before the work
+        QApplication.processEvents()
+    QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+    try:
+        yield box
+    finally:
+        QApplication.restoreOverrideCursor()
+        box.close()
+        box.deleteLater()

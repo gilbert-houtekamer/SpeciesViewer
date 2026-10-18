@@ -267,7 +267,10 @@ def _run_virttrip_pipeline(parent, steps, *, title, success_msg, wait_picture=No
     slayout = wait_layout(spinner, wait_picture, 480, 180)
     step_label = QLabel("Starting…")
     step_label.setWordWrap(True)
-    slayout.addWidget(step_label, alignment=Qt.AlignmentFlag.AlignCenter)
+    # full width, text aligned inside — with an addWidget alignment a
+    # word-wrapped label kept its own narrow width (2026-10-18)
+    step_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+    slayout.addWidget(step_label)
     progress_label = QLabel("")
     slayout.addWidget(progress_label, alignment=Qt.AlignmentFlag.AlignCenter)
     movie = QMovie("spinner.gif")

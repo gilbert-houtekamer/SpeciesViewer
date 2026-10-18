@@ -176,11 +176,16 @@ class BatchModuleRunner:
         from gui.wait_picture import wait_layout
         layout = wait_layout(spinner, batch_parms.get("wait_picture"), 400, 150)
         label = QLabel(before_msg)
-        layout.addWidget(label, alignment=Qt.AlignmentFlag.AlignCenter)
+        label.setWordWrap(True)
+        label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(label)
 
+        # full column width (text centred inside): added with an alignment the
+        # label kept its own narrow width and wrapped a long progress line early
         message_label = QLabel("")
         message_label.setWordWrap(True)
-        layout.addWidget(message_label, alignment=Qt.AlignmentFlag.AlignCenter)
+        message_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(message_label)
 
         movie = QMovie("spinner.gif")
         spinner_label = QLabel()
@@ -194,6 +199,29 @@ class BatchModuleRunner:
         before = logger.warning_counter.count
         self.logger.info(before_msg)
 
+        # The latest log line in the box itself — a long step's progress
+        # ("20,500 of 28,068 files (70%) … ~56s left") was only in the log
+        # panel behind it (Gilbert, 2026-10-18). The handler runs on the
+        # worker thread, so it only remembers the text; a GUI-thread timer
+        # shows it.
+        latest = {"text": ""}
+
+        class _Latest(logging.Handler):
+            def emit(self, record):
+                try:
+                    latest["text"] = record.getMessage().splitlines()[0][:160]
+                except Exception:
+                    pass
+
+        progress_handler = _Latest(level=logging.INFO)
+        logger.addHandler(progress_handler)
+        from PyQt6.QtCore import QTimer
+        progress_timer = QTimer(spinner)
+        progress_timer.timeout.connect(
+            lambda: message_label.setText(latest["text"])
+            if latest["text"] and latest["text"] != before_msg else None)
+        progress_timer.start(500)
+
         # Worker thread — keeps the event loop free so the UI stays responsive
         self._thread = QThread()
         self._worker = _BatchWorker(module_called, args, module_config)
@@ -204,6 +232,8 @@ class BatchModuleRunner:
             self._thread.quit()
             self._thread.wait()
             _let_go(self._thread)
+            progress_timer.stop()
+            logger.removeHandler(progress_handler)
             spinner.close()
 
             after = logger.warning_counter.count
@@ -294,7 +324,10 @@ class ChainedBatchRunner:
         layout = QVBoxLayout(self._spinner)
         self._step_label = QLabel("")
         self._step_label.setWordWrap(True)
-        layout.addWidget(self._step_label, alignment=Qt.AlignmentFlag.AlignCenter)
+        # full width, text aligned inside — with an addWidget alignment a
+        # word-wrapped label kept its own narrow width (2026-10-18)
+        self._step_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(self._step_label)
 
         self._progress_label = QLabel("")
         layout.addWidget(self._progress_label, alignment=Qt.AlignmentFlag.AlignCenter)
@@ -408,10 +441,10 @@ class ColumnBatchRunner:
         self._spinner = QDialog(parent)
         self._spinner.setWindowTitle("Please wait…")
         self._spinner.setModal(True)
-        self._spinner.setFixedSize(460, 220)
-
-        layout = QVBoxLayout(self._spinner)
-        layout.setContentsMargins(20, 16, 20, 16)
+        # the golden-collared macaws chat while all days run (Gilbert's
+        # Firefly set, 2026-10-18); wait_layout sizes the box around them
+        from gui.wait_picture import wait_layout
+        layout = wait_layout(self._spinner, "golden_macaws", 460, 220)
 
         self._action_label_widget = QLabel(f"Running '{action_label}' for all days...")
         self._action_label_widget.setWordWrap(True)

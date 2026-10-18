@@ -2406,8 +2406,10 @@ class LargeImageView(QDialog):
         fn = getattr(self._collection, "add_files", None)
         if not callable(fn):
             return
+        from gui.wait_picture import waiting_box
         try:
-            res = fn(key)
+            with waiting_box(self, "Looking for new files in the picture's folder…", "white_eye"):
+                res = fn(key)
         except Exception as e:
             logger.error(f"Add files failed for {key}: {e}", exc_info=True)
             QMessageBox.warning(self, "Add new files",

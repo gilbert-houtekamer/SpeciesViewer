@@ -17,6 +17,7 @@ from pathlib import Path
 
 from PyQt6.QtWidgets import (QDialog, QGridLayout, QHBoxLayout, QLabel,
                              QMessageBox, QPushButton, QVBoxLayout)
+from PyQt6.QtCore import Qt
 
 from gui import theme
 from gui.widgets import wrapped
@@ -206,7 +207,16 @@ class SetupChecklistDialog(QDialog):
         super().__init__(main_window)
         self.main_window = main_window
         self.setWindowTitle("Setup Checklist")
-        outer = QVBoxLayout(self)
+        # the great horned owl watches over the setup from the left
+        # (Gilbert's Firefly set, 2026-10-18); the checklist beside it
+        from gui.wait_picture import picture_label
+        row = QHBoxLayout(self)
+        row.setSpacing(24)          # room between the owl and the checkmarks
+        pic = picture_label("owl", 250, self.devicePixelRatioF())
+        if pic is not None:
+            row.addWidget(pic, alignment=Qt.AlignmentFlag.AlignVCenter)
+        outer = QVBoxLayout()
+        row.addLayout(outer, 1)
         outer.addWidget(wrapped(
             "What SpeciesViewer needs, and what is optional. Start at the top: "
             "with a master collection you can already copy days off a card, add "
@@ -223,7 +233,7 @@ class SetupChecklistDialog(QDialog):
         buttons.addWidget(close)
         outer.addLayout(buttons)
         self._rows()
-        self.resize(760, self.sizeHint().height())
+        self.resize(760 + (274 if pic is not None else 0), self.sizeHint().height())
 
     def _open(self, make_dialog):
         """Open one of the existing settings dialogs, then re-check everything."""

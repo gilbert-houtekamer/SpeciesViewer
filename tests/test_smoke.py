@@ -121,3 +121,19 @@ def test_templates_link_with_forward_slashes():
            for m in link.finditer(path.read_text(encoding="utf-8", errors="replace"))
            if "\\" in m.group(1)]
     assert not bad, bad[:10]
+
+
+def test_wrapped_labels_take_the_full_width():
+    """A word-wrapped QLabel added WITH an alignment keeps its own narrow width
+    and wraps a long line early, however wide the dialog (the SmallMaster
+    progress line, 2026-10-18). Put the alignment on the label instead."""
+    bad = []
+    for path in sorted(SV.rglob("*.py")):
+        if any(part in _SKIP_DIRS for part in path.relative_to(SV).parts):
+            continue
+        text = path.read_text(encoding="utf-8", errors="replace")
+        wrapped = set(re.findall(r"([\w\.]+)\.setWordWrap\(True\)", text))
+        for m in re.finditer(r"\.addWidget\(\s*([\w\.]+)\s*,[^\n]*?alignment=", text):
+            if m.group(1) in wrapped:
+                bad.append(f"{path.relative_to(SV)}:{text[:m.start()].count(chr(10)) + 1} {m.group(1)}")
+    assert not bad, bad

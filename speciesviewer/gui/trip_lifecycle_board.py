@@ -297,6 +297,16 @@ class TripLifecycleBoard(QDialog):
                     cl.addWidget(card)
                     cl.addSpacing(8)
 
+            if pi == len(self.model) - 1:
+                # the lion, confident, in the free space under the last cards;
+                # sized so its foot lines up with the first column's last card
+                # (Gilbert's Firefly set, 2026-10-18)
+                from gui.wait_picture import picture_label
+                lion = picture_label("lion", 280, self.devicePixelRatioF())
+                if lion is not None:
+                    lion.setStyleSheet("border:none;")
+                    cl.addSpacing(12)
+                    cl.addWidget(lion, alignment=Qt.AlignmentFlag.AlignRight)
             cl.addStretch(1)
 
             gate = phase.get("gate")

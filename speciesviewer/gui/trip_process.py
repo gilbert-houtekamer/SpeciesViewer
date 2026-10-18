@@ -4517,7 +4517,10 @@ class BlogAdminDialog(QDialog):
         sl = QVBoxLayout(spinner)
         msg = QLabel("Connecting to server, removing pruned blogs, rebuilding index...")
         msg.setWordWrap(True)
-        sl.addWidget(msg, alignment=Qt.AlignmentFlag.AlignCenter)
+        # full width, text aligned inside — with an addWidget alignment a
+        # word-wrapped label kept its own narrow width (2026-10-18)
+        msg.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        sl.addWidget(msg)
         movie = QMovie("spinner.gif")
         spinner_icon = QLabel()
         spinner_icon.setMovie(movie)
@@ -6274,7 +6277,16 @@ class InstallSmallMasterDialog(QDialog):
 
         self.status_label = QLabel("")
         self.status_label.setWordWrap(True)
-        layout.addWidget(self.status_label)
+        # the cooper's hawk keeps you company while the ZIP is extracted —
+        # shown beside the progress line only during the install
+        from gui.wait_picture import picture_label
+        status_row = QHBoxLayout()
+        self._wait_pic = picture_label("coopers_hawk", 140, self.devicePixelRatioF())
+        if self._wait_pic is not None:
+            self._wait_pic.setVisible(False)
+            status_row.addWidget(self._wait_pic, alignment=Qt.AlignmentFlag.AlignTop)
+        status_row.addWidget(self.status_label, 1)
+        layout.addLayout(status_row)
 
         btn_layout = QHBoxLayout()
         btn_layout.addStretch()
@@ -6377,6 +6389,9 @@ class InstallSmallMasterDialog(QDialog):
                 pass
 
         t0 = _time.time()
+        if self._wait_pic is not None:
+            self._wait_pic.setVisible(True)
+            QApplication.processEvents()
         try:
             with _zf.ZipFile(zip_path, "r") as zf:
                 members = zf.namelist()

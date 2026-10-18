@@ -451,8 +451,10 @@ class MasterCardMenuMixin:
     def _do_master_add(self, upn_key: str):
         from PyQt6.QtWidgets import QMessageBox
         from db.master_mutate import MasterMutateError
+        from gui.wait_picture import waiting_box
         try:
-            res = self._collection.add_master_files(upn_key)
+            with waiting_box(self, "Looking for new files in the picture's folder…", "white_eye"):
+                res = self._collection.add_master_files(upn_key)
         except MasterMutateError as e:
             QMessageBox.warning(self, "Add files", str(e))
             return

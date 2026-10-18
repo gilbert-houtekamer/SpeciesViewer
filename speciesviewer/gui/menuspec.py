@@ -902,7 +902,8 @@ def build_menu_spec(main_window):
             'statusname': "",
             'module_called': batch.svu2avibase.main,
             'before_msg': "Reading a XLS CSV file read from a copy.",
-            'after_msg': "✅ XLSX checklist created."
+            'after_msg': "✅ XLSX checklist created.",
+            'wait_picture': "secretary_bird",   # Gilbert's Firefly set, 2026-10-18
         }
     )
     convert_avibase.callback = lambda: ConvertAvibaseDialog(main_window, convert_avibase).exec()
@@ -930,6 +931,7 @@ def build_menu_spec(main_window):
             'module_called': batch.svu9SmallMaster.main,
             'before_msg': "Copying master biota files (JPG/XMP only)...",
             'after_msg': "✅ SmallMaster copy complete.",
+            'wait_picture': "martial_eagle",   # a long copy (Gilbert's Firefly set, 2026-10-18)
         }
     )
     small_master.callback = lambda: SmallMasterDialog(main_window, small_master).exec()

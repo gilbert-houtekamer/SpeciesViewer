@@ -27,10 +27,18 @@ class ConnectionStatusDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Connection status")
-        self.setMinimumWidth(480)
         self._probe = None
 
-        lay = QVBoxLayout(self)
+        # the chestnut-colored woodpecker, tapping for a signal, on the left
+        # (Gilbert's Firefly set, 2026-10-18); the dialog's content beside it
+        from gui.wait_picture import picture_label
+        outer = QHBoxLayout(self)
+        pic = picture_label("woodpecker", 160, self.devicePixelRatioF())
+        if pic is not None:
+            outer.addWidget(pic, alignment=Qt.AlignmentFlag.AlignTop)
+        lay = QVBoxLayout()
+        outer.addLayout(lay, 1)
+        self.setMinimumWidth(480 + (176 if pic is not None else 0))
         intro = QLabel(
             "SpeciesViewer uses a few online services. Each is checked on its "
             "own — a problem with one doesn't mean the others are down. "
@@ -62,6 +70,7 @@ class ConnectionStatusDialog(QDialog):
             grid.addWidget(status, r, 2, Qt.AlignmentFlag.AlignTop)
             self._rows[key] = (lamp, status)
 
+        lay.addStretch(1)           # intro and lamps stay together at the top
         btns = QHBoxLayout()
         self._recheck = QPushButton("Recheck")
         self._recheck.clicked.connect(self._start)
@@ -73,6 +82,16 @@ class ConnectionStatusDialog(QDialog):
         lay.addLayout(btns)
 
         self._start()
+        # as high as the content needs — the word-wrapped intro made Qt guess
+        # too tall, leaving an empty band above the buttons (Gilbert, 2026-10-18)
+        from PyQt6.QtCore import QTimer
+        QTimer.singleShot(0, self._fit_height)
+
+    def _fit_height(self):
+        """Once shown (the width is final then): height = what the content needs."""
+        h = self.layout().heightForWidth(self.width())
+        if h > 0:
+            self.resize(self.width(), h)
 
     def _start(self):
         self._recheck.setEnabled(False)

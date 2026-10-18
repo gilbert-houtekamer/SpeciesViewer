@@ -474,7 +474,8 @@ class TripTrashDialog(QDialog):
         box.exec()
         if box.clickedButton() is not go:
             return
-        prog = QProgressDialog("Deleting…", "Stop", 0, n, self)
+        from gui.wait_picture import picture_text
+        prog = QProgressDialog(picture_text("peccary", f"Deleting {n:,} pictures…"), "Stop", 0, n, self)
         prog.setWindowTitle("Discard this day")
         prog.setWindowModality(Qt.WindowModality.WindowModal)
         prog.setMinimumDuration(0)

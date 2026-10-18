@@ -269,7 +269,10 @@ class SitePublicationDialog(QDialog):
         sl = QVBoxLayout(spinner)
         msg = QLabel(f"Removing '{key}', rebuilding the index, uploading...")
         msg.setWordWrap(True)
-        sl.addWidget(msg, alignment=Qt.AlignmentFlag.AlignCenter)
+        # full width, text aligned inside — with an addWidget alignment a
+        # word-wrapped label kept its own narrow width (2026-10-18)
+        msg.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        sl.addWidget(msg)
         movie = QMovie("spinner.gif")
         icon = QLabel()
         icon.setMovie(movie)

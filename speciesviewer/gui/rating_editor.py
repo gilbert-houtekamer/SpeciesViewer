@@ -2303,8 +2303,10 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
         # too: those run after the last file move and were finishing invisibly
         # before, which is why the dialog looked done well before the app was.
         total_work = len(trip_deletable) + len(master_deletable)
+        from gui.wait_picture import picture_text
         progress = QProgressDialog(
-            f"Moving {total_work} picture{'s' if total_work != 1 else ''} to .trash…",
+            picture_text("peccary",
+                         f"Moving {total_work} picture{'s' if total_work != 1 else ''} to .trash…"),
             "Cancel", 0, total_work, self)
         progress.setWindowTitle(f"Delete {color}")
         progress.setWindowModality(Qt.WindowModality.WindowModal)
@@ -3929,16 +3931,18 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
             return
         total_jpg = total_meta = 0
         added_any = False
-        for key in keys:
-            try:
-                res = self._collection.add_trip_files(key)
-            except Exception as e:
-                logger.error(f"Add files failed for {key}: {e}", exc_info=True)
-                continue
-            if res.get("added"):
-                added_any = True
-            total_jpg += res.get("jpg", 0)
-            total_meta += res.get("meta", 0)
+        from gui.wait_picture import waiting_box
+        with waiting_box(self, "Looking for new files in the pictures' folders…", "white_eye"):
+            for key in keys:
+                try:
+                    res = self._collection.add_trip_files(key)
+                except Exception as e:
+                    logger.error(f"Add files failed for {key}: {e}", exc_info=True)
+                    continue
+                if res.get("added"):
+                    added_any = True
+                total_jpg += res.get("jpg", 0)
+                total_meta += res.get("meta", 0)
         if not added_any:
             self._status.setText(
                 "No new files found in the picture's folder — nothing to add.")

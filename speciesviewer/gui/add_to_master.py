@@ -771,13 +771,21 @@ class AddToMasterDialog(QDialog):
         self.scan_btn.setEnabled(False)
         self.out.setPlainText("Scanning… (reading EXIF and recognising species)")
         QApplication.processEvents()
-        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
-        try:
-            mt = micro_trip.MicroTrip(input_dir, master, web_root=web,
-                                      recurse=self.recurse_cb.isChecked())
+        recurse = self.recurse_cb.isChecked()
+
+        def work():
+            # engine only (no Qt, no master database): safe off the GUI thread
+            mt = micro_trip.MicroTrip(input_dir, master, web_root=web, recurse=recurse)
             mt.setup()
             mt.ingest()
-            report = mt.summary()
+            return mt, mt.summary()
+
+        from gui.wait_picture import run_waiting
+        try:
+            # the Abyssinian white-eyes keep you company while the folder is
+            # read (Gilbert's Firefly set, 2026-10-18) — was a bare hourglass
+            mt, report = run_waiting(self, "Reading the pictures and recognising species…",
+                                     work, picture="white_eye")
             self._mt = mt
             self._report = report
             self.out.setPlainText(micro_trip.format_summary(report))
@@ -795,7 +803,6 @@ class AddToMasterDialog(QDialog):
             self.out.setPlainText(f"Scan failed: {e}")
             self._cleanup_scratch()
         finally:
-            QApplication.restoreOverrideCursor()
             self.scan_btn.setEnabled(True)
 
     # ── review (dedicated window on the clean scratch data) ───────────────────
