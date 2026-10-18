@@ -504,8 +504,23 @@ and <code>docs/plans/taxonomy_order_design.md</code>.</p>
     one level off; 516 pictures that may be black; 19 files the admin check proposes to add; 5 old
     <code>.preview_cache</code> folders in old picture folders; and the unlinked
     <code>nature/biotablog/</code> folder on the server (remove only with the author's go-ahead).</li>
-  <li><span class="tag-open">OPEN</span> <strong>Subspecies step 2</strong> &mdash; a real subspecies level in
-    the app, with the species page linking to its subspecies (web and app).</li>
+  <li><span class="tag-shipped">SHIPPED</span> <strong>Subspecies step 2</strong> (18 Oct) &mdash; a subspecies
+    stays a row beside its species (<code>SubspeciesOf</code>) and is shown <em>with</em> it:
+    <ul>
+      <li><strong>Counting:</strong> a species and its subspecies count as one species everywhere (master
+        counters, Recount, Freeze, the Biota Browser, Count Species and lifers). Main master: birds
+        1,750 &rarr; 1,731.</li>
+      <li><strong>Website:</strong> no subspecies tiles on family pages; the species page picks from its own and its
+        subspecies' pictures, with a Subspecies table under the names and a tile block; a subspecies page has a
+        &ldquo;Subspecies of&rdquo; table linking back.</li>
+      <li><strong>Biota Browser:</strong> a subspecies follows its species, indented, labelled &ldquo;ssp cornix&rdquo;;
+        a SUBSPECIES table under the names; the sidebar shows a window around the open species.</li>
+      <li><strong>Master Species Viewer:</strong> a species shows its subspecies' pictures too, each card with
+        &ldquo;ssp cornix&rdquo;; right-click jumps between species and subspecies.</li>
+    </ul>
+    The nominate subspecies is the species itself (no &ldquo;ssp corone&rdquo;). Works for any number of subspecies.
+    Open edge: a species with no pictures of its own and two or more pictured subspecies counts once but shows
+    each subspecies as its own tile (none in the master yet).</li>
   <li><span class="tag-new">NEW</span> <strong>Wikipedia beside the species</strong> &mdash;
     reviewing the 29 species GBIF calls a synonym went fastest with Wikipedia open: almost none
     needed merging, and it gave better English names (Western Swamphen, Wild Water Buffalo,
