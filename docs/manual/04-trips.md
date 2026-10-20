@@ -110,12 +110,48 @@ Import Trip's larger sibling. The trip's *identity* is only the first part of
 coming home — the **culling work** is the rest, and that lives on the SV INDEX
 card rather than in the trip export.
 
-Re-reading the card re-applies the ratings, colour labels and species names you
-assigned while travelling, onto the pictures in the trip you have open.
+It puts back everything **except the pictures themselves**: culling colours,
+species names, locations, crops, blog text, the rendered JPGs, the trip's
+species list and its GPS tracklogs. The RAW pictures come from the trip's own
+SD-cards, read from inside this same dialog.
 
-The card is the SV INDEX card you wrote while travelling (see *Empty a Card*);
-read it back through any card reader. Open the trip you want to restore into
-**first**; the dialog needs it.
+The card is the SV INDEX card you wrote while travelling (click the *Metadata backup* cell of a day
+in the Trip Overview). Open the trip you want to restore into **first** — the dialog checks
+that the card belongs to it and refuses to write anything if it does not.
+
+**Two kinds of card.** Coming home on another machine involves two different
+cards, one after the other:
+
+| Card | Holds | Read with |
+|---|---|---|
+| **SV INDEX card** | The work: colours, names, crops, blogs, JPGs, and which pictures survived the culling | *Restore selected* |
+| **Data SD-card(s)** | The RAW pictures as the camera wrote them — culled ones included | *Read SD-card or Folder…* |
+
+**Step by step:**
+
+1. Open the trip (Trips ▸ Select or Update Trip…).
+2. Insert the **SV INDEX card**. Trips ▸ Restore Work from Card ▸ *Choose…* and
+   point at the trip's folder on the card. The banner turns green: *Card matches
+   the open trip*.
+3. Press **Restore selected**. Days that still need something are ticked; when
+   the restore is done every day shows *Already here* = *In backup* and nothing
+   is ticked any more — that is the finished state, not a refusal.
+4. Take the SV INDEX card out and insert a **data SD-card**. It may get the same
+   drive letter, so the banner now says the card *is not there* — expected, and
+   harmless: the survivor list is already remembered on this machine.
+5. Press **Read SD-card or Folder…**, keep *Skip pictures deleted during the
+   trip* ticked, tick the days, and read. Only the pictures that survived the
+   culling come back. Repeat for each data card.
+6. The *Pictures* column counts up as cards are read ("317 of 317").
+   **Check pictures…** compares each day against the backup's record —
+   read-only.
+
+> 💡 **Tip.** Steps 2–3 and 4–5 can be done in either order. Reading the data
+> cards first and restoring afterwards works too.
+
+> ⚠ **If the pictures are already on a disk** (copied off the laptop, say),
+> point *Read SD-card or Folder…* at that folder instead of a card — the same
+> skip-the-culled rule applies.
 
 ---
 
