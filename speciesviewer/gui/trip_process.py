@@ -6275,18 +6275,11 @@ class InstallSmallMasterDialog(QDialog):
         self.delete_check = QCheckBox("Delete ZIP file after successful install")
         layout.addWidget(self.delete_check)
 
+        # The result line. The progress itself goes to a wait window (the cooper's
+        # hawk) that is open only while the install runs — see _install_wait_box.
         self.status_label = QLabel("")
         self.status_label.setWordWrap(True)
-        # the cooper's hawk keeps you company while the ZIP is extracted —
-        # shown beside the progress line only during the install
-        from gui.wait_picture import picture_label
-        status_row = QHBoxLayout()
-        self._wait_pic = picture_label("coopers_hawk", 140, self.devicePixelRatioF())
-        if self._wait_pic is not None:
-            self._wait_pic.setVisible(False)
-            status_row.addWidget(self._wait_pic, alignment=Qt.AlignmentFlag.AlignTop)
-        status_row.addWidget(self.status_label, 1)
-        layout.addLayout(status_row)
+        layout.addWidget(self.status_label)
 
         btn_layout = QHBoxLayout()
         btn_layout.addStretch()
@@ -6363,8 +6356,6 @@ class InstallSmallMasterDialog(QDialog):
         self.age_label.setVisible(True)
 
     def _on_install(self):
-        import tempfile as _tmp
-        import zipfile as _zf
         import time as _time
         zip_path = self.zip_field.text().strip()
         target   = self.target_edit.text().strip()
@@ -6389,9 +6380,45 @@ class InstallSmallMasterDialog(QDialog):
                 pass
 
         t0 = _time.time()
-        if self._wait_pic is not None:
-            self._wait_pic.setVisible(True)
+        self.status_label.setText("")
+        box, say = self._install_wait_box()
+        try:
+            msg = self._install_steps(zip_path, target, existing_sc_content,
+                                      sc_path, t0, say)
+        finally:
+            box.close()
+            box.deleteLater()
+        self.status_label.setText(msg)
+
+    def _install_wait_box(self):
+        """The wait window shown while the ZIP is extracted and the database built:
+        the cooper's hawk beside the progress line. Modal, so the dialog's own
+        Install/Close cannot be pressed mid-install. Returns (box, say) — say(text)
+        updates the line and lets the window repaint (the install runs on the GUI
+        thread, in steps)."""
+        from gui.wait_picture import wait_layout
+        box = QDialog(self)
+        box.setWindowTitle("Installing SmallMaster…")
+        box.setModal(True)
+        box.setWindowFlag(Qt.WindowType.WindowCloseButtonHint, False)
+        column = wait_layout(box, "coopers_hawk", 380, 120)
+        line = QLabel("Opening the ZIP…")
+        line.setWordWrap(True)
+        line.setAlignment(Qt.AlignmentFlag.AlignVCenter)
+        column.addWidget(line)
+        box.show()
+        QApplication.processEvents()
+
+        def say(text):
+            line.setText(text)
             QApplication.processEvents()
+        return box, say
+
+    def _install_steps(self, zip_path, target, existing_sc_content, sc_path, t0, say):
+        """Extract, merge, rebuild the DB, lock read-only. Returns the result line."""
+        import tempfile as _tmp
+        import zipfile as _zf
+        import time as _time
         try:
             with _zf.ZipFile(zip_path, "r") as zf:
                 members = zf.namelist()
@@ -6402,14 +6429,10 @@ class InstallSmallMasterDialog(QDialog):
                     now = _time.time()
                     if now - last_ui >= 0.5:
                         pct = 100 * i // total
-                        self.status_label.setText(
-                            f"Extracting… {i:,} / {total:,} files ({pct}%)"
-                        )
-                        QApplication.processEvents()
+                        say(f"Extracting… {i:,} / {total:,} files ({pct}%)")
                         last_ui = now
         except Exception as e:
-            self.status_label.setText(f"Extract failed: {e}")
-            return
+            return f"Extract failed: {e}"
         elapsed = _time.time() - t0
 
         # Merge back any species that were in the existing collection but are
@@ -6447,16 +6470,11 @@ class InstallSmallMasterDialog(QDialog):
         db_note = ""
         try:
             from db.master_db import MasterDB
-            self.status_label.setText(
-                f"Extracted {total:,} files in {elapsed:.0f}s.{merged_note}  Building master database…"
-            )
-            QApplication.processEvents()
+            say(f"Extracted {total:,} files in {elapsed:.0f}s.{merged_note}\n"
+                f"Building master database…")
 
             def _db_progress(msg):
-                self.status_label.setText(
-                    f"Extracted {total:,} files in {elapsed:.0f}s.{merged_note}  {msg}"
-                )
-                QApplication.processEvents()
+                say(f"Extracted {total:,} files in {elapsed:.0f}s.{merged_note}\n{msg}")
 
             MasterDB(target).rebuild(progress_cb=_db_progress)
             db_note = "  Master database built."
@@ -6485,4 +6503,4 @@ class InstallSmallMasterDialog(QDialog):
                 msg += "  (ZIP deleted)"
             except Exception as e:
                 msg += f"  (could not delete ZIP: {e})"
-        self.status_label.setText(msg)
+        return msg

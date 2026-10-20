@@ -696,6 +696,27 @@ def _show_trip_not_ready(self, image_root, review_root, trip_root):
     self.sync_yellow_to_mode()
 
 
+def show_nothing_open(self, tab_title, headline, detail):
+    """An empty Trip/Album tab that SAYS nothing is open. Without a tab of its own
+    the scope's pill had nothing to show, so the previous scope's panel stayed on
+    screen — on a fresh laptop, "Album: Tucson_2023" under the Trip pill. Shared by
+    the trip and album overviews."""
+    panel = QWidget()
+    layout = QVBoxLayout(panel)
+    layout.setContentsMargins(24, 24, 24, 24)
+    title = QLabel(headline)
+    title.setStyleSheet("font-weight: bold;")
+    title.setWordWrap(True)
+    layout.addWidget(title)
+    body = QLabel(detail)
+    body.setWordWrap(True)
+    layout.addWidget(body)
+    layout.addStretch()
+    self.yellow_tabs.addTab(panel, tab_title)
+    # Do NOT force this tab: the left column decides which scope shows.
+    self.sync_yellow_to_mode()
+
+
 def populate_trip_overview(self):
     self.update_trip_label()
     # Keep the left Trips panel's active-trip ▶ marker in sync after any trip
@@ -707,10 +728,13 @@ def populate_trip_overview(self):
         except Exception:
             pass
     self.remove_existing_overview_tab()
-    # No active trip (e.g. just after retiring one) is a legitimate empty state,
-    # not an error — the tab is cleared above; return quietly instead of logging
-    # the "Invalid directory paths." warning meant for a genuinely broken trip.
+    # No active trip (e.g. just after retiring one, or a fresh machine) is a
+    # legitimate empty state, not an error — say so in the tab, quietly, instead of
+    # logging the "Invalid directory paths." warning meant for a broken trip.
     if not _config.get("trip", "tripbiotadatabase", fallback="").strip():
+        show_nothing_open(self, "Active Trip", "No trip is open.",
+                          "Pick a trip in the Trips list on the left, or start a "
+                          "new one with Trips ▸ Create Trip.")
         return
     # Get image and statemachine directories. WP8: the trip's picture root comes
     # from its explicit picture_root when present, else the active-day parent.

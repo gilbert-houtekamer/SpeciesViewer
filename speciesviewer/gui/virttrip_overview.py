@@ -17,7 +17,8 @@ from PyQt6.QtWidgets import (
 
 from gui import theme
 from gui.overview_table import make_overview_table
-from gui.trip_overview import PHOTO_EXTENSIONS, _verified_crc_set, _format_translations_cell
+from gui.trip_overview import (PHOTO_EXTENSIONS, _verified_crc_set,
+                               _format_translations_cell, show_nothing_open)
 from utils.config import _config
 from utils.virttrip_config import (read_virttrip_ini, blog_review_state,
                                    read_excluded_days, write_excluded_days,
@@ -450,9 +451,15 @@ def populate_virttrip_overview(self):
 
     virttrip_root = _config.get("virttrip", "virttripbiotadatabase", fallback="")
     if not virttrip_root:
+        show_nothing_open(self, TAB_TITLE, "No album is open.",
+                          "Pick an album in the Albums list on the left, or make "
+                          "one with Albums ▸ Create Album.")
         return
     virttrip_path = Path(virttrip_root)
     if not virttrip_path.is_dir():
+        show_nothing_open(self, TAB_TITLE, "This album's folder is not on this machine.",
+                          f"Expected it in {virttrip_path}. Pick another album in "
+                          f"the Albums list on the left.")
         return
 
     review_root = virttrip_path / "metadata" / "review"

@@ -390,10 +390,15 @@ class MainWindow(QMainWindow):
         self.update_master_snapshot_label()
         self.status_bar.showMessage("Ready")
 
-        # Restore virtual trip overview if one was active at last close
-        virt_root = _config.get("virttrip", "virttripbiotadatabase", fallback="")
-        if virt_root and os.path.isdir(virt_root):
-            populate_virttrip_overview(self)
+        # Restore the album overview if one was active at last close. Always built:
+        # with no album (or its folder gone) it is a "No album is open" panel —
+        # skipping it left the Album pill showing the TRIP's panel.
+        populate_virttrip_overview(self)
+        # Same for the Trip pill with no trip set: an active trip's overview is
+        # built elsewhere at start-up, but none at all left the Trip pill without
+        # a panel of its own. This only adds the "No trip is open" panel.
+        if not _config.get("trip", "tripbiotadatabase", fallback="").strip():
+            populate_trip_overview(self)
 
         # Auto-refresh trip overview when the app regains focus, so day
         # folders added by external tools (Explorer, card importers) appear

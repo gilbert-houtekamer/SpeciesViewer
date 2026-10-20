@@ -114,7 +114,7 @@ class TaxonCard(QFrame):
     so both get it)."""
     clicked = pyqtSignal(str)
 
-    def __init__(self, node, sub_html, card_w, cover_spec, loader):
+    def __init__(self, node, sub_html, card_w, cover_spec, loader, photo_ratio=0.8):
         super().__init__()
         self.setObjectName("tcard")
         self._sci = node["sci"]
@@ -138,7 +138,9 @@ class TaxonCard(QFrame):
         fl = QVBoxLayout(frame)
         fl.setContentsMargins(6, 6, 6, 6)
         self._photo = QLabel()
-        self._photo.setFixedHeight(int((card_w - 12) * 0.8))
+        # A subspecies card passes a lower ratio: same width as its neighbours, a
+        # lower photo — different at a glance, still in line with the grid.
+        self._photo.setFixedHeight(int((card_w - 12) * photo_ratio))
         self._photo.setStyleSheet(f"background:{_SURFACE2}; border:3px solid {_MAT};"
                                   f" border-radius:3px; color:{_INK_SOFT};")
         self._photo.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -185,6 +187,7 @@ class TaxonCard(QFrame):
             ml.addWidget(lbl)
         stat = QLabel(sub_html)
         stat.setTextFormat(Qt.TextFormat.RichText)
+        stat.setWordWrap(True)      # the card is fixed-width: wrap, never clip
         stat.setStyleSheet(f"color:{_INK_SOFT}; font-family:Consolas,monospace;"
                            f" font-size:10.5px; border:none; margin-top:5px;")
         ml.addWidget(stat)
@@ -1087,25 +1090,27 @@ class BiotaBrowserDialog(MasterCardMenuMixin, QDialog):
             parent = self._source.subspecies_of(node["sci"])
             parent_node = self._source.node(parent) if parent else None
             if parent_node is not None:
-                # a subspecies: right after its species, indented (ch.6, 2026-10-18)
+                # a subspecies: right after its species (ch.6, 2026-10-18). Count
+                # on its own line, so it can never be clipped off the card.
                 sub = (f"↳ ssp {node['sci'].split()[-1]}"
-                       f" &nbsp;·&nbsp; <b style='color:{_FRAME}'>{n_pic}</b> photos")
+                       f"<br><b style='color:{_FRAME}'>{n_pic}</b> photos")
             elif node["rank"] == "SPECIES":
                 sub = f"<b style='color:{_FRAME}'>{n_pic}</b> photos"
             else:
                 sub = (f"<b style='color:{_FRAME}'>{n_sp}</b> species"
                        f" &nbsp;·&nbsp; {n_pic} photos")
             cover = self._source.cover_spec(node["sci"])
-            indent = 28 if parent_node is not None else 0
-            card = TaxonCard(node, sub, card_w - indent, cover, self._loader)
+            # A subspecies card: full width, lower photo (2026-10-20). The earlier
+            # narrower, right-aligned "indent" read as a misaligned card in a grid
+            # and clipped the photo count off its ↳ line.
+            card = TaxonCard(node, sub, card_w, cover, self._loader,
+                             photo_ratio=0.6 if parent_node is not None else 0.8)
             card.clicked.connect(self._on_taxon_clicked)
             # Top-align each cell: a card keeps its natural height and sits at the
             # top of its cell, so a taller neighbour in the row never stretches its
             # photo frame, and a short row never balloons to fill the window.
-            # A subspecies card is a little narrower and right-aligned: indented.
-            align = Qt.AlignmentFlag.AlignTop | (Qt.AlignmentFlag.AlignRight if indent
-                                                 else Qt.AlignmentFlag(0))
-            self._grid.addWidget(card, idx // self.columns, idx % self.columns, align)
+            self._grid.addWidget(card, idx // self.columns, idx % self.columns,
+                                 Qt.AlignmentFlag.AlignTop)
         if not offset:
             QTimer.singleShot(0, lambda: self._scroll.verticalScrollBar().setValue(0))
 
