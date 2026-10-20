@@ -155,6 +155,29 @@ class WarningCounter(logging.Filter):
         return True  # Always allow the record through
 
 
+# Kept open for the whole run: faulthandler writes to the raw file descriptor
+# at the moment of the crash, so the file must outlive every handler reset.
+_crash_trace_file = None
+
+
+def _enable_crash_trace(path: Path) -> None:
+    """Write a Python stack trace into studio.log when SV dies below Python.
+
+    A crash inside Qt (2026-10-20: a stale modal window after Read SD-card)
+    ends the process with no exception and no log line — the log simply stops.
+    faulthandler turns that into a "Fatal Python error" plus the stack of every
+    thread, in the same file. Opened once; never raises."""
+    global _crash_trace_file
+    if _crash_trace_file is not None:
+        return
+    try:
+        import faulthandler
+        _crash_trace_file = open(path, "a", encoding="utf-8")
+        faulthandler.enable(file=_crash_trace_file, all_threads=True)
+    except Exception:
+        _crash_trace_file = None
+
+
 # Logger initializer
 def init_logger(log_widget):
     from utils.config import debug_enabled
@@ -190,6 +213,8 @@ def init_logger(log_widget):
     sh = logging.StreamHandler(console_stream)
     sh.setFormatter(ConsoleFormatter("%(message)s"))
     logger.addHandler(sh)
+
+    _enable_crash_trace(path)
 
     # GUI output
     gui_handler = LogHandler(log_widget)
