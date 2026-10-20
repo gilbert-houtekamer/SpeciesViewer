@@ -8,6 +8,7 @@ landing off-screen (e.g. a laptop undocked from a second monitor).
 
 import sys
 
+from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QGuiApplication
 
 from utils.config import save_window_state, get_window_state
@@ -35,6 +36,13 @@ def give_independent_taskbar_entry(widget):
     actually on screen, not synchronously inside the event handler.
     """
     if sys.platform != "win32":
+        return
+    # Never on a modal window. The hide() below ends a running exec() loop:
+    # exec() returned at once while the dialog stayed up, and once it closed
+    # Qt still counted it as the active modal window — the dialog that opened
+    # it no longer took clicks and SV later died silently (Read SD-card opened
+    # from Restore Work, 2026-10-20). A modal dialog belongs with its opener anyway.
+    if widget.windowModality() != Qt.WindowModality.NonModal:
         return
     try:
         import ctypes
