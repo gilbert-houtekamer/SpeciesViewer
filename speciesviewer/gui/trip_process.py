@@ -3937,7 +3937,7 @@ class CreateBlogDialog(QDialog):
 
 class BaseTripModuleDialog(QDialog):
     def __init__(self, parent, menu_spec, title, info_text, subdirectory=True,
-                 independent=False):
+                 independent=False, picture=None):
         # independent=True makes this a window in its own right: minimize and
         # maximize buttons, its own taskbar entry, and no Qt parent — so it does
         # NOT float above the main window and can stay open next to the Trip
@@ -3965,7 +3965,27 @@ class BaseTripModuleDialog(QDialog):
         self.default_subdir = full_path.name
         self.trip_root = _config["trip"]["tripbiotadatabase"]
 
-        layout = QVBoxLayout(self)
+        # `picture` (assets/wait_<name>.jpg) sits on the left of the whole dialog,
+        # as in the Setup Checklist. Then the fields live in a column beside it,
+        # and a subclass inserts into self.body_layout — self.layout() is the row.
+        pic = None
+        if picture:
+            from gui.wait_picture import picture_label
+            pic = picture_label(picture, 220, self.devicePixelRatioF())
+        if pic is not None:
+            row = QHBoxLayout(self)
+            row.setContentsMargins(20, 20, 20, 20)
+            row.setSpacing(24)
+            row.addWidget(pic, alignment=Qt.AlignmentFlag.AlignVCenter)
+            layout = QVBoxLayout()
+            # Its own line spacing: a nested layout INHERITS its parent's, so the
+            # 24 px between bird and fields also opened up every line (2026-10-20).
+            layout.setSpacing(6)
+            row.addLayout(layout, 1)
+            self.resize(900, 260)       # height grows to fit: picture + fields
+        else:
+            layout = QVBoxLayout(self)
+        self.body_layout = layout
 
         self.root_caption = QLabel("Trip root folder")
         layout.addWidget(self.root_caption)
@@ -3996,6 +4016,11 @@ class BaseTripModuleDialog(QDialog):
         self.close_btn = QPushButton("Close")
         btn_layout.addWidget(self.write_btn)
         btn_layout.addWidget(self.close_btn)
+        if pic is not None:
+            # Spare height goes above the buttons, not between the lines: beside a
+            # tall picture the column is often shorter than the row, and Qt would
+            # otherwise spread the difference over every gap (2026-10-20).
+            layout.addStretch(1)
         layout.addLayout(btn_layout)
 
         self.write_btn.clicked.connect(self.on_write)
@@ -5329,7 +5354,10 @@ class ConvertAvibaseDialog(BaseTripModuleDialog):
                 "Reads the trip's bird list and writes an Excel checklist beside "
                 "it in the trip data folder, with a column per trip day."
             ),
-            subdirectory=False
+            subdirectory=False,
+            # The secretary bird sits in the dialog itself (his request,
+            # 2026-10-20): the wait box after Run Step is gone too fast to see.
+            picture="secretary_bird",
         )
         # The bird list lives in the trip's DATA folder, not with the pictures.
         # The base dialog shows the picture folder, which sent the eye to the
@@ -5394,7 +5422,7 @@ class ConvertAvibaseDialog(BaseTripModuleDialog):
         self.reader_dropdown.currentIndexChanged.connect(
             lambda _idx: self._sync_columns_row())
 
-        layout = self.layout()
+        layout = self.body_layout
         anchor = layout.indexOf(self.info_text)
         layout.insertWidget(anchor, QLabel("Species list file"))
         layout.insertLayout(anchor + 1, source_row)

@@ -903,7 +903,8 @@ def build_menu_spec(main_window):
             'module_called': batch.svu2avibase.main,
             'before_msg': "Reading a XLS CSV file read from a copy.",
             'after_msg': "✅ XLSX checklist created.",
-            'wait_picture': "secretary_bird",   # Gilbert's Firefly set, 2026-10-18
+            # no wait_picture: the run is too quick to see one — the secretary
+            # bird lives in ConvertAvibaseDialog itself (2026-10-20)
         }
     )
     convert_avibase.callback = lambda: ConvertAvibaseDialog(main_window, convert_avibase).exec()

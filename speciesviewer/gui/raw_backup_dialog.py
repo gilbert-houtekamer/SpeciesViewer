@@ -188,6 +188,15 @@ class RawBackupDialog(QDialog):
         outer.addLayout(dest_row)
 
         opts_row = QHBoxLayout()
+        # "All" sits above the tick column, where the eye looks for it; the two
+        # copy options go to the right (his layout, 2026-10-20). It replaces the
+        # Select all / Select none buttons that did the same job at the bottom.
+        opts_row.setContentsMargins(4, 0, 0, 0)
+        self._all_box = QCheckBox("All")
+        self._all_box.setToolTip("Tick or untick every day")
+        self._all_box.clicked.connect(self._set_all)
+        opts_row.addWidget(self._all_box)
+        opts_row.addStretch(1)
         self._trash_box = QCheckBox("Include already-deleted pictures (.trash)")
         self._trash_box.setToolTip(
             "Also copy this day's .trash — pictures already moved out by a "
@@ -200,11 +209,10 @@ class RawBackupDialog(QDialog):
             "they are copied like everything else, since they have not "
             "actually been deleted yet.")
         opts_row.addWidget(self._blue_box)
-        opts_row.addStretch(1)
         outer.addLayout(opts_row)
 
         self._table = QTableWidget(0, 4)
-        self._table.setHorizontalHeaderLabels(["", "Day", "Pictures", "Backup status"])
+        self._table.setHorizontalHeaderLabels(["", "Day", "Files", "Backup status"])
         self._table.verticalHeader().setVisible(False)
         self._table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self._table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
@@ -227,12 +235,6 @@ class RawBackupDialog(QDialog):
         outer.addWidget(self._summary)
 
         btns = QHBoxLayout()
-        all_btn = QPushButton("Select all")
-        all_btn.clicked.connect(lambda: self._set_all(True))
-        btns.addWidget(all_btn)
-        none_btn = QPushButton("Select none")
-        none_btn.clicked.connect(lambda: self._set_all(False))
-        btns.addWidget(none_btn)
         btns.addStretch(1)
         self._run_btn = QPushButton("Copy selected")
         self._run_btn.clicked.connect(self._run)
@@ -327,10 +329,14 @@ class RawBackupDialog(QDialog):
 
     def _update_summary(self):
         picked = self._checked()
+        # "All" follows the ticks: on only when every day is ticked.
+        self._all_box.blockSignals(True)
+        self._all_box.setChecked(bool(self._rows) and len(picked) == len(self._rows))
+        self._all_box.blockSignals(False)
         pics = sum(self._rows[i]["total"] for i in picked)
         self._summary.setText(
             f"{len(picked)} of {len(self._rows)} day(s) selected — "
-            f"about {pics} picture file(s) before .trash / Blue options are applied.")
+            f"about {pics} file(s) before .trash / Blue options are applied.")
         self._run_btn.setEnabled(bool(picked) and bool(raw_backup_location()))
 
     # ── actions ───────────────────────────────────────────────────────────
