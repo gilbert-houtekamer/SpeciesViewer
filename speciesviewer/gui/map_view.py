@@ -2940,33 +2940,35 @@ class TripMapView(QDialog):
         refresh the in-memory caches. Returns (written_keys, skipped_count); does NOT
         touch _all_points — callers append (place) or update (move).
 
-        ONE exiftool call for the coordinate and ONE for the place text, however many
-        pictures are involved: every picture in a drop or a bubble-move lands on the
-        SAME spot, and both writers take a file list. Dragging 62 pictures onto the
-        map used to spawn exiftool 124 times (a GPS write and a location write EACH);
-        it is now 2 calls total."""
-        from gui.geolocate import write_gps, write_location_batch
+        ONE pass over the sidecars for coordinate AND place text, split across the
+        cores (write_gps_and_place): every picture in a drop or a bubble-move lands on
+        the SAME spot. Dragging 62 pictures used to spawn exiftool 124 times; then 2
+        serial calls (300 pictures ~12 s on SmallBoy); now one parallel pass (~1.2 s)."""
+        from gui.geolocate import write_gps_and_place
         has_place = any(fields.values())
-        files, written, skipped = [], [], 0
+        targets, skipped = {}, 0
         for k in keys:
             f = self._coll.location_targets(k)
             if not f:
                 skipped += 1              # HEIC-only / no writable sidecar
                 continue
-            files.extend(f)
-            written.append(k)
-        if not files:
+            targets[k] = [str(x) for x in f]
+        if not targets:
             return [], skipped
 
         QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
         try:
-            write_gps(files, lat, lon)
-            if has_place:
-                # Never replace a Location the picture already carries: a hand-entered
-                # place ("Hotel Bourbon Atibaia") must survive the coarse reverse-geocode
-                # this coordinate produced ("Caetetuba"). City/State/Country are
-                # administrative and still update; only Location is protected.
-                write_location_batch(files, fields, overwrite=True, protect=("Location",))
+            # Never replace a Location the picture already carries: a hand-entered
+            # place ("Hotel Bourbon Atibaia") must survive the coarse reverse-geocode
+            # this coordinate produced ("Caetetuba"). City/State/Country are
+            # administrative and still update; only Location is protected.
+            done = write_gps_and_place([f for fs in targets.values() for f in fs],
+                                       lat, lon, fields, protect=("Location",))
+            # A picture counts as placed only when its files really took the write —
+            # a failed chunk leaves it on the tray (the log says why), never a dot
+            # on the map for a coordinate that is not on disk.
+            written = [k for k, fs in targets.items() if all(f in done for f in fs)]
+            skipped += len(targets) - len(written)
             # In-memory only from here — no more spawns. Handing the coordinates over
             # is also what makes a MOVE stick: the collection used to keep the
             # pre-move value, so a moved picture snapped back to its old spot the
@@ -2984,8 +2986,9 @@ class TripMapView(QDialog):
         if skipped:
             QMessageBox.information(
                 self, "Set location",
-                f"{skipped} picture{'' if skipped == 1 else 's'} had no writable "
-                f"sidecar (e.g. HEIC-only) and could not be geotagged.")
+                f"{skipped} picture{'' if skipped == 1 else 's'} could not be "
+                f"geotagged: no writable sidecar (e.g. HEIC-only), or the write "
+                f"failed (the log says why).")
 
     def _on_move(self, data: dict, lat: float, lon: float):
         # Defer so the mouse-release handler fully unwinds before we geocode.

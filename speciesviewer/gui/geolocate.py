@@ -429,14 +429,16 @@ def read_location_fields_batch(paths):
     call — the batched twin of read_location_fields, used so a fill-empties-only
     write doesn't pay a per-file exiftool spawn just to check what's already there."""
     import os
-    from engine.exif_writer import run_exiftool_files
+    from engine.exif_writer import run_exiftool_files_parallel
     paths = [str(p) for p in paths if p]
     if not paths:
         return {}
-    out = run_exiftool_files(
-        ["-j", "-location", "-city", "-state", "-country", "-countrycode",
-         "-XMP-sv:Municipality"], paths, pre_args=["-config", _exiftool_config()]).stdout
-    rows = json.loads(out) if out.strip() else []
+    rows = []
+    for r in run_exiftool_files_parallel(
+            ["-j", "-location", "-city", "-state", "-country", "-countrycode",
+             "-XMP-sv:Municipality"], paths, pre_args=["-config", _exiftool_config()]):
+        if r.stdout.strip():
+            rows.extend(json.loads(r.stdout))       # one JSON array per chunk
     res = {}
     for d in rows:
         key = os.path.normcase(os.path.normpath(d.get("SourceFile", "")))
@@ -495,32 +497,16 @@ def write_location_batch(files, fields, *, overwrite=True, protect=()):
     already on a file is kept (e.g. a hand-entered Location must survive a coarse
     reverse-geocode). When set it forces the per-file current read like
     overwrite=False, but only for the protected fields."""
-    import os
     from engine.exif_writer import run_exiftool_files
-    protect = set(protect)
-    base = {k: _LOCATION_TAGS[k] for k in _LOCATION_TAGS if fields.get(k)}
     files = [str(f) for f in files if f]
+    base, current, write_keys_by_file = _location_write_plan(files, fields,
+                                                             overwrite, protect)
     if not base or not files:
         return 0
-    # Read the current values whenever a field might be KEPT (overwrite=False, or a
-    # protected field): we need them both to decide what to write and to know what the
-    # file will END UP holding — its effective location, which the master index mirrors.
-    need_current = not (overwrite and not (protect & set(base)))
-    current = read_location_fields_batch(files) if need_current else {}
-    write_keys_by_file = {}
     groups = {}
     for f in files:
-        cur = current.get(os.path.normcase(os.path.normpath(f)), {}) if need_current else {}
-        if need_current:
-            # Skip a field only where the file already has it AND replacing it isn't
-            # allowed — globally (overwrite=False) or field-wise (protect).
-            wkeys = tuple(k for k in base
-                          if not (cur.get(k) and (not overwrite or k in protect)))
-        else:
-            wkeys = tuple(base)                      # overwrite everything
-        write_keys_by_file[f] = wkeys
-        if wkeys:
-            groups.setdefault(wkeys, []).append(f)
+        if write_keys_by_file[f]:
+            groups.setdefault(write_keys_by_file[f], []).append(f)
     written = 0
     written_files = set()
     for keys, group_files in groups.items():
@@ -543,6 +529,98 @@ def write_location_batch(files, fields, *, overwrite=True, protect=()):
         _effective_location_by_upn(files, base, fields, current,
                                    write_keys_by_file, written_files))
     return written
+
+
+def _location_write_plan(files, fields, overwrite=True, protect=()):
+    """Which location fields to write to EACH file: (base, current, write_keys_by_file).
+    `base` = the fields that have a value; `current` = what the files hold now (read
+    only when a field might be KEPT); `write_keys_by_file[f]` = the tuple of fields to
+    write to f, possibly empty. Shared by write_location_batch and write_gps_and_place,
+    so both keep a hand-entered Location the same way."""
+    import os
+    protect = set(protect)
+    base = {k: _LOCATION_TAGS[k] for k in _LOCATION_TAGS if fields.get(k)}
+    if not base or not files:
+        return base, {}, {f: () for f in files}
+    # Read the current values whenever a field might be KEPT (overwrite=False, or a
+    # protected field): we need them both to decide what to write and to know what the
+    # file will END UP holding — its effective location, which the master index mirrors.
+    need_current = not (overwrite and not (protect & set(base)))
+    current = read_location_fields_batch(files) if need_current else {}
+    write_keys_by_file = {}
+    for f in files:
+        if need_current:
+            cur = current.get(os.path.normcase(os.path.normpath(f)), {})
+            # Skip a field only where the file already has it AND replacing it isn't
+            # allowed — globally (overwrite=False) or field-wise (protect).
+            wkeys = tuple(k for k in base
+                          if not (cur.get(k) and (not overwrite or k in protect)))
+        else:
+            wkeys = tuple(base)                      # overwrite everything
+        write_keys_by_file[f] = wkeys
+    return base, current, write_keys_by_file
+
+
+def write_gps_and_place(files, lat, lon, fields, *, protect=("Location",),
+                        method: str = GPS_MANUAL):
+    """write_gps + write_location_batch(overwrite=True, protect=…) in ONE pass over
+    the sidecars, split across the cores — the map's place/move commit. Every file
+    gets the same coordinate and place, so the two separate writes rewrote each
+    sidecar twice in one process: 300 pictures took ~12 s (SmallBoy, 2026-10-20);
+    combined and parallel it is ~1.2 s. Same rules as the two it replaces: RAW never
+    touched, GPSProcessingMethod stamped, `protect`ed fields fill-only, both master
+    mirrors run. Returns the set of files written."""
+    import time
+    from engine.exif_writer import run_exiftool_groups_parallel
+    files = [str(f) for f in files if f]
+    if not files or lat is None or lon is None:
+        return set()
+    t0 = time.perf_counter()
+    fields = fields or {}
+    base, current, write_keys_by_file = _location_write_plan(
+        files, fields, overwrite=True, protect=protect)
+    gps_args = [f"-XMP:GPSLatitude={lat}", f"-XMP:GPSLongitude={lon}"]
+    if method:
+        gps_args += [f"-EXIF:GPSProcessingMethod={method}",
+                     f"-XMP:GPSProcessingMethod={method}"]
+    # One group per distinct set of place fields (usually just one); the GPS goes
+    # into every group, so a file whose place fields are all kept still gets it.
+    groups = {}
+    for f in files:
+        groups.setdefault(write_keys_by_file.get(f, ()), []).append(f)
+    written_files = set()
+    jobs = [(gps_args + [f"-{_LOCATION_TAGS[k]}={fields[k]}" for k in keys]
+             + ["-overwrite_original"], group_files)
+            for keys, group_files in groups.items()]
+    try:
+        per_group = run_exiftool_groups_parallel(
+            jobs, pre_args=["-config", _exiftool_config()])
+    except Exception as e:
+        logger.warning(f"GPS + place write failed for {len(files)} files: {e}")
+        per_group = [None] * len(jobs)
+    for (_, group_files), results in zip(jobs, per_group):
+        if results is None:
+            continue
+        failed = [r for r in results if r.returncode != 0]
+        if failed:
+            # A chunk's files are not tracked one by one: report it, count none of
+            # this group as written (no mirror of a value that may not be on disk).
+            logger.warning(f"GPS + place write returned {failed[0].returncode} "
+                           f"({len(failed)}/{len(results)} chunks): "
+                           f"{failed[0].stderr.strip()}")
+            continue
+        written_files.update(group_files)
+    if written_files:
+        ordered = [f for f in files if f in written_files]
+        _mirror_gps_to_master(ordered, lat, lon, method=method)
+        if base:
+            _mirror_location_to_master(
+                _effective_location_by_upn(ordered, base, fields, current,
+                                           write_keys_by_file, written_files))
+    logger.info(f"Map placement: GPS{' + place' if base else ''} written to "
+                f"{len(written_files)}/{len(files)} sidecar(s) in "
+                f"{time.perf_counter() - t0:.1f} s")
+    return written_files
 
 
 def _effective_location_by_upn(files, base, fields, current, write_keys_by_file,

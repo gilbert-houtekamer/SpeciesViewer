@@ -227,3 +227,43 @@ def run_exiftool_files(option_args, files, *, pre_args=None, timeout=None):
             os.remove(arg_path)
         except OSError:
             pass
+
+
+def run_exiftool_files_parallel(option_args, files, *, pre_args=None, timeout=None):
+    """run_exiftool_files split over several exiftool processes at once — the same
+    options on every chunk. exiftool handles its file list one file at a time, so a
+    batch WRITE of a few hundred sidecars (~20 ms each) is CPU-bound in a single
+    process; chunks across the physical cores (auto_worker_count, as the reads do)
+    cut 300 sidecars from ~6 s to ~1.2 s on SmallBoy. Small lists stay one process.
+    Returns one CompletedProcess per chunk, in chunk order (a JSON read gives one
+    array per chunk — parse each)."""
+    return run_exiftool_groups_parallel([(option_args, files)], pre_args=pre_args,
+                                        timeout=timeout)[0]
+
+
+def run_exiftool_groups_parallel(groups, *, pre_args=None, timeout=None):
+    """Several (option_args, files) groups — e.g. one per distinct set of tags to
+    write — in ONE pool of exiftool processes, so the groups run side by side
+    instead of one after another (two groups in turn cost ~2 s extra on 300
+    sidecars). Workers come from the TOTAL file count; each group gets a share of
+    them in proportion to its size. Returns, per group, its list of CompletedProcess."""
+    from concurrent.futures import ThreadPoolExecutor
+    from engine.exifcache import auto_worker_count
+    groups = [(list(a), [str(f) for f in fs]) for a, fs in groups]
+    total = sum(len(fs) for _, fs in groups)
+    if not total:
+        return [[] for _ in groups]
+    n = auto_worker_count(total)
+    jobs = []                                   # (group index, args, chunk)
+    for gi, (args, fs) in enumerate(groups):
+        if not fs:
+            continue
+        k = max(1, min(len(fs), round(n * len(fs) / total)))
+        jobs += [(gi, args, fs[i::k]) for i in range(k)]
+    with ThreadPoolExecutor(max(1, min(n, len(jobs)))) as ex:
+        done = list(ex.map(lambda j: run_exiftool_files(
+            j[1], j[2], pre_args=pre_args, timeout=timeout), jobs))
+    out = [[] for _ in groups]
+    for (gi, _, _), r in zip(jobs, done):
+        out[gi].append(r)
+    return out
