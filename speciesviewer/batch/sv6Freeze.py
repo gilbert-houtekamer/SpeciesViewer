@@ -435,7 +435,7 @@ def main(args, config):
     sp = engine.specieslib.Species(MyProject)
     MyProject.registerSpecies(sp)   
     
-    logger.info(f"sv6Freeze: Freeze data for project {MyProject.ProjectName()} on local copy on Windows")
+    logger.info(f"Freeze: Freeze data for project {MyProject.ProjectName()} on local copy on Windows")
 
     RepositoryFileCount, RepositoryPictureCount, from_time, last_time = MyProject.readProject()
     species_count = mergeCurrentTripTotals(MyProject)
@@ -509,7 +509,7 @@ def main(args, config):
     # exception), so no CSV claiming a missing file is ever committed.
     if copy_failures:
         for src, dst, why in copy_failures[:30]:
-            logger.warning(f"sv6Freeze: master copy NOT confirmed: {src} -> {dst} ({why})")
+            logger.warning(f"Freeze: master copy NOT confirmed: {src} -> {dst} ({why})")
         raise SVException(
             f"{len(copy_failures)} file(s) could not be copied into the master (see log). "
             f"Commit aborted so no CSV row is published for a file that isn't there.")

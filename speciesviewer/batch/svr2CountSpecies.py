@@ -386,7 +386,7 @@ def main(args, config):
             from utils.trip_config import read_trip_ini
             fromdate = (read_trip_ini(MyProject.getRepositoryPath()) or {}).get("fromdate", "")
         except Exception as e:
-            logger.warning(f"svr2CountSpecies: could not read trip.ini: {e}")
+            logger.warning(f"CountSpecies: could not read trip.ini: {e}")
 
     # Each note below wraps after its first sentence, with the rest indented as a
     # continuation. Unwrapped, this one line was ~200 characters and set the width
@@ -431,7 +431,7 @@ def main(args, config):
                                   f"    Species already merged "
                                   f"into the master do not count as new.")
             else:
-                logger.warning(f"svr2CountSpecies: reference file not found: {ref_csv}")
+                logger.warning(f"CountSpecies: reference file not found: {ref_csv}")
                 reference_note = ("Lifer baseline: NONE FOUND — every species below is "
                                   "reported as new.\n"
                                   "    Do not trust the New column.")

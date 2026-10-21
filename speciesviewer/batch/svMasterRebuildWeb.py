@@ -88,7 +88,7 @@ def main(args, config):
 
     # No recognized species → no 'biota' root; nothing to rebuild.
     if 'biota' not in MyProject.sp.species_dict:
-        logger.info("svMasterRebuildWeb: no recognized species — nothing to rebuild.")
+        logger.info("MasterRebuildWeb: no recognized species — nothing to rebuild.")
         return engine.statemachine.nothing_to_do("no species — nothing to rebuild.")
 
     # HTML-only: do not copy full-size JPGs into frozen (they already exist on
@@ -124,7 +124,7 @@ def main(args, config):
     finally:
         MyProject.setSkipJPGs(saveSkipJPGs)
 
-    logger.info(f"svMasterRebuildWeb: local re-render complete in {time.time() - starttime:.1f}s. Uploading…")
+    logger.info(f"MasterRebuildWeb: local re-render complete in {time.time() - starttime:.1f}s. Uploading…")
 
     # Upload only — the same publish path sv7 uses (frozen/biota + summary +
     # intro + small JPGs). Does NOT commit any data CSVs.
@@ -137,7 +137,7 @@ def main(args, config):
     # what is already there, so this costs seconds once the site is current.
     sv7WriteCommit.putAllPictures(MyProject, config)
 
-    logger.info(f"✅ svMasterRebuildWeb complete in {time.time() - starttime:.1f}s.")
+    logger.info(f"✅ MasterRebuildWeb complete in {time.time() - starttime:.1f}s.")
     return "Successfully run."
 
 

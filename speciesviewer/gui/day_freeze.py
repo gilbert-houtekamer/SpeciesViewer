@@ -45,8 +45,7 @@ def day_is_frozen(trip_root, day_folder):
     try:
         sm = StateMachine(str(trip_root), str(day_folder), readState=True)
     except Exception as e:
-        logger.warning(f"day_is_frozen: could not read statemachine for "
-                       f"{day_folder!r}: {e}")
+        logger.warning(f"Could not read the step status of {day_folder}: {e}")
         return False, None
     ts = sm.Taskstate
     if not ts:                      # no statemachine.ini → not a pipeline day

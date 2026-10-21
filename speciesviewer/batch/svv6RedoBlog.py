@@ -138,7 +138,7 @@ def main(args, config):
     if not master_db or not os.path.isdir(master_db):
         raise SVException(f"Master database not found: {master_db!r}")
 
-    logger.info(f"svv6RedoBlog: {virttrip_root}")
+    logger.info(f"RedoBlog: {virttrip_root}")
 
     project = engine.projectlib.Project(virttrip_root, "", web_root)
     project.initMasterAndTrip(config, inittrip=False)
@@ -290,7 +290,7 @@ def main(args, config):
     with open(runtime_path(LAST_BLOG_URL), "w") as f:
         f.write(blog_index_url)
 
-    logger.info(f"✅ svv6RedoBlog complete: {recreated} blog(s) recreated (HTML only).")
+    logger.info(f"✅ RedoBlog complete: {recreated} blog(s) recreated (HTML only).")
 
 
 if __name__ == "__main__":
@@ -304,6 +304,6 @@ if __name__ == "__main__":
     try:
         main(args, config)
     except Exception as e:
-        logger.warning(f"svv6RedoBlog failed: {e}")
+        logger.warning(f"RedoBlog failed: {e}")
     else:
-        logger.info("svv6RedoBlog succeeded.")
+        logger.debug("RedoBlog succeeded.")

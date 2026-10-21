@@ -83,6 +83,6 @@ if __name__ == "__main__":
     try:
         main(args, config)
     except Exception as e:
-        logger.warning(f"svr6ExportTrip failed: {e}")
+        logger.warning(f"ExportTrip failed: {e}")
     else:
-        logger.info("svr6ExportTrip succeeded")
+        logger.info("ExportTrip succeeded")

@@ -104,7 +104,7 @@ def main(args, config):
     NEW_DB_TREE = config.get("repository","BiotaDatabase")    # "e:/test3/SpeciesViewDB/"
     WEB_TREE = config.get("repository","BiotaWebRoot")
 
-    logger.info("sv1MakeReposity: define repository and disk and Web.")
+    logger.info("MakeReposity: define repository and disk and Web.")
     os.makedirs(NEW_DB_TREE, exist_ok=True)               # root for data, metadata and web contents
     #
     # root for data repository with all pictures (will be very big)
@@ -243,7 +243,7 @@ def main(args, config):
         # may belong to another master. engine.site_init supplies the skeleton.
         WEB_TREE = ""
     if WEB_TREE != "" and not site_config.publishing_set_up():
-        logger.info("sv1MakeReposity: no website set up — created locally only; "
+        logger.info("MakeReposity: no website set up — created locally only; "
                     "nothing uploaded.")
     if WEB_TREE != "" and site_config.publishing_set_up():
         password = config.get("websettings","Sftppwd").strip("'")
@@ -267,7 +267,7 @@ def main(args, config):
                     if name:
                         sftp.upload(os.path.join(NEW_DB_TREE, name), createdpath + '/' + name)
             except:
-                logger.warning(f"sv1MakeReposity: you did not customize trip.ini and/or not added banner (2000x270) or picture (600x450).")
+                logger.warning(f"MakeReposity: you did not customize trip.ini and/or not added banner (2000x270) or picture (600x450).")
                 logger.warning(f"Be sure to also FTP them to {createdpath} on the web server.")
         sftp.closeFTPCache(location_cache)
         sftp.disconnect()
@@ -292,7 +292,7 @@ if __name__ == "__main__":
     try:
         main(args, config)
     except Exception as e:
-        logger.warning(f"sv1MakeReposity failed: {e}")
+        logger.warning(f"MakeReposity failed: {e}")
     else:
-        logger.info("sv1MakeReposity succeeded.")
+        logger.info("MakeReposity succeeded.")
 

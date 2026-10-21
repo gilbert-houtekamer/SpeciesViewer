@@ -63,7 +63,7 @@ def commitProjectFiles(MyProject):
         shutil.copy(os.path.join(activedir, "speciescollection.csv"), os.path.join(activebackupdir, today + "_speciescollection.csv"))
 
     # now copy the frozen data
-    logger.info(f"Copy frozen files in {frozendir} to {activedir}.")
+    logger.debug(f"Copy frozen files in {frozendir} to {activedir}.")
     shutil.copy(os.path.join(frozendir, "frozen_data_files.csv"),    os.path.join(activedir, "data_files.csv"))
     shutil.copy(os.path.join(frozendir, "frozen_data_pictures.csv"), os.path.join(activedir, "data_pictures.csv"))
     shutil.copy(os.path.join(frozendir, "species.csv"),              os.path.join(activedir, "species.csv"))
@@ -159,7 +159,7 @@ def putTripImages(MyProject, sftp):
         ini = read_trip_ini(MyProject.getRepositoryPath()) or {}
         names.update((ini.get("trip_banner", ""), ini.get("trip_picture", "")))
     except Exception as e:
-        logger.warning(f"sv7WriteCommit: could not read trip.ini: {e}")
+        logger.warning(f"WriteCommit: could not read trip.ini: {e}")
     target = sftp.remotePrefix() + MyProject.getBiotaWebRoot()
     for name in sorted(n.strip() for n in names if n and n.strip()):
         src = os.path.join(MyProject.getRepositoryPath(), name)
@@ -268,7 +268,7 @@ def main(args, config):
     # if trip, initialze master
     MyProject.initMasterAndTrip(config, inittrip=True)
     
-    logger.info(f"sv7WriteCommit: Commit project {MyProject.ProjectName()} on repository.")
+    logger.info(f"WriteCommit: Commit project {MyProject.ProjectName()} on repository.")
     # The website is optional (docs/plans/website_optional_plan.md): without
     # one the master is updated on disk only. With one, the server must answer
     # BEFORE anything is committed — a half-published commit is the worse state.
@@ -287,7 +287,7 @@ def main(args, config):
         if website:
             putRecursiveTreeWeb(MyProject, config)
         else:
-            logger.info("sv7WriteCommit: no website set up — the master is "
+            logger.info("WriteCommit: no website set up — the master is "
                         "updated on this computer only; nothing uploaded.")
         putRecursiveTreeDisk(MyProject)
         # TODO rewrite the Blog with active links to species

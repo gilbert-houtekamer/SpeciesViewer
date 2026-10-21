@@ -49,7 +49,7 @@ def main(args, config):
     if not master_db or not os.path.isdir(master_db):
         raise SVException(f"Master database not found: {master_db!r}")
 
-    logger.info(f"svv5AddToMaster: {virttrip_root}")
+    logger.info(f"AddToMaster: {virttrip_root}")
 
     project = engine.projectlib.Project(virttrip_root, "", web_root)
     project.initMasterAndTrip(config, inittrip=False)
@@ -78,7 +78,7 @@ def main(args, config):
 
     trip.addTrip(trip_row)
     trip.write_TripAdmin()
-    logger.info(f"Master trip_admin.csv updated with '{trip_row.get('trip_name', '?')}'.")
+    logger.info(f"The master's trip list is updated with '{trip_row.get('trip_name', '?')}'.")
 
     trip.updateTripIndexPage('nl')
     trip.updateTripIndexPage('en')
@@ -109,7 +109,7 @@ def main(args, config):
     trip.uploadTripAdmin(sftp, trip.getTripAdminWeb())
     sftp.disconnect()
 
-    logger.info(f"✅ svv5AddToMaster complete ({time.time() - starttime:.1f}s).")
+    logger.info(f"✅ AddToMaster complete ({time.time() - starttime:.1f}s).")
 
 
 if __name__ == "__main__":
@@ -123,6 +123,6 @@ if __name__ == "__main__":
     try:
         main(args, config)
     except Exception as e:
-        logger.error(f"svv5AddToMaster failed: {e}")
+        logger.error(f"AddToMaster failed: {e}")
     else:
-        logger.info("svv5AddToMaster succeeded.")
+        logger.debug("AddToMaster succeeded.")

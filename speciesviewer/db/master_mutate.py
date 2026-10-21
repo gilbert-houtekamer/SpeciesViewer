@@ -231,7 +231,7 @@ def delete_file(db, master_root, upn: str, fname: str) -> dict:
                                         "upn": upn, "rel_path": rel, "orig_abspath": str(p),
                                         "trashed_path": str(dest), "batch": batch}])
     _write_snapshot(master_root, batch, snapshot)
-    logger.info(f"Deleted file {fname} from master UPN {upn} (batch {batch}).")
+    logger.info(f"Deleted file {fname} from master picture {upn} (batch {batch}).")
     return {"upn": upn, "fname": fname, "trashed": trashed, "batch": batch}
 
 
@@ -290,7 +290,7 @@ def delete_jpg(db, master_root, upn: str, fname: str) -> dict:
             logger.warning(f"delete_jpg: not on disk, only DB row removed: {v}")
     _append_manifest(master_root, manifest_rows)
     _write_snapshot(master_root, batch, snapshot)
-    logger.info(f"Trashed JPG {fname} from master UPN {upn} "
+    logger.info(f"Trashed JPG {fname} from master picture {upn} "
                 f"({len(trashed)} file(s), batch {batch}).")
     return {"upn": upn, "fname": fname, "trashed": trashed, "batch": batch}
 
@@ -333,7 +333,7 @@ def add_upn_files(db, master_root, upn: str) -> dict:
     jpgs = [n for n in added if n.rsplit(".", 1)[-1].lower() in _JPG_EXTS]
     metas = [n for n in added if n not in jpgs]
     logger.info(f"Added {len(jpgs)} JPG(s) + {len(metas)} metafile(s) to master "
-                f"UPN {upn}: {added}")
+                f"picture {upn}: {added}")
     return {"upn": upn, "added": added, "jpg": len(jpgs), "meta": len(metas)}
 
 

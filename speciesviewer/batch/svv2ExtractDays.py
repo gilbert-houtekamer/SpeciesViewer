@@ -97,13 +97,13 @@ def main(args, config):
     master_pictures_path = os.path.join(master_db, "metadata", "active", "data_pictures.csv")
 
     if not os.path.isfile(master_files_path):
-        logger.error(f"Master data_files.csv not found: {master_files_path}")
+        logger.error(f"The master's file table was not found ({master_files_path}).")
         return
     if not os.path.isfile(master_pictures_path):
-        logger.error(f"Master data_pictures.csv not found: {master_pictures_path}")
+        logger.error(f"The master's picture table was not found ({master_pictures_path}).")
         return
 
-    logger.info(f"Reading master data_files.csv from {master_files_path}")
+    logger.debug(f"Reading master data_files.csv from {master_files_path}")
     file_fields, all_file_rows = _read_csv(master_files_path)
     # SmallMaster stores root-relative paths; resolve them to absolute so the
     # virtual-trip day CSVs contain paths the image viewer can actually open.
@@ -112,7 +112,7 @@ def main(args, config):
             if col in row:
                 row[col] = resolve_path(row[col], master_db)
 
-    logger.info(f"Reading master data_pictures.csv from {master_pictures_path}")
+    logger.debug(f"Reading master data_pictures.csv from {master_pictures_path}")
     pic_fields, all_pic_rows = _read_csv(master_pictures_path)
 
     # Index data_pictures by UniquePictureName for fast lookup
@@ -201,6 +201,6 @@ if __name__ == "__main__":
     try:
         main(args, config)
     except Exception as e:
-        logger.warning(f"svv2ExtractDays failed: {e}")
+        logger.warning(f"ExtractDays failed: {e}")
     else:
-        logger.info("svv2ExtractDays succeeded.")
+        logger.info("ExtractDays succeeded.")

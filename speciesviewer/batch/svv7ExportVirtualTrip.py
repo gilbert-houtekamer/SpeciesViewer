@@ -107,6 +107,6 @@ if __name__ == "__main__":
     try:
         main(args, config)
     except Exception as e:
-        logger.warning(f"svv7ExportVirtualTrip failed: {e}")
+        logger.warning(f"ExportVirtualTrip failed: {e}")
     else:
-        logger.info("svv7ExportVirtualTrip succeeded")
+        logger.info("ExportVirtualTrip succeeded")

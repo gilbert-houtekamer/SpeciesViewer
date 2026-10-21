@@ -84,7 +84,7 @@ def read_virttrip_days(project, virttrip_root: str, master_root: str) -> int:
     from_date = (info.get("fromdate") or "").strip()
     to_date   = (info.get("todate")   or "").strip()
     if not (from_date and to_date):
-        logger.warning("svv4: album has no fromdate/todate — nothing to load.")
+        logger.warning("BuildWebsite: album has no fromdate/todate — nothing to load.")
         return 0
     db = src.open_master_db(master_root)
     labels = src.day_labels_in_range(db, from_date, to_date)
@@ -152,7 +152,7 @@ def main(args, config):
     if not master_db or not os.path.isdir(master_db):
         raise SVException(f"Master database not found: {master_db!r}")
 
-    logger.info(f"svv4BuildWebsite: {virttrip_root}")
+    logger.info(f"BuildWebsite: {virttrip_root}")
 
     project = engine.projectlib.Project(virttrip_root, "", web_root)
     project.initMasterAndTrip(config, inittrip=False)
@@ -222,7 +222,7 @@ def main(args, config):
         project.makeWebDirectories("biota", "New")
         seeded = _seed_empty_kingdom_stubs(project)
         if seeded:
-            logger.info(f"  Seeded {seeded} kingdom stub page(s) for kingdoms not in this trip ({language.upper()}).")
+            logger.debug(f"  Seeded {seeded} kingdom stub page(s) for kingdoms not in this trip ({language.upper()}).")
         project.makeAllSpeciesPage("biota", language)
         logger.info(f"  Built {language.upper()} pages.")
 
@@ -235,7 +235,7 @@ def main(args, config):
     makeIntroPages(project)
     logger.info("  Built intro pages (NL + EN).")
 
-    logger.info(f"svv4BuildWebsite: local build complete ({days} day(s)).")
+    logger.info(f"BuildWebsite: local build complete ({days} day(s)).")
 
     # --- SFTP upload ---
     import engine.connectivity as connectivity
@@ -335,7 +335,7 @@ def main(args, config):
     with open(runtime_path(LAST_WEBSITE_URL), "w") as f:
         f.write(summary_url)
 
-    logger.info("✅ svv4BuildWebsite complete.")
+    logger.info("✅ BuildWebsite complete.")
 
 
 if __name__ == "__main__":
@@ -349,6 +349,6 @@ if __name__ == "__main__":
     try:
         main(args, config)
     except Exception as e:
-        logger.warning(f"svv4BuildWebsite failed: {e}")
+        logger.warning(f"BuildWebsite failed: {e}")
     else:
-        logger.info("svv4BuildWebsite succeeded.")
+        logger.debug("BuildWebsite succeeded.")

@@ -282,6 +282,6 @@ def apply(master_root):
     replace_with_retry(tmp, species_csv)
     species = {n for lvl, n, c, o, v in changes if lvl == "Level.SPECIES"}
     picks = {n for lvl, n, c, o, v in changes if c == "BestUPN"}
-    logger.info(f"Recounted species.csv: {len(changes)} values in {len(species)} species changed, "
+    logger.info(f"Recounted the master's species table: {len(changes)} values in {len(species)} species changed, "
                 f"{len(picks)} best picks redone; backup {backup}.")
     return {"changes": changes, "species": len(species), "picks": len(picks), "backup": backup}

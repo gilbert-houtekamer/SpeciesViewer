@@ -1390,7 +1390,7 @@ class LargeImageView(QDialog):
         self._explorer_btn.setAutoRaise(True)
         self._explorer_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self._explorer_btn.setToolTip(
-            "Show this picture's files in Explorer (folder + UPN search)")
+            "Show this picture's files in Explorer (its folder, searched for the picture's name)")
         self._explorer_btn.clicked.connect(self._open_in_explorer)
 
         self._dxo_btn = QToolButton()

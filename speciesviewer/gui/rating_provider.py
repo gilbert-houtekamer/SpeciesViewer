@@ -1737,12 +1737,14 @@ class RatingEditorCollection(PictureCollection):
             try:
                 self.fpr.upn.write_project_summary()
             except Exception as e:
-                logger.error(f"Failed to write data_pictures.csv: {e}")
+                logger.error(f"Could not save the picture table "
+                             f"({getattr(self.fpr.upn, 'picturefile', 'data_pictures.csv')}): {e}")
             if wrote_file:
                 try:
                     self.fpr.fi.write_project_files()
                 except Exception as e:
-                    logger.error(f"Failed to write data_files.csv: {e}")
+                    logger.error(f"Could not save the file table "
+                                 f"({getattr(self.fpr.fi, 'filename', 'data_files.csv')}): {e}")
             return
         day = self._upn_day_map.get(upn_key)
         if not day or day not in self._day_objects:
@@ -1751,12 +1753,14 @@ class RatingEditorCollection(PictureCollection):
         try:
             upn_day.write_project_summary()
         except Exception as e:
-            logger.error(f"Failed to write data_pictures.csv for {day}: {e}")
+            logger.error(f"Could not save the picture table of {day} "
+                         f"({getattr(upn_day, 'picturefile', 'data_pictures.csv')}): {e}")
         if wrote_file:
             try:
                 fi_day.write_project_files()
             except Exception as e:
-                logger.error(f"Failed to write data_files.csv for {day}: {e}")
+                logger.error(f"Could not save the file table of {day} "
+                             f"({getattr(fi_day, 'filename', 'data_files.csv')}): {e}")
 
     def persist_after_species_change(self, upn_keys) -> None:
         """Write the CSVs for a set of UPNs after their species was changed via

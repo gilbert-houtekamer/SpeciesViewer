@@ -127,11 +127,10 @@ message_en = {_ini_escape(message_en)}
     try:
         with open(ini_path, "w", encoding="utf-8") as f:
             f.write(ini_text)
-            print(f"init_path={ini_path}\n{ini_text}")
         logger.info(f"✅ trip.ini written to {ini_path}")
         return
     except Exception as err:
-        logger.info(f"❌ Failed to write trip.ini: {err}")
+        logger.error(f"❌ Could not write trip.ini ({ini_path}): {err}")
         return 
 
 class TripCreationDialog(QDialog):
@@ -3747,18 +3746,19 @@ class CreateBlogDialog(QDialog):
         btn_layout = QHBoxLayout()
         btn_layout.addStretch()
 
-        save_btn = QPushButton("Save blog.ini")
+        # No separate Save: closing without it lost the text, often (his
+        # report, 2026-10-21). Close saves; the window's X / Esc asks first.
         create_btn = QPushButton("Create Blog")
         close_btn = QPushButton("Close")
+        close_btn.setToolTip("Save the text and settings, then close")
 
-        btn_layout.addWidget(save_btn)
         btn_layout.addWidget(create_btn)
         btn_layout.addWidget(close_btn)
         layout.addLayout(btn_layout)
 
-        save_btn.clicked.connect(self.save_ini)
         create_btn.clicked.connect(self.on_create_blog)
-        close_btn.clicked.connect(self.close)
+        close_btn.clicked.connect(self._save_and_close)
+        self._saved = self._values()       # what blog.ini holds now
 
     def get_blog_url(self):
         from utils import site_config
@@ -3906,6 +3906,37 @@ class CreateBlogDialog(QDialog):
 
         self.tabs.addTab(tab, "Configuration")
 
+    def _values(self):
+        """Everything this dialog writes to blog.ini — compared on close."""
+        return (self.title_nl.text(), self.message_nl.toPlainText(),
+                self.title_en.text(), self.message_en.toPlainText(),
+                self.minimum_score.value(), self.column_width.value())
+
+    def _save_and_close(self):
+        if self._values() != self._saved:
+            self.save_ini()
+        self.accept()
+
+    def reject(self):
+        """The window's X and Esc. Unsaved text is the user's work: ask."""
+        if self._values() == self._saved:
+            return super().reject()
+        box = QMessageBox(self)
+        box.setIcon(QMessageBox.Icon.Question)
+        box.setWindowTitle("Configure Blog Post")
+        box.setText("The blog text or settings were changed. Save them?")
+        box.setStandardButtons(QMessageBox.StandardButton.Save
+                               | QMessageBox.StandardButton.Discard
+                               | QMessageBox.StandardButton.Cancel)
+        box.setDefaultButton(QMessageBox.StandardButton.Save)
+        answer = box.exec()
+        if answer == QMessageBox.StandardButton.Save:
+            self.save_ini()
+            super().accept()
+        elif answer == QMessageBox.StandardButton.Discard:
+            super().reject()
+        # Cancel: stay open
+
     def save_ini(self):
         self.parser["blog_text"]["titel_nl"] = self.title_nl.text()
         self.parser["blog_text"]["message_nl"] = self.message_nl.toPlainText()
@@ -3918,8 +3949,9 @@ class CreateBlogDialog(QDialog):
         with open(self.ini_path, "w", encoding="utf-8") as f:
             self.parser.write(f)
 
-        self.logger.info("✅ blog.ini written successfully.")
-        self.passed_parent.status_bar.showMessage("blog.ini written successfully.")
+        self._saved = self._values()
+        self.logger.info(f"✅ Blog text saved ({self.ini_path}).")
+        self.passed_parent.status_bar.showMessage("Blog text saved.")
 
     def on_create_blog(self):
         try:

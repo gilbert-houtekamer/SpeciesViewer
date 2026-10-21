@@ -24,7 +24,7 @@ class GlobalSettingsDialog(QDialog):
 
         self.debug_switch = QCheckBox("Enable debug functionality")
         self.debug_switch.setToolTip(
-            "Shows the diagnostic tools under File ▸ Admin (status consoles, "
+            "Shows the diagnostic tools under File ▸ Developer Tools (status consoles, "
             "audits, rebuild, clean orphans, testbed).\nTakes effect after a "
             "restart.")
         self.debug_switch.setChecked(

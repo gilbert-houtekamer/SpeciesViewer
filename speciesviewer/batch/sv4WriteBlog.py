@@ -63,7 +63,7 @@ def main(args, config):
     sp = engine.specieslib.Species(MyProject)
     MyProject.registerSpecies(sp)
 
-    logger.info(f"sv4WriteBlog: Create a blog for project {MyProject.ProjectName()}")
+    logger.info(f"WriteBlog: Create a blog for project {MyProject.ProjectName()}")
 
     import engine.connectivity as connectivity
     if not connectivity.publish_reachable():

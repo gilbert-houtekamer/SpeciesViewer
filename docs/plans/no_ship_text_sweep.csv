@@ -1,0 +1,112 @@
+﻿category;file;line;shown by;word;text
+dev word;batch/svv4BuildWebsite.py;225;info;stub;Seeded {…} kingdom stub page(s) for kingdoms not in this trip ({…}).
+dev word;gui/master_no_display.py;95;setWindowTitle;dry-run;Species without a website picture (dry-run, no changes)
+dev word;gui/menuspec.py;1027;MenuSpec;Testbed;Call Testbed for trip day
+dev word;gui/menuspec.py;1347;setWindowTitle;dry-run;Audit Species Counters (dry-run, no changes)
+dev word;gui/menuspec.py;1361;MenuSpec;dry-run;Audit Species Counters (dry-run)…
+dev word;gui/menuspec.py;1781;menu label;dry-run;Audit Species Counters (dry-run)…
+dev word;gui/menuspec.py;1784;menu label;Testbed;Call Testbed for trip day
+dev word;gui/trip_process.py;2868;HTMLLabel;debugging;"<p><b>Read &amp; Summarize a folder of pictures</b><br>This runs <b>Read Directory</b> and <b>Write Summary</b> back to back. Read Directory extracts Exif metad"
+dev word;gui/trip_process.py;2992;HTMLLabel;debugging;<p><b>Publish a day</b><br>This runs <b>Freeze</b> and <b>Write Website Commit</b> back to back. Freeze locks down the collected data and copies the pictures in
+dev word;settings/globalsettings.py;25;QCheckBox;debug;Enable debug functionality
+dev word;settings/globalsettings.py;27;setToolTip;testbed;Shows the diagnostic tools under File ▸ Admin (status consoles, audits, rebuild, clean orphans, testbed). Takes effect after a restart.
+internal file;batch/sv1MakeReposity.py;270;warning;trip.ini;sv1MakeReposity: you did not customize trip.ini and/or not added banner (2000x270) or picture (600x450).
+internal file;batch/sv7WriteCommit.py;162;warning;trip.ini;sv7WriteCommit: could not read trip.ini: {…}
+internal file;batch/svr2CountSpecies.py;389;warning;trip.ini;svr2CountSpecies: could not read trip.ini: {…}
+internal file;batch/svr4UpdateTrips.py;69;info;trip_admin.csv;Master trip_admin.csv updated with '{…}'.
+internal file;batch/svu2avibase.py;557;info;trip.ini;Reference species from trip.ini master: {…}
+internal file;batch/svv1MakeVirtualRepository.py;56;info;speciescollection.csv;Copied speciescollection.csv from master.
+internal file;batch/svv2ExtractDays.py;100;error;data_files.csv;Master data_files.csv not found: {…}
+internal file;batch/svv2ExtractDays.py;103;error;data_pictures.csv;Master data_pictures.csv not found: {…}
+internal file;batch/svv2ExtractDays.py;106;info;data_files.csv;Reading master data_files.csv from {…}
+internal file;batch/svv2ExtractDays.py;115;info;data_pictures.csv;Reading master data_pictures.csv from {…}
+internal file;batch/svv5AddToMaster.py;81;info;trip_admin.csv;Master trip_admin.csv updated with '{…}'.
+internal file;engine/blogmigrate.py;46;info;blog.ini;blogmigrate: {…}/blog.ini -> {…}
+internal file;engine/master_recount.py;285;info;species.csv;"Recounted species.csv: {…} values in {…} species changed, {…} best picks redone; backup {…}."
+internal file;engine/publish_index.py;89;warning;trip_admin.csv;Live trip index unreachable or empty — falling back to the local trip_admin.csv.
+internal file;engine/publish_index.py;94;warning;trip_admin.csv;base_url not configured — falling back to local trip_admin.csv.
+internal file;engine/trip_delete_scan.py;92;warning;data_files.csv;trip_delete_scan: could not read master data_files.csv: {…}
+internal file;gui/cache_manager.py;323;QLabel;FTPcache.json;Every trip, album and the master keeps a list of the files it has already sent to the web server, so publishing again only uploads what changed — that is why re
+internal file;gui/culling_species.py;181;warning;speciescollection.csv;No speciescollection.csv found (trip or master) for culling species lookup.
+internal file;gui/master_geocode.py;220;question;data_pictures.csv;Write the place name into <b>{…} pictures</b> ({…} coordinates)?<br><br>The name goes into each picture's XMP sidecar and into the master index, so the website 
+internal file;gui/menuspec.py;1392;question;species.csv;"{…} species have counters that do not match their pictures ({…} values; {…} best pictures that no longer exist). Pictures, for example: {…} The whole collection"
+internal file;gui/rating_provider.py;1740;error;data_pictures.csv;Failed to write data_pictures.csv: {…}
+internal file;gui/rating_provider.py;1745;error;data_files.csv;Failed to write data_files.csv: {…}
+internal file;gui/rating_provider.py;1754;error;data_pictures.csv;Failed to write data_pictures.csv for {…}: {…}
+internal file;gui/rating_provider.py;1759;error;data_files.csv;Failed to write data_files.csv for {…}: {…}
+internal file;gui/site_publication_dialog.py;91;QLabel;trip_admin.csv;Everything currently listed on the site's trip index (<code>tripindex-nl.html</code>) — trips and albums together, since both write their row into the same <cod
+internal file;gui/site_publication_dialog.py;247;question;trip_admin.csv;Remove '{…}' from the published trip index? This updates the LIVE site: it removes this one line from trip_admin.csv, rebuilds the tripindex pages, and uploads 
+internal file;gui/trip_process.py;63;warning;trip.ini;trip.ini picture_root stored as an absolute path ({…}) — it is outside the CurrentPictures root, or that root isn't set. Configure [currentpictures] rootdirecto
+internal file;gui/trip_process.py;131;info;trip.ini;✅ trip.ini written to {…}
+internal file;gui/trip_process.py;134;info;trip.ini;❌ Failed to write trip.ini: {…}
+internal file;gui/trip_process.py;367;setToolTip;trip.ini;Save this trip's settings AND text (both this page and Trip Text) to trip.ini — WITHOUT rebuilding the repository. Use this to update an existing trip (e.g. its
+internal file;gui/trip_process.py;502;info;trip.ini;"Trip settings updated (trip.ini written; repository not rebuilt)."
+internal file;gui/trip_process.py;3750;QPushButton;blog.ini;Save blog.ini
+internal file;gui/trip_process.py;3921;info;blog.ini;✅ blog.ini written successfully.
+internal file;gui/trip_process.py;3922;showMessage;blog.ini;blog.ini written successfully.
+internal file;gui/trip_process.py;5173;question;data_files.csv;These pictures were already committed to master. Running this step again will append duplicate rows to master's data_files.csv / data_pictures.csv. Continue?
+internal file;gui/trip_process.py;5791;QLabel;trip.ini;<b>Export this trip</b><br>Writes a small ZIP holding the trip's settings (<tt>trip.ini</tt>), its trip picture and banner, its species list, its lifer status, 
+internal file;gui/virttrip_process.py;1693;HTMLLabel;trip_admin.csv;<p><b>Add Album to Master</b></p><p>Registers this album in the master trip index so it appears on the website alongside regular trips:</p><ul><li>Adds (or refr
+internal file;gui/virttrip_process.py;1714;QCheckBox;trip_admin.csv;Read from local trip_admin.csv instead of web (use after manual cleanup)
+internal file;gui/virttrip_process.py;1717;setToolTip;trip_admin.csv;Normally the live web copy is used as the authoritative source. Enable this only when you have manually edited the local trip_admin.csv to remove unwanted entri
+internal file;settings/dbsettings.py;453;question;data_pictures.csv;Replace data_pictures.csv, data_files.csv and species.csv with the backup from {…}? Anything added to the master since then will be lost. The current CSVs are k
+internal file;widgets/TripInfoPanel.py;105;setToolTip;trip.ini;Error reading trip.ini: {…}
+internal term;batch/sv7WriteCommit.py;66;info;frozen;Copy frozen files in {…} to {…}.
+internal term;batch/svv4BuildWebsite.py;286;warning;frozen;frozen/biota/ not found — species pages may not have been built: {…}
+internal term;db/master_mutate.py;234;info;UPN;Deleted file {…} from master UPN {…} (batch {…}).
+internal term;db/master_mutate.py;293;info;UPN;Trashed JPG {…} from master UPN {…} ({…} file(s), batch {…}).
+internal term;db/master_mutate.py;335;info;UPN;Added {…} JPG(s) + {…} metafile(s) to master UPN {…}: {…}
+internal term;gui/day_freeze.py;48;warning;statemachine;day_is_frozen: could not read statemachine for {…}: {…}
+internal term;gui/large_image_view.py;1393;setToolTip;UPN;Show this picture's files in Explorer (folder + UPN search)
+internal term;gui/mainwindow.py;1041;warning;frozen;Step '{…}' is disabled: workflow frozen after WriteCommit.
+internal term;gui/trip_process.py;2992;HTMLLabel;frozen;<p><b>Publish a day</b><br>This runs <b>Freeze</b> and <b>Write Website Commit</b> back to back. Freeze locks down the collected data and copies the pictures in
+internal term;gui/trip_process.py;4889;HTMLLabel;frozen;"<p><b>Add the active trip's pictures to the master database.</b></p><p><b>Run</b> takes the four steps in order and shows each one's progress; it stops at a ste"
+step code;batch/sv1MakeReposity.py;107;info;sv1MakeReposity;sv1MakeReposity: define repository and disk and Web.
+step code;batch/sv1MakeReposity.py;246;info;sv1MakeReposity;"sv1MakeReposity: no website set up — created locally only; nothing uploaded."
+step code;batch/sv1MakeReposity.py;270;warning;sv1MakeReposity;sv1MakeReposity: you did not customize trip.ini and/or not added banner (2000x270) or picture (600x450).
+step code;batch/sv1MakeReposity.py;295;warning;sv1MakeReposity;sv1MakeReposity failed: {…}
+step code;batch/sv1MakeReposity.py;297;info;sv1MakeReposity;sv1MakeReposity succeeded.
+step code;batch/sv4WriteBlog.py;66;info;sv4WriteBlog;sv4WriteBlog: Create a blog for project {…}
+step code;batch/sv5BuildWebsite.py;64;info;sv5BuildWebsite;sv5BuildWebsite: Add new species for project {…} on local copy on Windows
+step code;batch/sv6Freeze.py;438;info;sv6Freeze;sv6Freeze: Freeze data for project {…} on local copy on Windows
+step code;batch/sv6Freeze.py;512;warning;sv6Freeze;sv6Freeze: master copy NOT confirmed: {…} -> {…} ({…})
+step code;batch/sv7WriteCommit.py;162;warning;sv7WriteCommit;sv7WriteCommit: could not read trip.ini: {…}
+step code;batch/sv7WriteCommit.py;271;info;sv7WriteCommit;sv7WriteCommit: Commit project {…} on repository.
+step code;batch/sv7WriteCommit.py;290;info;sv7WriteCommit;"sv7WriteCommit: no website set up — the master is updated on this computer only; nothing uploaded."
+step code;batch/svMasterRebuildWeb.py;91;info;svMasterRebuildWeb;svMasterRebuildWeb: no recognized species — nothing to rebuild.
+step code;batch/svMasterRebuildWeb.py;127;info;svMasterRebuildWeb;svMasterRebuildWeb: local re-render complete in {…}s. Uploading…
+step code;batch/svMasterRebuildWeb.py;140;info;svMasterRebuildWeb;✅ svMasterRebuildWeb complete in {…}s.
+step code;batch/svr2CountSpecies.py;389;warning;svr2CountSpecies;svr2CountSpecies: could not read trip.ini: {…}
+step code;batch/svr2CountSpecies.py;434;warning;svr2CountSpecies;svr2CountSpecies: reference file not found: {…}
+step code;batch/svr6ExportTrip.py;86;warning;svr6ExportTrip;svr6ExportTrip failed: {…}
+step code;batch/svr6ExportTrip.py;88;info;svr6ExportTrip;svr6ExportTrip succeeded
+step code;batch/svu7Testbed.py;66;info;sv4WriteBlog;sv4WriteBlog: Create a blog for project {…}
+step code;batch/svu9SmallMaster.py;295;warning;svu9SmallMaster;svu9SmallMaster failed: {…}
+step code;batch/svu9SmallMaster.py;297;info;svu9SmallMaster;svu9SmallMaster succeeded
+step code;batch/svv1MakeVirtualRepository.py;25;info;svv1MakeVirtualRepository;svv1MakeVirtualRepository: creating virtual trip directory structure.
+step code;batch/svv1MakeVirtualRepository.py;90;warning;svv1MakeVirtualRepository;svv1MakeVirtualRepository failed: {…}
+step code;batch/svv1MakeVirtualRepository.py;92;info;svv1MakeVirtualRepository;svv1MakeVirtualRepository succeeded.
+step code;batch/svv2ExtractDays.py;204;warning;svv2ExtractDays;svv2ExtractDays failed: {…}
+step code;batch/svv2ExtractDays.py;206;info;svv2ExtractDays;svv2ExtractDays succeeded.
+step code;batch/svv3WriteBlog.py;346;info;svv3WriteBlog;svv3WriteBlog: {…}
+step code;batch/svv3WriteBlog.py;661;info;svv3WriteBlog;✅ svv3WriteBlog complete: {…} day(s) published.
+step code;batch/svv3WriteBlog.py;675;warning;svv3WriteBlog;svv3WriteBlog failed: {…}
+step code;batch/svv3WriteBlog.py;677;info;svv3WriteBlog;svv3WriteBlog succeeded.
+step code;batch/svv4BuildWebsite.py;87;warning;svv4;svv4: album has no fromdate/todate — nothing to load.
+step code;batch/svv4BuildWebsite.py;155;info;svv4BuildWebsite;svv4BuildWebsite: {…}
+step code;batch/svv4BuildWebsite.py;238;info;svv4BuildWebsite;svv4BuildWebsite: local build complete ({…} day(s)).
+step code;batch/svv4BuildWebsite.py;338;info;svv4BuildWebsite;✅ svv4BuildWebsite complete.
+step code;batch/svv4BuildWebsite.py;352;warning;svv4BuildWebsite;svv4BuildWebsite failed: {…}
+step code;batch/svv4BuildWebsite.py;354;info;svv4BuildWebsite;svv4BuildWebsite succeeded.
+step code;batch/svv5AddToMaster.py;52;info;svv5AddToMaster;svv5AddToMaster: {…}
+step code;batch/svv5AddToMaster.py;112;info;svv5AddToMaster;✅ svv5AddToMaster complete ({…}s).
+step code;batch/svv5AddToMaster.py;126;error;svv5AddToMaster;svv5AddToMaster failed: {…}
+step code;batch/svv5AddToMaster.py;128;info;svv5AddToMaster;svv5AddToMaster succeeded.
+step code;batch/svv6RedoBlog.py;141;info;svv6RedoBlog;svv6RedoBlog: {…}
+step code;batch/svv6RedoBlog.py;293;info;svv6RedoBlog;✅ svv6RedoBlog complete: {…} blog(s) recreated (HTML only).
+step code;batch/svv6RedoBlog.py;307;warning;svv6RedoBlog;svv6RedoBlog failed: {…}
+step code;batch/svv6RedoBlog.py;309;info;svv6RedoBlog;svv6RedoBlog succeeded.
+step code;batch/svv7ExportVirtualTrip.py;110;warning;svv7ExportVirtualTrip;svv7ExportVirtualTrip failed: {…}
+step code;batch/svv7ExportVirtualTrip.py;112;info;svv7ExportVirtualTrip;svv7ExportVirtualTrip succeeded
+step code;utils/batch_config.py;25;warning;svconfig;"Missing 'masterbiotadatabase' path in config; cannot build svconfig.ini."
+step code;utils/batch_config.py;113;error;svconfig;❌ Failed to write svconfig.ini: {…}

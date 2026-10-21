@@ -178,7 +178,8 @@ def load_species_classification():
                  if b and os.path.exists(os.path.join(b, "metadata", "active", "speciescollection.csv"))),
                 None)
     if not path:
-        logger.warning("No speciescollection.csv found (trip or master) for culling species lookup.")
+        logger.warning("No species list (speciescollection.csv) in the trip or the master — "
+                       "species names cannot be looked up while culling.")
         return None
     sc = SpeciesClassification(None)
     # Fresh per-instance dicts (the class-level ones are shared) so we don't

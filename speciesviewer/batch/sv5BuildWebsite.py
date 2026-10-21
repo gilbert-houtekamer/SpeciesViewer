@@ -61,7 +61,7 @@ def main(args, config):
     sp = engine.specieslib.Species(MyProject)
     MyProject.registerSpecies(sp)
 
-    logger.info(f"sv5BuildWebsite: Add new species for project {MyProject.ProjectName()} on local copy on Windows")
+    logger.info(f"BuildWebsite: Add new species for project {MyProject.ProjectName()} on local copy on Windows")
 
     MyProject.readProject(getEarlierDays = True)
     thissteptime = time.time()     

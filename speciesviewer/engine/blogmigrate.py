@@ -39,11 +39,11 @@ def migrate_trip_blogs(trip_picture_root, virttrip_root, overwrite=False):
             continue
         dest = os.path.join(blog_dir, f"blog_{day}.ini")
         if os.path.exists(dest) and not overwrite:
-            logger.info(f"blogmigrate: kept existing {os.path.basename(dest)}")
+            logger.debug(f"blogmigrate: kept existing {os.path.basename(dest)}")
             kept += 1
             continue
         shutil.copy2(src, dest)
-        logger.info(f"blogmigrate: {day}/blog.ini -> {os.path.basename(dest)}")
+        logger.debug(f"blogmigrate: {day}/blog.ini -> {os.path.basename(dest)}")
         copied += 1
     logger.info(f"blogmigrate: {copied} copied, {kept} kept, "
                 f"{no_blog} day(s) without a blog")

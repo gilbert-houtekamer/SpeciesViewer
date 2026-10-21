@@ -89,7 +89,7 @@ def load_master_inventory(master_root):
                     if u:
                         master_index["by_upn"].setdefault(u, []).append(path)
     except Exception as e:
-        logger.warning(f"trip_delete_scan: could not read master data_files.csv: {e}")
+        logger.warning(f"Could not read the master's file table ({files_csv}): {e}")
         # Without the file index we cannot verify a physical copy, so nothing is
         # classified deletable below — the safe degradation for a destructive op.
     return upns, filenames, master_index

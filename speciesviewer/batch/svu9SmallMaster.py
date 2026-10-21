@@ -292,6 +292,6 @@ if __name__ == "__main__":
     try:
         main(args, config)
     except Exception as e:
-        logger.warning(f"svu9SmallMaster failed: {e}")
+        logger.warning(f"SmallMaster failed: {e}")
     else:
-        logger.info("svu9SmallMaster succeeded")
+        logger.info("SmallMaster succeeded")

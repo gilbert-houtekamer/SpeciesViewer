@@ -1038,7 +1038,8 @@ class MainWindow(QMainWindow):
 
             # Case 1: frozen after WriteCommit
             if sm.Taskstate.get("WriteCommit", [False])[0]:
-                self.logger.warning(f"Step '{action_label}' is disabled: workflow frozen after WriteCommit.")
+                self.logger.warning(f"Step '{action_label}' is disabled: this day is published. "
+                                    f"Reset Trip to change it.")
                 return
 
             # Case 2: WriteBlog with no JPGs

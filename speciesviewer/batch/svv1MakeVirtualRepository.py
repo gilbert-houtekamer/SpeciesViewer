@@ -22,7 +22,7 @@ def main(args, config):
     MY_GHEXIF_DIR = str(Path(__file__).resolve().parent.parent / "dist")
     NEW_DB_TREE   = config.get("repository", "BiotaDatabase")
 
-    logger.info("svv1MakeVirtualRepository: creating virtual trip directory structure.")
+    logger.info("MakeVirtualRepository: creating virtual trip directory structure.")
     os.makedirs(NEW_DB_TREE, exist_ok=True)
     os.makedirs(os.path.join(NEW_DB_TREE, "biota"),  exist_ok=True)
     os.makedirs(os.path.join(NEW_DB_TREE, "admin"),  exist_ok=True)
@@ -53,7 +53,7 @@ def main(args, config):
         master_aliases = os.path.join(master_db, "metadata/active/speciesnames.csv")
         if os.path.isfile(master_aliases):
             shutil.copy(master_aliases, os.path.join(NEW_DB_TREE, "metadata/active/speciesnames.csv"))
-        logger.info("Copied speciescollection.csv from master.")
+        logger.debug("Copied speciescollection.csv from master.")
     else:
         shutil.copy(os.path.join(inst, "initial_speciescollection.csv"),
                     os.path.join(NEW_DB_TREE, "metadata/active/speciescollection.csv"))
@@ -87,6 +87,6 @@ if __name__ == "__main__":
     try:
         main(args, config)
     except Exception as e:
-        logger.warning(f"svv1MakeVirtualRepository failed: {e}")
+        logger.warning(f"MakeVirtualRepository failed: {e}")
     else:
-        logger.info("svv1MakeVirtualRepository succeeded.")
+        logger.info("MakeVirtualRepository succeeded.")

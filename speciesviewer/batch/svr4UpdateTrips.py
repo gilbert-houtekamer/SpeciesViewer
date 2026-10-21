@@ -66,7 +66,7 @@ def main(args, config):
             f"Could not read trip information from {tripinifile}.")
     trip.addTrip(trip_row)
     trip.write_TripAdmin()
-    logger.info(f"Master trip_admin.csv updated with "
+    logger.info(f"The master's trip list is updated with "
                 f"'{trip_row.get('trip_name', '?')}'.")
     # Regenerate the master tripindex pages from the now-current CSV.
     trip.updateTripIndexPage('nl')
