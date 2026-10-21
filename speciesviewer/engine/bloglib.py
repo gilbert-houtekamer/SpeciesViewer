@@ -273,7 +273,7 @@ class Blog:
     # write back 
     def write_BlogAdmin(self):
         # Write Picture CSV file
-        logger.info(f'Write all blog data in CSV file "{self.getBlogAdminFile()}".')
+        logger.debug(f'Write all blog data in CSV file "{self.getBlogAdminFile()}".')
         with open(self.getBlogAdminFile(), "w", newline="", encoding='utf-8') as csvfile:
             # needed to get column in order          
             writer = csv.DictWriter(csvfile, fieldnames=BLOG_CSV_FIELDS, delimiter=';')

@@ -59,7 +59,7 @@ def main(args, config):
     MyProject.setSpeciesDebug(SpeciesDebug)
 
     # start message
-    logger.info(f"v3WritePictures: Read file CSV and create enriched species data for each picture.")
+    logger.debug(f"v3WritePictures: Read file CSV and create enriched species data for each picture.")
     # check if the output can be written, avoid annoying wait
     picturefilename = MyProject.getMetaDirReview()
     try:
@@ -84,7 +84,7 @@ def main(args, config):
 
     # read new files from project to review
     read_file(MyProject, os.path.join(MyProject.getMetaDirReview(), "data_files.csv"))
-    logger.info(f"Read all new data from the in {time.time()-starttime:.1f} seconds.")
+    logger.debug(f"Read all new data from the in {time.time()-starttime:.1f} seconds.")
     thissteptime = time.time()   
 
     # Now summarize files to files list per picture ('UniquePictureName')
@@ -110,7 +110,7 @@ def main(args, config):
     # Write Picture CSV file
     picturefilename = os.path.join(MyProject.getMetaDirReview(), "data_pictures.csv")
     with pictures_out_csvfile as csvfile:
-        logger.info(f'Write Picture data CSV file {picturefilename}.')
+        logger.debug(f'Write Picture data CSV file {picturefilename}.')
         # needed to get column in order
         ordered_fieldnames = OrderedDict((field, None) for field in PICTURE_FIELDS)                 
         writer = csv.DictWriter(csvfile, fieldnames=ordered_fieldnames, quoting=csv.QUOTE_MINIMAL, delimiter=';')
@@ -119,7 +119,7 @@ def main(args, config):
             writer.writerow(upn_record)
 
     totaltime = time.time() - starttime                
-    logger.info(f'{len(MyProject.UniquePictureName_dict)} lines written for pictures to {picturefilename}.')
+    logger.debug(f'{len(MyProject.UniquePictureName_dict)} lines written for pictures to {picturefilename}.')
     
     # also create summarizing species, when more counters are added later.
     # The trip's own list is rewritten in full (it is this run's authority), and
@@ -152,7 +152,7 @@ def main(args, config):
     # logger.info(f'{len(species_dict)} lines written for species data to "{config.get("directories","Tables").replace('"', '').replace("'", '')+'species.csv'}".')
 
     # totaltime = time.time() - starttime      
-    logger.info(f'Total time for all other work {totaltime:.1f} seconds.')
+    logger.debug(f'Total time for all other work {totaltime:.1f} seconds.')
 
 
 if __name__ == "__main__":

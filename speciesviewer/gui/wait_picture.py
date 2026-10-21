@@ -14,6 +14,24 @@ from PyQt6.QtWidgets import QDialog, QHBoxLayout, QLabel, QVBoxLayout
 
 _ASSETS = Path(__file__).resolve().parent.parent / "assets"
 SIDE = 180          # the picture's edge on screen, in pixels
+# The turning wheel of every wait window. It used to be QMovie("spinner.gif"),
+# a path relative to the folder SV was STARTED from — the file lives in
+# assets/, so no wait window ever turned (2026-10-21).
+SPINNER = str(_ASSETS / "spinner.gif")
+
+
+def spinner_movie():
+    """The turning wheel at half its native size (a quarter of the area): at
+    full size it outweighed the text it was waiting beside (2026-10-21)."""
+    from PyQt6.QtCore import QSize
+    from PyQt6.QtGui import QMovie
+    # A light wheel on the dark theme's background (assets/spinner_dark.gif,
+    # made from spinner.gif) — the white square looked out of place there.
+    from gui.theme import is_dark
+    dark = _ASSETS / "spinner_dark.gif"
+    movie = QMovie(str(dark) if is_dark() and dark.is_file() else SPINNER)
+    movie.setScaledSize(QSize(52, 52))
+    return movie
 
 
 def picture_label(picture: str, side: int, dpr: float = 1.0) -> QLabel | None:

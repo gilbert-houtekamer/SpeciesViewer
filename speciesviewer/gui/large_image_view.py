@@ -2966,10 +2966,10 @@ class LargeImageView(QDialog):
                 from engine.species_baseline import collect_master_species
                 got, _zero, _topic = collect_master_species(master)
                 names = got or None
-                logger.info(f"NEW SPECIES badge: {len(got)} species with pictures "
+                logger.debug(f"NEW SPECIES badge: {len(got)} species with pictures "
                             f"read from {master}\\metadata\\active\\species.csv")
             else:
-                logger.info("NEW SPECIES badge: disabled (no master configured)")
+                logger.debug("NEW SPECIES badge: disabled (no master configured)")
         except Exception as e:
             logger.info(f"NEW SPECIES badge: master species list unavailable ({e})")
         self._master_species_cache = names
@@ -3441,7 +3441,8 @@ class LargeImageView(QDialog):
         prog_layout.addWidget(prog_lbl)
         spin_lbl = QLabel()
         spin_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        movie = QMovie("spinner.gif")
+        from gui.wait_picture import spinner_movie
+        movie = spinner_movie()
         spin_lbl.setMovie(movie)
         prog_layout.addWidget(spin_lbl)
         movie.start()
@@ -3805,7 +3806,8 @@ class LargeImageView(QDialog):
         prog_layout.addWidget(prog_lbl)
         spin_lbl = QLabel()
         spin_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        movie = QMovie("spinner.gif")
+        from gui.wait_picture import spinner_movie
+        movie = spinner_movie()
         spin_lbl.setMovie(movie)
         prog_layout.addWidget(spin_lbl)
         movie.start()

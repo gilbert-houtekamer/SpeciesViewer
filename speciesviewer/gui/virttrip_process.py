@@ -273,7 +273,8 @@ def _run_virttrip_pipeline(parent, steps, *, title, success_msg, wait_picture=No
     slayout.addWidget(step_label)
     progress_label = QLabel("")
     slayout.addWidget(progress_label, alignment=Qt.AlignmentFlag.AlignCenter)
-    movie = QMovie("spinner.gif")
+    from gui.wait_picture import spinner_movie
+    movie = spinner_movie()
     movie_label = QLabel()
     movie_label.setMovie(movie)
     slayout.addWidget(movie_label, alignment=Qt.AlignmentFlag.AlignCenter)

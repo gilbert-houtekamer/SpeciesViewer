@@ -87,7 +87,8 @@ def _append_dop_rows(all_rows, root, recurse):
             })
             added += 1
     if added:
-        logger.info(f"Included {added} DxO .dop recipe sidecar(s).")
+        logger.debug(f"Included {added} DxO .dop recipe sidecar(s).")
+    return added
 # Real photo types whose Headline/Description we translate. Excludes PNG etc.,
 # so Apple's auto "Screenshot" headline on a .PNG isn't flagged. Mirrors
 # qt/gui/trip_overview.py PHOTO_EXTENSIONS.
@@ -128,7 +129,8 @@ def main(args, config):
                                           config.get("project","PictureDirectory"),
                                           config.get("repository","BiotaWebRoot"))  
     
-    logger.info(f'Will read files recursively from {MyProject.getProjectPath()}.')
+    logger.debug(f'Will read files recursively from {MyProject.getProjectPath()}.')
+    dop_added = 0
     # logging.basicConfig(level=logging.DEBUG)
     # exiftool.ExifTool.__init__(None, common_args=['-G'])
     # ExifToolHelper(check_execute=True) raises on any non-zero exit
@@ -194,7 +196,7 @@ def main(args, config):
         except Exception as e:
             raise SVException(f"No files found in the directory {root}\nError {e}: {e.stderr}{e.stdout}.")
         if misses and workers > 1:
-            logger.info(f"EXIF read split across {workers} parallel exiftool workers.")
+            logger.debug(f"EXIF read split across {workers} parallel exiftool workers.")
         metadata = hits + fresh
         if persist:
             exifcache.update(cache, fresh, fingerprint)
@@ -222,10 +224,10 @@ def main(args, config):
         total_hits = stats["imm_hit"] + stats["mut_hit"]
         logger.info(
             f"Reading EXIF metadata took {metadatareadertime:.1f} seconds for "
-            f"{len(metadata)} files ({total_hits} from cache, {len(misses)} read; "
-            f"immutable {stats['imm_hit']}h/{stats['imm_miss']}m, "
-            f"mutable {stats['mut_hit']}h/{stats['mut_miss']}m)."
+            f"{len(metadata)} files ({total_hits} from cache, {len(misses)} read)."
         )
+        logger.debug(f"EXIF cache: immutable {stats['imm_hit']}h/{stats['imm_miss']}m, "
+                     f"mutable {stats['mut_hit']}h/{stats['mut_miss']}m.")
 
         # Build all rows first (needed for GPS backfill)
         all_rows = []
@@ -412,7 +414,7 @@ def main(args, config):
                     if sibling_row.get(field):
                         row[field] = sibling_row[field]
                 sibling_fill_count += 1
-                logger.info(
+                logger.debug(
                     f"GPS backfill: {row.get('File:FileName', '?')} "
                     f"<- {sibling_row.get('File:FileName', '?')}"
                 )
@@ -428,7 +430,7 @@ def main(args, config):
                 target.get("UniquePictureName", ""),
                 donor.get("UniquePictureName", ""),
             ))
-            logger.info(
+            logger.debug(
                 f"GPS backfill: {target.get('File:FileName', '?')} "
                 f"<- {donor.get('File:FileName', '?')} ({reason})"
             )
@@ -543,7 +545,7 @@ def main(args, config):
             # it per picture cost ~270 ms each, which on a day of backfills was
             # nearly all of the step's time.
             pending_gps_writes.append((xmp_filepath, exif_args))
-            logger.info(
+            logger.debug(
                 f"GPS backfill: queued {' + '.join(parts)} for "
                 f"{target_xmp.get('File:FileName', '?')}"
             )
@@ -556,7 +558,7 @@ def main(args, config):
             from engine.exif_writer import exiftool_write_batch
             t0 = time.time()
             n = exiftool_write_batch(pending_gps_writes)
-            logger.info(f"GPS backfill: wrote {n} sidecar(s) in one exiftool run "
+            logger.debug(f"GPS backfill: wrote {n} sidecar(s) in one exiftool run "
                         f"({time.time() - t0:.1f}s).")
             pending_gps_writes.clear()
 
@@ -586,12 +588,21 @@ def main(args, config):
             r for r in all_rows
             if not _has_gps(r) and r.get("WindowsExtension", "") in WARN_EXTENSIONS
         ]
-        for r in unfilled:
-            logger.warning(f"GPS missing: {r.get('File:FileName', '?')}")
+        # ONE line, not one per picture: a day shot without the GPS logger
+        # running printed 130 red lines. The names stay in the debug log.
+        if unfilled:
+            names = [r.get('File:FileName', '?') for r in unfilled]
+            shown = ", ".join(names[:5]) + (", …" if len(names) > 5 else "")
+            logger.warning(f"GPS missing on {len(names)} picture(s): {shown}"
+                           + (" — the full list is in the log with debug on."
+                              if len(names) > 5 else ""))
+            for n in names:
+                logger.debug(f"GPS missing: {n}")
 
         # Pull in DxO .dop recipe sidecars (exiftool skips them) so they travel
         # into the master with their RAW.
-        _append_dop_rows(all_rows, root, config.getboolean("project", "Recurse", fallback=True))
+        dop_added = _append_dop_rows(all_rows, root,
+                                     config.getboolean("project", "Recurse", fallback=True))
 
         # Write all rows to CSV.  Paths are stored relative to the pictures root
         # (parent of the day folder) so the CSV is portable across machines.
@@ -617,11 +628,12 @@ def main(args, config):
         # Report Headline/Description texts still needing translation validation.
         _report_unverified_translations(MyProject, all_rows)
 
-    # give the filetype report ome space
-    logger.info("")
-    logger.info(f"The files counted by filetype are:")
-    for extent, count in file_extension_count.items():
-        logger.info(f"   {extent.upper()} files: {count}")
+    # One line: the per-type list used to take a heading, a line per type and
+    # two blank lines around it.
+    counts = ", ".join(f"{count} {extent.upper()}"
+                       for extent, count in file_extension_count.items())
+    logger.info(f"Files: {counts or 'none'}"
+                + (f"; {dop_added} DxO .dop recipe(s)" if dop_added else "") + ".")
     # Never silently: a file left out of the trip data is named here, because the
     # cost of a wrong allow list is invisible otherwise (see KNOWN_EXTENSIONS).
     if ignored_extensions:
@@ -632,10 +644,9 @@ def main(args, config):
                        f"pictures, video or sidecars, so they are not part of the "
                        f"trip data. If one of them should be, say so — the list of "
                        f"known types lives in utils/raw_extensions.py.")
-    logger.info("")
 
     totaltime = time.time() - starttime
-    logger.info(
+    logger.debug(
         f'CSV file written to {datafilelocation}, total time {totaltime:.1f} seconds.'
     )
 

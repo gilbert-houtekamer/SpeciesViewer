@@ -185,7 +185,7 @@ def main(args, config):
     blog.mp.ct.writeTranslationCache()
 
     totaltime = time.time() - starttime
-    logger.info(f'Total time for all other work {totaltime:.1f} seconds.')
+    logger.debug(f'Total time for all other work {totaltime:.1f} seconds.')
     blog.logExcludedSpecies()
 
     # Write a URL so the GUI can open something after completion: the day's post

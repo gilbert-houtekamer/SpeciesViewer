@@ -626,7 +626,7 @@ class FilePicture:
         #             read_pictures(self, os.path.join(metadatadir, "review", statemachine, "data_pictures.csv"))
 
         thissteptime = time.time()
-        logger.info(f"Read all committed data from the main repository in {thissteptime-starttime:.1f} seconds.")    
+        logger.debug(f"Read all committed data from the main repository in {thissteptime-starttime:.1f} seconds.")    
     
         # read other files and pictures
         RepositoryFileCount = filecount
@@ -670,7 +670,7 @@ class FilePicture:
         #             read_pictures(self, os.path.join(metadatadir, "review", statemachine, "data_pictures.csv"))
 
         thissteptime = time.time()
-        logger.info(f"Read all committed data from the main repository in {thissteptime-starttime:.1f} seconds.")    
+        logger.debug(f"Read all committed data from the main repository in {thissteptime-starttime:.1f} seconds.")    
     
         # read other files and pictures
         RepositoryFileCount = filecount
@@ -682,6 +682,6 @@ class FilePicture:
         count, from_time, last_time = self.fi.read_file(os.path.join(metadatadirreview, '2017-08-09', 'data_files.csv'), silent=True)
         self.upn.read_pictures(os.path.join(metadatadirreview, '2017-08-09', 'data_pictures.csv'))      
 
-        logger.info(f"Read all new data from project in {time.time()-thissteptime:.1f} seconds.")
+        logger.debug(f"Read all new data from project in {time.time()-thissteptime:.1f} seconds.")
         return [RepositoryFileCount[0], RepositoryPictureCount, RepositoryFileCount[1], RepositoryFileCount[2]]
 

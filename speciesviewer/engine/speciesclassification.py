@@ -290,7 +290,7 @@ class SpeciesClassification:
         # GBIF again.
         self._source_path = speciesfilename
 
-        logger.info(f"Read specification file, now create links.")
+        logger.debug(f"Read specification file, now create links.")
         # The Leaves column on disk is NOT authoritative: every parent's Leaves
         # list is rebuilt here from the children's Up pointers. That is what
         # makes appending to the file safe (see appendSpeciesCollection).
@@ -327,7 +327,7 @@ class SpeciesClassification:
             shown = ", ".join(broken[:10]) + (" …" if len(broken) > 10 else "")
             logger.error(f"{len(broken)} row(s) in {speciesfilename} have an "
                          f"inconsistent reference and were not linked: {shown}")
-        logger.info(f'Read {len(self.sc_dict)} predefined species from {speciesfilename}.')
+        logger.debug(f'Read {len(self.sc_dict)} predefined species from {speciesfilename}.')
         self.converted = any('Sequence' in r for r in self.sc_dict.values())
         self._readAliases(os.path.join(os.path.dirname(speciesfilename), ALIAS_FILE))
         return
@@ -361,18 +361,21 @@ class SpeciesClassification:
             self.dutch_dict.pop(name, None)
             self.english_dict.pop(name, None)
             targets.pop(name, None)
+        # Both are facts about the species LIST, the same on every load, so they
+        # go to the debug log. What the user needs is a picture whose keyword is
+        # one of them — projectlib says that per picture (contested_note).
         if self.contested:
-            logger.info(f"{len(self.contested)} name(s) now mean another species than before "
-                        f"and are not used: {', '.join(sorted(self.contested)[:8])}"
-                        + (" …" if len(self.contested) > 8 else ""))
-        refused = 0
+            logger.debug(f"{len(self.contested)} name(s) now mean another species than before "
+                         f"and are not used: {', '.join(sorted(self.contested))}")
+        refused = []
         for name, tos in targets.items():
             if len(tos) == 1:
                 self.alias_dict[name] = next(iter(tos))
             else:
-                refused += 1
-        logger.info(f"Read {len(self.alias_dict)} alias(es) from {path}"
-                    + (f"; {refused} pointing at two species refused." if refused else "."))
+                refused.append(f"{name} ({' / '.join(sorted(tos))})")
+        logger.debug(f"Read {len(self.alias_dict)} alias(es) from {path}"
+                     + (f"; refused, pointing at two species: {', '.join(sorted(refused))}."
+                        if refused else "."))
 
     # save last version, always save last version under .csv_old  
     def _csvRow(self, name):
@@ -396,7 +399,7 @@ class SpeciesClassification:
 
     def writeSpeciesCollection(self, speciesfilename):
         # Write Picture CSV file
-        logger.info(f'Write {len(self.sc_dict)} updated species data CSV file "{speciesfilename}".')
+        logger.debug(f'Write {len(self.sc_dict)} updated species data CSV file "{speciesfilename}".')
         with open(speciesfilename, "w", newline="", encoding='utf-8') as csvfile:
             writer = csv.DictWriter(csvfile, fieldnames=self._headers(), restval="",
                                     quoting=csv.QUOTE_MINIMAL, delimiter=';')
@@ -763,6 +766,16 @@ class SpeciesClassification:
         return scientificname
 
     # See if we recognize the species from either languages, if not call GBIF
+    def contested_note(self, rawsubject) -> str:
+        """Why a keyword resolves to nothing although it is a well-known name:
+        a split gave it to another species (ch.6), so it no longer says which
+        one is meant. "" when that is not the reason."""
+        name = (rawsubject or "").strip().lower()
+        if name in self.contested:
+            return (f'"{rawsubject}" is an old name that a split gave to another '
+                    f'species, so it no longer says which one is meant')
+        return ""
+
     def getSpecies(self, rawsubject, fuzzy=False):       
         # lower case
         subject = rawsubject.lower().lstrip().rstrip()

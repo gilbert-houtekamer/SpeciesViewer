@@ -46,7 +46,7 @@ class Pictures:
                         except ValueError:
                             pass  # Handle non-numeric values gracefully
 
-        logger.info(f'Read data for {len(self.UniquePictureName_dict)-self.picturecount} pictures from CSV file {picturefile}.')
+        logger.debug(f'Read data for {len(self.UniquePictureName_dict)-self.picturecount} pictures from CSV file {picturefile}.')
         return len(self.UniquePictureName_dict)
     
     # intended to only write project sumary, not all pictures

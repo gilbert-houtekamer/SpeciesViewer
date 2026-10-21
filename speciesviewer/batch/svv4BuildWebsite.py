@@ -319,7 +319,7 @@ def main(args, config):
                     small_web = prefix + getSmallJPG(webtarget)
                     if os.path.isfile(small_src):
                         if not sftp.cachedUpload(small_src, small_web, preserve_mtime=True):
-                            logger.info(f"  Small JPG: {os.path.basename(small_src)}")
+                            logger.debug(f"  Small JPG: {os.path.basename(small_src)}")
                         uploaded_small += 1
                 except Exception as e:
                     logger.warning(f"  Small JPG upload failed for {source}: {e}")

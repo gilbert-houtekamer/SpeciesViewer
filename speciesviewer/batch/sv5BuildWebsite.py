@@ -90,7 +90,7 @@ def main(args, config):
     makeIntroPages(MyProject)
 
     totaltime = time.time() - thissteptime      
-    logger.info(f'Total time for all other work {totaltime:.1f} seconds.')
+    logger.debug(f'Total time for all other work {totaltime:.1f} seconds.')
 
 
 if __name__ == "__main__":

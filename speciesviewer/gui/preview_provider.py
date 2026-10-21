@@ -161,7 +161,10 @@ def _label_on_disk(path):
 
 
 def _dbg(where, key, path, extra=""):
-    logger.info(f"[colour] {where:22} {key:34} disk={_label_on_disk(path)!r:10} {extra}")
+    # Debug only — and checked first: _label_on_disk reads the sidecar.
+    if not logger.isEnabledFor(logging.DEBUG):
+        return
+    logger.debug(f"[colour] {where:22} {key:34} disk={_label_on_disk(path)!r:10} {extra}")
 
 
 def next_free_jpg(src) -> Path:
@@ -1184,7 +1187,7 @@ class PreviewCollection(PictureCollection):
                 logger.warning(f"External-edit refresh: exiftool failed: {e}")
                 to_read = []
         if to_read:
-            logger.info(f"[colour] refresh re-reading {len(to_read)} sidecar(s) "
+            logger.debug(f"[colour] refresh re-reading {len(to_read)} sidecar(s) "
                         f"whose mtime changed")
         for key, xmp, mt in to_read:
             self._xmp_mtimes[str(xmp)] = mt
@@ -1208,7 +1211,7 @@ class PreviewCollection(PictureCollection):
                     f"memory={was_label!r}: its sidecar now has no label "
                     f"(raw_disk={_label_on_disk(xmp)!r}); not clearing it")
             elif new_label != was_label:
-                logger.info(
+                logger.debug(
                     f"[colour] refresh updates      {key:34} "
                     f"memory={was_label!r} -> disk={new_label!r}")
                 upn_row["Label"] = new_label
@@ -1764,7 +1767,7 @@ class PreviewCollection(PictureCollection):
             logger.warning(f"apply refused for {upn_key}: collection is read-only.")
             return None
         if new_color is not None:
-            logger.info(f"[colour] apply CALLED         {upn_key:34} "
+            logger.debug(f"[colour] apply CALLED         {upn_key:34} "
                         f"new_color={new_color!r} new_stars={new_stars!r}")
         upn_row = self.fpr.upn.UniquePictureName_dict.get(upn_key)
         if not upn_row:
@@ -1820,7 +1823,7 @@ class PreviewCollection(PictureCollection):
                         _dbg("apply AFTER write", upn_key, fpath,
                              f"wanted={new_color!r}")
                 elif args and ext == "xmp":
-                    logger.info(f"[colour] apply SKIPPED write   {upn_key:34} "
+                    logger.debug(f"[colour] apply SKIPPED write   {upn_key:34} "
                                 f"exists={fpath.exists()} suppress={suppress} args={args}")
                 if new_stars is not None:
                     frow["XMP:Rating"] = str(new_stars)
@@ -1829,7 +1832,7 @@ class PreviewCollection(PictureCollection):
             # Colour/rating into the DxO .dop (PhotoLab reads it on 'import sidecars').
             if raw_path and color_rating_to_dop_enabled():
                 push_metadata_to_dop(raw_path, color=new_color, rating=new_stars)
-                if new_color is not None:
+                if new_color is not None and logger.isEnabledFor(logging.DEBUG):
                     import re as _re
                     try:
                         _t = open(str(raw_path) + ".dop", encoding="utf-8",
@@ -1838,7 +1841,7 @@ class PreviewCollection(PictureCollection):
                         _v = _m.group(1) if _m else "(absent)"
                     except OSError:
                         _v = "(no .dop)"
-                    logger.info(f"[colour] apply .dop AFTER      {upn_key:34} "
+                    logger.debug(f"[colour] apply .dop AFTER      {upn_key:34} "
                                 f"dop_ColorLabel={_v!r} wanted={new_color!r}")
 
         new_rate = _compute_rate(upn_row, self.fpr.fi.files_dict)
@@ -1922,7 +1925,7 @@ class PreviewCollection(PictureCollection):
         wrote = False
         landed = False
         if new_color is not None:
-            logger.info(f"[colour] apply_many CALLED     {len(list(upn_keys)):<34} "
+            logger.debug(f"[colour] apply_many CALLED     {len(list(upn_keys)):<34} "
                         f"new_color={new_color!r} files={len(batch_paths)}")
         if args and batch_paths:
             from engine.exif_writer import run_exiftool_files, _reports_success
@@ -2033,7 +2036,7 @@ class PreviewCollection(PictureCollection):
             return False
         src_row["XMP:Rating"] = rating
         src_row["XMP:Label"] = label
-        logger.info(f"Wrote rating/colour into {src.name} for {upn_key} "
+        logger.debug(f"Wrote rating/colour into {src.name} for {upn_key} "
                     f"(Rating={rating}, Label={label or '-'}).")
         return True
 

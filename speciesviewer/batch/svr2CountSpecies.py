@@ -493,7 +493,7 @@ def main(args, config):
 
     # print(f'{len(species_dict)} lines written for species data to "{config.get("directories","Tables").replace('"', '').replace("'", '')+'species.csv'}".')
     totaltime = time.time() - starttime      
-    logger.info(f'Total time for all other work {totaltime:.1f} seconds.')
+    logger.debug(f'Total time for all other work {totaltime:.1f} seconds.')
 
 
 if __name__ == "__main__":

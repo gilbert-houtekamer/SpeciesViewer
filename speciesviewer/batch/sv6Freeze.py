@@ -440,7 +440,7 @@ def main(args, config):
     RepositoryFileCount, RepositoryPictureCount, from_time, last_time = MyProject.readProject()
     species_count = mergeCurrentTripTotals(MyProject)
 
-    logger.info(f'Now writing consolidated data to a frozen directory for manual review as desired')
+    logger.debug(f'Now writing consolidated data to a frozen directory for manual review as desired')
     # change and append
     AppendChangedFileData(MyProject, RepositoryFileCount)
     AppendChangedPictureData(MyProject, RepositoryPictureCount)
@@ -518,7 +518,7 @@ def main(args, config):
     sc.updateSpeciesCollection(os.path.join(MyProject.ReviewFrozen(),"speciescollection.csv")) 
 
     totaltime = time.time() - starttime      
-    logger.info(f'Total time for all other work {totaltime:.1f} seconds.')
+    logger.debug(f'Total time for all other work {totaltime:.1f} seconds.')
     # The one number to check after a publish: it ends up as the step's own
     # result line ("✅ Day published — …") instead of drowning in the log.
     if species_count:

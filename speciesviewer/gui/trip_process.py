@@ -4544,7 +4544,8 @@ class BlogAdminDialog(QDialog):
         # word-wrapped label kept its own narrow width (2026-10-18)
         msg.setAlignment(Qt.AlignmentFlag.AlignCenter)
         sl.addWidget(msg)
-        movie = QMovie("spinner.gif")
+        from gui.wait_picture import spinner_movie
+        movie = spinner_movie()
         spinner_icon = QLabel()
         spinner_icon.setMovie(movie)
         sl.addWidget(spinner_icon, alignment=Qt.AlignmentFlag.AlignCenter)

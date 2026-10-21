@@ -72,12 +72,12 @@ class Sftp:
         except Exception as err:
             raise Exception(err)
         finally:
-            logger.info(f"Connected to {self.hostname} as {self.username}.")
+            logger.debug(f"Connected to {self.hostname} as {self.username}.")
 
     def disconnect(self):
         """Closes the sftp connection"""
         self.connection.close()
-        logger.info(f"Disconnected from host {self.hostname}")
+        logger.debug(f"Disconnected from host {self.hostname}")
 
     def listdir(self, remote_path):
         """lists all the files and directories in the specified path and returns them"""
@@ -143,7 +143,7 @@ class Sftp:
                 self._invalidate_cache(full)
         try:
             self.connection.rmdir(remote_path)
-            logger.info(f"removed remote dir: {remote_path}")
+            logger.debug(f"removed remote dir: {remote_path}")
         except IOError as e:
             logger.warning(f"could not rmdir remote {remote_path}: {e}")
         self._invalidate_cache(remote_path)
@@ -221,12 +221,12 @@ class Sftp:
                         pass
                     self.put_r_portable(localpath, remotepath, preserve_mtime)
                     if not cacheddir:
-                        logger.info(f'Status:  Created directory {remotepath.replace(self.remote_path, "[WebServer]")}')
+                        logger.debug(f'Status:  Created directory {remotepath.replace(self.remote_path, "[WebServer]")}')
                 else:
                     rc = self.cachedUpload(localpath, remotepath, preserve_mtime)
                     action = 'Cached' if rc else 'Copied'
                     if not rc:
-                        logger.info(f'Status:  {action} {remotepath.replace(self.remote_path, "[WebServer]")}')
+                        logger.debug(f'Status:  {action} {remotepath.replace(self.remote_path, "[WebServer]")}')
             except Exception as e:
                 logger.warning(f"FTP upload skipped '{localpath}': {e}")
     
@@ -258,8 +258,10 @@ class Sftp:
         with open(cachefilepath, 'w') as file:
             json.dump(data_json, file)
 
+        # The one line an upload leaves; each file is in the log with debug on.
         if (self.FTPhits + self.FTPmisses)>0:
-            logger.info(f'{self.FTPhits/(self.FTPhits + self.FTPmisses)*100:.0f}% of FTP JPG transfers are cached.')
+            logger.info(f"Website upload: {self.FTPmisses} file(s) sent, "
+                        f"{self.FTPhits} already on the server.")
         return
     
     # cache, uniquenes is size for JPG, CRC fo other files

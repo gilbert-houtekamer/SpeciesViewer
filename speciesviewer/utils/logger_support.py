@@ -77,11 +77,18 @@ def log_file(name: str) -> Path:
 
 # Filter to suppress noisy ExifTool output
 class SuppressExifToolOutput(logging.Filter):
+    # pyexiftool's own chatter when it is handed our logger: start-up properties,
+    # every command sent, the process start and stop. Kept with debug on.
+    _CHATTER = ("Property '", "Method '")
+
     def filter(self, record):
-        return not (
-            record.name.startswith("qt.imageformats.tiff") or
-            record.getMessage().startswith("ExifToolHelper.execute: OUT stdout =")
-        )
+        msg = record.getMessage()
+        if record.name.startswith("qt.imageformats.tiff") or \
+                msg.startswith("ExifToolHelper.execute: OUT stdout ="):
+            return False
+        if record.levelno <= logging.INFO and msg.startswith(self._CHATTER):
+            return logging.getLogger("speciesviewer").isEnabledFor(logging.DEBUG)
+        return True
 
 # Cross-thread signal carrier for the GUI handler. Kept as a SEPARATE QObject
 # (composition, not inheritance) so that LogHandler itself stays a pure-Python
@@ -183,6 +190,14 @@ def init_logger(log_widget):
     from utils.config import debug_enabled
     logger = logging.getLogger("speciesviewer")
     logger.setLevel(logging.DEBUG if debug_enabled() else logging.INFO)
+    # Qt's own JPEG decoder complains on the terminal about pictures it still
+    # shows fine ("Corrupt JPEG data: premature end of data segment"). Nothing
+    # to act on, so only with debug on.
+    # The SFTP library's "[chan 0] Opened sftp connection" likewise.
+    if not debug_enabled():
+        from PyQt6.QtCore import QLoggingCategory
+        QLoggingCategory.setFilterRules("qt.gui.imageio.jpeg.warning=false")
+        logging.getLogger("paramiko").setLevel(logging.WARNING)
     logger.propagate = False
     logger.handlers.clear()
     # access to global counter

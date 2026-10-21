@@ -230,12 +230,12 @@ class Species:
             UpName = species['Up']
             if UpName != "" and ScientificName not in self.species_dict[UpName]['Leaves']:
                 self.species_dict[UpName]['Leaves'].append(ScientificName)
-        logger.info(f'Read {len(self.species_dict)} predefined species from {speciesfilename}.')
+        logger.debug(f'Read {len(self.species_dict)} predefined species from {speciesfilename}.')
 
         return
 
     def writeSpeciesInfo(self, speciesfilename, commit_counters):
-        logger.info(f'Write all used species data CSV file "{speciesfilename}".')
+        logger.debug(f'Write all used species data CSV file "{speciesfilename}".')
         with open(speciesfilename, "w", newline="", encoding='utf-8') as csvfile:
             speciesheaders = OrderedDict((field, None) for field in SPECIES_FIELDS)
             writer = csv.DictWriter(csvfile, fieldnames=speciesheaders, quoting=csv.QUOTE_MINIMAL, delimiter=';')

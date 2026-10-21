@@ -241,7 +241,7 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
             _t_disc = _time.perf_counter()
             paths = (self._file_list if self._file_list is not None
                      else self.discover_images(image_dir))
-            logger.info("ImagePreviewDialog: discover_images %.2f s (%d files)",
+            logger.debug("ImagePreviewDialog: discover_images %.2f s (%d files)",
                         _time.perf_counter() - _t_disc, len(paths))
             # Ingested-but-not-yet-read folder: if the files have XMP sidecars,
             # use the sidecar-backed collection (reads species/rating/colour).
@@ -258,7 +258,7 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
             else:
                 self._collection = FileListPreviewCollection(
                     paths, cache_root=self.cache_dir, loader=self._loader)
-        logger.info("ImagePreviewDialog: collection ready %.2f s",
+        logger.debug("ImagePreviewDialog: collection ready %.2f s",
                     _time.perf_counter() - _t_coll)
 
         # Hand the precomputed "#" crop flags to a collection that can use them
@@ -713,7 +713,7 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
         if self._start_bar is not None:
             self._start_bar.setVisible(self._start_bar_active)
         self._update_title_for_filter()
-        logger.info("ImagePreviewDialog: __init__ total %.2f s (grid build follows)",
+        logger.debug("ImagePreviewDialog: __init__ total %.2f s (grid build follows)",
                     _time.perf_counter() - _t_coll)
         if initial_keys is not None:
             QTimer.singleShot(0, lambda: self._rebuild_grid_from_keys(initial_keys))
@@ -1425,7 +1425,7 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
             # nothing", and that question is asked here, not by the layout.
             self._empty_grid_notice()
         if tc is not None and self._order:
-            logger.info("Culling grid: %d pictures in %.2f s — %s",
+            logger.debug("Culling grid: %d pictures in %.2f s — %s",
                         len(self._order), _t.monotonic() - t0,
                         tc.stats_line(len(self._bound)))
 
@@ -2344,7 +2344,7 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
                 if k in image_changed:
                     card.reload_thumbnail()   # re-decode: new render / re-crop
             self._notify_large_view(k, reload_image=(k in image_changed))
-        logger.info(f"Refreshed {len(changed)} picture(s) from disk (external edits).")
+        logger.debug(f"Refreshed {len(changed)} picture(s) from disk (external edits).")
 
     def _flush_collection_csv(self):
         """Persist the collection's debounced day-CSV writes now."""

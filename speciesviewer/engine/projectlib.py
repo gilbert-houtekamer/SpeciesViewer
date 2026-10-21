@@ -347,7 +347,7 @@ class Project:
                     read_pictures(self, os.path.join(metadatadir, "review", statemachine, "data_pictures.csv"))
                     
         thissteptime = time.time()
-        logger.info(f"Read all committed data from the main repository in {thissteptime-starttime:.1f} seconds.")
+        logger.debug(f"Read all committed data from the main repository in {thissteptime-starttime:.1f} seconds.")
 
         # read other files and pictures
         RepositoryFileCount = len(self.files_dict)
@@ -355,7 +355,7 @@ class Project:
         count, from_time, last_time = read_file(self, os.path.join(metadatadirreview, 'data_files.csv'), silent=True)
         read_pictures(self, os.path.join(metadatadirreview, 'data_pictures.csv'))      
 
-        logger.info(f"Read all new data from project in {time.time()-thissteptime:.1f} seconds.")
+        logger.debug(f"Read all new data from project in {time.time()-thissteptime:.1f} seconds.")
         return [RepositoryFileCount, RepositoryPictureCount, from_time, last_time]
     
     def readMasterCommitted(self, silent=False):
@@ -597,7 +597,7 @@ class Project:
 
             speciesOverviewFile.close()
 
-        logger.info(f'Written all Species data to "{outpath}".')
+        logger.debug(f'Written all Species data to "{outpath}".')
         return
     
     # Intro pages, can be used generically
@@ -638,7 +638,7 @@ class Project:
         
             IntroFile.close()
 
-        logger.info(f"""Written page webpage to "{(self.getBiotaDir() + simplepage + ".html").lower()}".""")
+        logger.debug(f"""Written page webpage to "{(self.getBiotaDir() + simplepage + ".html").lower()}".""")
         return
     
     # find the JPGs with highest Rating
@@ -1004,8 +1004,13 @@ class Project:
                             break
                         continue
                     if scientificname == "":
-                        logger.warning(f"""The species "{subject_in_jpg}" is not found in the GBIF database as a scientific name for "{upn['UniquePictureName']}".""")
-                        picture['errormessage'] = f"""The species "{subject_in_jpg}" is not found in the GBIF database as a scientific name for "{upn['UniquePictureName']}"."""
+                        contested = (self.sc.contested_note(subject_in_jpg)
+                                     if hasattr(self.sc, "contested_note") else "")
+                        msg = (f"""{contested} — in "{upn['UniquePictureName']}", correct it to the species you saw."""
+                               if contested else
+                               f"""The species "{subject_in_jpg}" is not found in the GBIF database as a scientific name for "{upn['UniquePictureName']}".""")
+                        logger.warning(msg)
+                        picture['errormessage'] = msg
                     elif scientificname == None:
                         # "not resolved" has two very different causes: a real
                         # typo GBIF rejected, or a GBIF lookup that never ran
@@ -1015,7 +1020,14 @@ class Project:
                         # "correct it".
                         gbif_broken = (getattr(getattr(sp, "sc", None), "_gbif_lookup_errors", 0) > 0
                                        or getattr(getattr(sp, "sc", None), "_gbif_offline", False))
-                        if gbif_broken:
+                        contested = (self.sc.contested_note(subject_in_jpg)
+                                     if hasattr(self.sc, "contested_note") else "")
+                        if contested:
+                            # Not a typo: the name is fine, it just stopped naming
+                            # one species. Saying "typo" sent him hunting for one.
+                            msg = (f"""{contested} — in "{thisfile['WindowsFileName']}", """
+                                   f"""correct it to the species you saw.""")
+                        elif gbif_broken:
                             if not getattr(self, "_gbif_unverified_warned", False):
                                 self._gbif_unverified_warned = True
                                 logger.warning("GBIF species lookup is unavailable this run — "
@@ -1092,7 +1104,7 @@ class Project:
                         if thisfile['File:FileName'] not in species['JPGmap']:
                             species['JPGmap'].append(thisfile['File:FileName'])
 
-        logger.info(f"Species information added for {recognized_species} pictures.")
+        logger.debug(f"Species information added for {recognized_species} pictures.")
         return 0
 
     # Collect the JPGs, the best file per picture.
@@ -1119,8 +1131,13 @@ class Project:
         # workflow: species may still be assigned in the viewer after Read &
         # Summarize). The two roots roll up independently — a landscape-only day
         # has a 'topics' root but no 'biota'.
+        # Asked of THIS day's pictures. It used to be read off the species tree,
+        # which also holds every species of the trip's earlier days — once one day
+        # was published the warning never came again (2026-10-21).
+        if not any(upn.get('WetSoortNaam') for upn in
+                   list(self.UniquePictureName_dict.values())[firstUPNtoProcess:]):
+            logger.warning(f"No species named on {Path(str(self.NewPictDir)).name} yet — name them in the culling viewer, then Read & Summarize again.")
         if 'biota' not in sp.species_dict and 'topics' not in sp.species_dict:
-            logger.warning("No recognized species in this batch — data_pictures.csv written without species assignment.")
             return 0
 
         # Add counters from species to higher levels, tail-recursion works fine
@@ -1141,7 +1158,7 @@ class Project:
     # Add statistics file (sf)
     def addMetricsToLog(self, sp, firstUPNtoProcess, filename):
         # open file
-        logger.info(f'Write report to "{filename}"')
+        logger.debug(f'Write report to "{filename}"')
         with open(filename, "w", newline="", encoding='utf-8') as sf:
             # Add properties for picture
             processedUPNs = 0
@@ -1190,7 +1207,6 @@ class Project:
                     SpeciesJPGCount[upn['WetSoortNaam']] = [pictures+1, jpgs, starred, yellow_or_red, keep]
             # report
             if processedUPNs:
-                logger.info("")
                 if NoGPSPos:
                     print(f"No GPS specified for          {NoGPSPos:5} ({int(float(NoGPSPos)/float(processedUPNs)*100)}%) of all images", file=sf)
                 else:

@@ -187,7 +187,8 @@ class BatchModuleRunner:
         message_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(message_label)
 
-        movie = QMovie("spinner.gif")
+        from gui.wait_picture import spinner_movie
+        movie = spinner_movie()
         spinner_label = QLabel()
         spinner_label.setMovie(movie)
         layout.addWidget(spinner_label, alignment=Qt.AlignmentFlag.AlignCenter)
@@ -301,7 +302,7 @@ class ChainedBatchRunner:
     """
 
     def __init__(self, parent, main_window, steps, module_config, sm, directory_name,
-                 on_complete, title="Please wait…"):
+                 on_complete, title="Please wait…", picture="golden_macaws"):
         self._parent = parent
         self._main_window = main_window
         self._steps = steps
@@ -319,9 +320,10 @@ class ChainedBatchRunner:
         self._spinner = QDialog(parent)
         self._spinner.setWindowTitle(title)
         self._spinner.setModal(True)
-        self._spinner.setFixedSize(420, 170)
-
-        layout = QVBoxLayout(self._spinner)
+        # the chatting macaws (his Firefly set): Publish Day can take minutes,
+        # and the plain box looked stuck (2026-10-21)
+        from gui.wait_picture import wait_layout
+        layout = wait_layout(self._spinner, picture, 420, 170)
         self._step_label = QLabel("")
         self._step_label.setWordWrap(True)
         # full width, text aligned inside — with an addWidget alignment a
@@ -332,7 +334,8 @@ class ChainedBatchRunner:
         self._progress_label = QLabel("")
         layout.addWidget(self._progress_label, alignment=Qt.AlignmentFlag.AlignCenter)
 
-        movie = QMovie("spinner.gif")
+        from gui.wait_picture import spinner_movie
+        movie = spinner_movie()
         spinner_icon = QLabel()
         spinner_icon.setMovie(movie)
         layout.addWidget(spinner_icon, alignment=Qt.AlignmentFlag.AlignCenter)
@@ -460,7 +463,8 @@ class ColumnBatchRunner:
         self._progress_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(self._progress_label)
 
-        movie = QMovie("spinner.gif")
+        from gui.wait_picture import spinner_movie
+        movie = spinner_movie()
         spinner_icon = QLabel()
         spinner_icon.setMovie(movie)
         layout.addWidget(spinner_icon, alignment=Qt.AlignmentFlag.AlignCenter)

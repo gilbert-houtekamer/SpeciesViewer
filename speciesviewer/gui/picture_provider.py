@@ -250,7 +250,7 @@ def verify_crop_written(raw_path, crop, res=None, who="") -> bool:
         ("left", "top", "width", "height"))
     name = Path(str(raw_path)).name
     if ok:
-        logger.info(f"crop written [{who}] {name}: channels={channels}, reads back OK")
+        logger.debug(f"crop written [{who}] {name}: channels={channels}, reads back OK")
     else:
         logger.error(
             f"crop NOT readable after writing [{who}] {name}: channels={channels}, "

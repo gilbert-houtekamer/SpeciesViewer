@@ -83,7 +83,7 @@ def read_file(MyProject, filename, silent=False):
             elif not silent:
                 logger.warning(f"Unexpected duplicate file {row['WindowsFileName']} not added, ")
                 logger.warning(f"File was already found here {MyProject.files_dict[row['File:FileName']]['WindowsFileName']}.")
-    logger.info(f'Read EXIF data for {len(MyProject.files_dict)-filecount} files from CSV file {filename}.')
+    logger.debug(f'Read EXIF data for {len(MyProject.files_dict)-filecount} files from CSV file {filename}.')
     return len(MyProject.files_dict), from_time, last_time
 
 # read picture data file, one record for each picture, with links to files (ORF, jpg, XMP, etc)
@@ -112,7 +112,7 @@ def read_pictures(MyProject, picturefile):
                     except ValueError:
                         pass  # Handle non-numeric values gracefully
 
-    logger.info(f'Read data for {len(MyProject.UniquePictureName_dict)-picturecount} pictures from CSV file {picturefile}.')
+    logger.debug(f'Read data for {len(MyProject.UniquePictureName_dict)-picturecount} pictures from CSV file {picturefile}.')
     return len(MyProject.UniquePictureName_dict)
 
 def read_Files_CSV():

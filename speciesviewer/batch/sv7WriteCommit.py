@@ -121,7 +121,7 @@ def putSharedWebAssets(MyProject, sftp):
     if sent:
         logger.info(f"Refreshed {sent} shared web asset(s) (stylesheet / map library).")
     else:
-        logger.info("Shared web assets (stylesheet / map library) were already current.")
+        logger.debug("Shared web assets (stylesheet / map library) were already current.")
 
 
 def ensureSiteSkeletons(MyProject, sftp):
@@ -205,7 +205,7 @@ def putRecursiveTreeWeb(MyProject, config):
             jpgResizeCopy(source)
 #           sftp.connection.put(getSmallJPG(source), ftptarget)
             if not sftp.cachedUpload(getSmallJPG(source), ftptarget):
-                logger.info(f"Small image for All Species report: {getSmallJPG(source)}")
+                logger.debug(f"Small image for All Species report: {getSmallJPG(source)}")
 
     sftp.closeFTPCache(location_cache)    
     sftp.disconnect()
@@ -293,7 +293,7 @@ def main(args, config):
         # TODO rewrite the Blog with active links to species
 
     totaltime = time.time() - starttime
-    logger.info(f'sv7WriteCommit: Total time for all other work {totaltime:.1f} seconds.')
+    logger.debug(f'sv7WriteCommit: Total time for all other work {totaltime:.1f} seconds.')
 
 if __name__ == "__main__":
     # get commandline parameters

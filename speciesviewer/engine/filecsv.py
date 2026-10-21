@@ -63,7 +63,7 @@ class Files:
                 elif not silent:
                     logger.warning(f"Unexpected duplicate file {row['WindowsFileName']} not added, ")
                     logger.warning(f"File was already found here {self.files_dict[row['File:FileName']]['WindowsFileName']}.")
-        logger.info(f'Read EXIF data for {len(self.files_dict)-runningcounter} files from CSV file {filename}.')
+        logger.debug(f'Read EXIF data for {len(self.files_dict)-runningcounter} files from CSV file {filename}.')
         return len(self.files_dict), from_time, last_time
     
     def write_project_files(self):

@@ -626,7 +626,7 @@ class SpeciesInfoPanel(QWidget):
                              if h.isVisible()))
         if shown != self._qual_shown_last:
             self._qual_shown_last = shown
-            logger.info(
+            logger.debug(
                 f"[qualifiers] {self.subject_field.get_text().strip()!r} -> "
                 f"species={sci or '(unresolved)'} "
                 f"kingdom={lin.get('kingdom', '?')} phylum={lin.get('phylum', '?')} "

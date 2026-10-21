@@ -126,7 +126,7 @@ def getTemplateOutputString(MyProject, species, file, picture, TemplateLine):
                     except Exception as e:
                         outputLine += '<Failed to handle token ' + token + '>'
                         who = "Blog index" if species is None else species['ScientificName']
-                        logger.info(f"{who}: failed token {token}: {e}")
+                        logger.warning(f"{who}: failed token {token}: {e}")
                 OddPosition = 1 - OddPosition
             return outputLine
     except Exception as e:

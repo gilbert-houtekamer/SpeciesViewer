@@ -525,7 +525,7 @@ def _taxon_index() -> dict:
         except OSError as e:
             logger.warning(f"taxon index: cannot read {p}: {e}")
     _TAXON_INDEX.update(key=key, up=up, level=lvl, alias=alias)
-    logger.info(f"[qualifiers] taxon index rebuilt: {len(up)} taxa "
+    logger.debug(f"[qualifiers] taxon index rebuilt: {len(up)} taxa "
                 f"(+{len(alias)} vernacular names) from {len(srcs)} species tree(s)")
     return _TAXON_INDEX
 

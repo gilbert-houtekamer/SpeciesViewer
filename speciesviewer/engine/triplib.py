@@ -282,7 +282,7 @@ class Trip:
     # write back 
     def write_TripAdmin(self):
         # Write Picture CSV file
-        logger.info(f'Write all trip data in CSV file "{self.getTripAdminFile()}".')
+        logger.debug(f'Write all trip data in CSV file "{self.getTripAdminFile()}".')
         # Canonical column order — also the fallback when no trips remain, so an
         # emptied admin still writes a valid header-only CSV instead of crashing.
         headers = ['master_repository_web', 'master_repository_disk', 'trip_banner',
