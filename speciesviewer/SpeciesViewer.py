@@ -88,7 +88,20 @@ SPLASH_SIZE = QSize(1200, 675)
 SPLASH_FADE = 150      # 0 = no fade; up to 255 = black under the text
 
 
-def _splash_pixmap(path: Path | None = None, fade: int = SPLASH_FADE) -> QPixmap:
+def _splash_scale() -> float:
+    """1.0, or less when SPLASH_SIZE would not fit in 85% of the screen's free
+    area: at 2560x1440 and 200% the screen is 720 high and the taskbar covered
+    the subtitle at the bottom (2026-10-21)."""
+    try:
+        free = QApplication.primaryScreen().availableGeometry()
+        return min(1.0, 0.85 * free.width() / SPLASH_SIZE.width(),
+                   0.85 * free.height() / SPLASH_SIZE.height())
+    except AttributeError:          # no screen yet (tests)
+        return 1.0
+
+
+def _splash_pixmap(path: Path | None = None, fade: int = SPLASH_FADE,
+                   size: QSize = SPLASH_SIZE) -> QPixmap:
     """A random picture from assets/splash/ (any .jpg dropped there counts),
     cut to SPLASH_SIZE, darkened towards the bottom so the white text reads
     on light pictures too."""
@@ -97,14 +110,14 @@ def _splash_pixmap(path: Path | None = None, fade: int = SPLASH_FADE) -> QPixmap
         path = random.choice(pictures) if pictures else None
     pix = QPixmap(str(path)) if path else QPixmap()
     if pix.isNull():                     # no pictures: a plain dark splash
-        pix = QPixmap(SPLASH_SIZE)
+        pix = QPixmap(size)
         pix.fill(QColor(40, 44, 40))
     pix = pix.scaled(
-        SPLASH_SIZE, Qt.AspectRatioMode.KeepAspectRatioByExpanding,
+        size, Qt.AspectRatioMode.KeepAspectRatioByExpanding,
         Qt.TransformationMode.SmoothTransformation)
-    x = (pix.width() - SPLASH_SIZE.width()) // 2
-    y = (pix.height() - SPLASH_SIZE.height()) // 2
-    pix = pix.copy(x, y, SPLASH_SIZE.width(), SPLASH_SIZE.height())
+    x = (pix.width() - size.width()) // 2
+    y = (pix.height() - size.height()) // 2
+    pix = pix.copy(x, y, size.width(), size.height())
     if fade:
         h = pix.height()
         grad = QLinearGradient(0, h * 0.55, 0, h)
@@ -118,17 +131,21 @@ def _splash_pixmap(path: Path | None = None, fade: int = SPLASH_FADE) -> QPixmap
 
 def start_main():
     # 🖼️ Splash screen setup
-    splash = QSplashScreen(_splash_pixmap())
+    # Smaller on a small screen — picture and text alike, so the subtitle
+    # still fits on one line above the taskbar.
+    k = _splash_scale()
+    splash = QSplashScreen(_splash_pixmap(
+        size=QSize(int(SPLASH_SIZE.width() * k), int(SPLASH_SIZE.height() * k))))
     splash.setWindowFlag(Qt.WindowType.FramelessWindowHint)
 
-    font_title = QFont("Arial", 20, QFont.Weight.Bold)
+    font_title = QFont("Arial", max(10, round(20 * k)), QFont.Weight.Bold)
     splash.setFont(font_title)
 
     # Use HTML to style each line separately
     splash_text = (
         '<div style="text-align:center;">'
-        '<span style="font-size:24pt; font-weight:bold;color:white;">Welcome to SpeciesViewer</span><br>'
-        '<span style="font-size:16pt;color:white;">Organize species. Explore collections. Bring biodiversity to life.</span>'
+        f'<span style="font-size:{max(12, round(24 * k))}pt; font-weight:bold;color:white;">Welcome to SpeciesViewer</span><br>'
+        f'<span style="font-size:{max(9, round(16 * k))}pt;color:white;">Organize species. Explore collections. Bring biodiversity to life.</span>'
         '</div>'
     )
 
