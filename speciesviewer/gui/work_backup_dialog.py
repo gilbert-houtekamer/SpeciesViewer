@@ -124,16 +124,14 @@ class BackupWorkDialog(QDialog):
         self._day_dirs = [Path(d) for d in day_dirs]
         self._rows: list[dict] = []
         self._thread = None
-        self.resize(760, 480)
+        self.resize(1000, 520)
 
-        outer = QVBoxLayout(self)
         # The jay buries acorns and finds them back months later — a backup.
+        # On the left of the whole dialog, as in Create Excel (2026-10-21).
+        from gui.wait_picture import picture_column
+        outer = picture_column(self, "jay")
         intro_row = QHBoxLayout()
         intro_row.setSpacing(14)
-        from gui.wait_picture import picture_label
-        jay = picture_label("jay", 100, self.devicePixelRatioF())
-        if jay is not None:
-            intro_row.addWidget(jay, alignment=Qt.AlignmentFlag.AlignTop)
         outer.addLayout(intro_row)
         intro_row.addWidget(wrapped(
             "The SD-cards keep the pictures. This backs up the <b>work</b> — culling "

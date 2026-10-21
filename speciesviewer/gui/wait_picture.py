@@ -51,6 +51,25 @@ def picture_label(picture: str, side: int, dpr: float = 1.0) -> QLabel | None:
     return label
 
 
+def picture_column(dialog, picture: str, side: int = 220):
+    """The shared dialog layout (Create Excel, Rebuild all, Read SD-card …):
+    `picture` on the left, centred, and a column beside it. Lays out `dialog`
+    and returns that column for the dialog's own content. Without the picture
+    file the column is simply the whole dialog."""
+    from PyQt6.QtWidgets import QHBoxLayout
+    pic = picture_label(picture, side, dialog.devicePixelRatioF())
+    if pic is None:
+        return QVBoxLayout(dialog)
+    row = QHBoxLayout(dialog)
+    row.setContentsMargins(20, 20, 20, 20)
+    row.setSpacing(24)
+    row.addWidget(pic, alignment=Qt.AlignmentFlag.AlignVCenter)
+    column = QVBoxLayout()
+    column.setSpacing(6)     # a nested layout inherits its parent's 24 px otherwise
+    row.addLayout(column, 1)
+    return column
+
+
 def run_waiting(parent, message: str, work, picture: str | None = "macaws"):
     """Run work() OFF the GUI thread while a small wait box (picture + message)
     stays on screen and responsive; return work()'s result, or re-raise its error.

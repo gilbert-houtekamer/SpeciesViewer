@@ -123,9 +123,12 @@ class EmptyCardDialog(QDialog):
         # the button row's own minimum (~1010 px): the layout wins that argument
         # silently, and a resize() nobody honours is worse than no resize() at
         # all, because the next person changes the number instead of the cause.
-        self.resize(1040, 620)
+        self.resize(1220, 640)
 
-        outer = QVBoxLayout(self)
+        # The swallow, leaving (his Firefly set, 2026-10-21). 180 px, not 220:
+        # this window is already wide (see above), and a laptop screen is not.
+        from gui.wait_picture import picture_column
+        outer = picture_column(self, "swallow", 180)
         # ⚠ WORD WRAP, or this paragraph sets the width of the whole window. A
         # QLabel without it reports the width of its longest unbroken line as
         # its minimum — 3288 px for this text — and minimumSizeHint beats

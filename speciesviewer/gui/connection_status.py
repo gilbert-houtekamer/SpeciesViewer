@@ -31,14 +31,9 @@ class ConnectionStatusDialog(QDialog):
 
         # the chestnut-colored woodpecker, tapping for a signal, on the left
         # (Gilbert's Firefly set, 2026-10-18); the dialog's content beside it
-        from gui.wait_picture import picture_label
-        outer = QHBoxLayout(self)
-        pic = picture_label("woodpecker", 160, self.devicePixelRatioF())
-        if pic is not None:
-            outer.addWidget(pic, alignment=Qt.AlignmentFlag.AlignTop)
-        lay = QVBoxLayout()
-        outer.addLayout(lay, 1)
-        self.setMinimumWidth(480 + (176 if pic is not None else 0))
+        from gui.wait_picture import picture_column
+        lay = picture_column(self, "woodpecker")
+        self.setMinimumWidth(480 + 244)
         intro = QLabel(
             "SpeciesViewer uses a few online services. Each is checked on its "
             "own — a problem with one doesn't mean the others are down. "

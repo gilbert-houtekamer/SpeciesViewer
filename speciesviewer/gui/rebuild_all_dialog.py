@@ -99,16 +99,8 @@ class RebuildAllWebsitesDialog(QDialog):
 
         # The sandgrouse on the left, as in Create Excel (his Firefly set,
         # 2026-10-21); everything else in a column beside it.
-        from gui.wait_picture import picture_label
-        row = QHBoxLayout(self)
-        row.setContentsMargins(20, 20, 20, 20)
-        row.setSpacing(24)
-        pic = picture_label("sandgrouse", 220, self.devicePixelRatioF())
-        if pic is not None:
-            row.addWidget(pic, alignment=Qt.AlignmentFlag.AlignVCenter)
-        lay = QVBoxLayout()
-        lay.setSpacing(6)    # a nested layout inherits its parent's 24 px otherwise
-        row.addLayout(lay, 1)
+        from gui.wait_picture import picture_column
+        lay = picture_column(self, "sandgrouse")
         lay.addWidget(HTMLLabel(
             "<p><b>Rebuild all Albums and the Master website</b></p>"
             "<p>The site is generated, so a fix to a page template or to the "

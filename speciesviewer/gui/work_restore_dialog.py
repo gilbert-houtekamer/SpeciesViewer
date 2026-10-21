@@ -41,9 +41,12 @@ class RestoreWorkDialog(QDialog):
         self._trip = None          # the card entry for this trip
         self._plans = {}           # day name -> plan
         self._ok = False           # identity verified
-        self.resize(940, 560)
+        self.resize(1180, 600)
 
-        outer = QVBoxLayout(self)
+        # The short-eared owl on the left (his Firefly set, 2026-10-21), as in
+        # Create Excel — the jay of the backups has its partner here.
+        from gui.wait_picture import picture_column
+        outer = picture_column(self, "short_eared_owl")
         outer.addWidget(wrapped(
             "Puts back everything except the pictures themselves: the culling "
             "colours, species names, locations, crops, blog text <b>and the "
