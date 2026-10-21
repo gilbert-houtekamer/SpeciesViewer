@@ -17,22 +17,6 @@ DEFAULT_TRIP_PICTURE = str(_SITE_DEFAULTS / "tripimage.jpg")
 DEFAULT_TRIP_BANNER = str(_SITE_DEFAULTS / "tripbanner.jpg")
 
 
-def _nearest_existing_dir(path: str) -> str:
-    """Walk up from path to the nearest directory that actually exists.
-
-    QFileDialog.getExistingDirectory can't navigate into a non-existent
-    starting path; it silently climbs to the nearest ancestor and leaves the
-    missing leaf typed in the edit box, so pre-filled-but-not-yet-created
-    paths (e.g. an unfiled-inbox folder for a new year) trip the native
-    dialog's own "does not exist" complaint on Select Folder.
-    """
-    p = Path(path.strip()) if path else None
-    while p is not None and not p.is_dir():
-        parent = p.parent
-        p = parent if parent != p else None
-    return str(p) if p else ""
-
-
 def _set_valid_glyph(label: QLabel, valid: bool):
     """Show a coloured ✓/✗ validity glyph. Replaces the old black circle-check /
     circle-x PNGs, which were invisible on the dark theme."""
@@ -215,8 +199,10 @@ class ImageFileFieldQt(QWidget):
             self.status_icon.setToolTip("❌ Select valid Trip root first")
             return
 
+        from utils.start_folder import start_folder
         path, _ = QFileDialog.getOpenFileName(
-            self, "Select JPG Image", root_path, "JPEG files (*.jpg *.jpeg)"
+            self, "Select JPG Image", start_folder(self.field.text(), root_path),
+            "JPEG files (*.jpg *.jpeg)"
         )
         if path:
             self.field.setText(path)
@@ -299,7 +285,8 @@ class DirectoryFieldQt(_RevalidateOnActivate, QWidget):
             self.show_hint(tip)
 
     def browse(self, label):
-        start = _nearest_existing_dir(self.field.text())
+        from utils.start_folder import start_folder
+        start = start_folder(self.field.text())
         path = QFileDialog.getExistingDirectory(self, f"Choose folder for {label}", start)
         if path:
             self.field.setText(path)
@@ -372,7 +359,9 @@ class RecentDirectoryFieldQt(_RevalidateOnActivate, QWidget):
             self.show_hint(tip)
 
     def browse(self, label):
-        path = QFileDialog.getExistingDirectory(self, f"Choose folder for {label}", self.get_text())
+        from utils.start_folder import start_folder
+        path = QFileDialog.getExistingDirectory(self, f"Choose folder for {label}",
+                                                start_folder(self.get_text()))
         if path:
             self.set_text(path)
             add_recent_gui_project(path)

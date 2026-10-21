@@ -1,5 +1,7 @@
 from pathlib import Path
 
+from utils.start_folder import start_folder
+
 from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton,
     QFileDialog, QMessageBox, QCheckBox, QTabWidget, QWidget
@@ -143,43 +145,43 @@ class RepoSettingsDialog(QDialog):
         return field
 
     def browse_master(self):
-        start = self.master_field.text() or ""
+        start = start_folder(self.master_field.text())
         path = QFileDialog.getExistingDirectory(self, "Select Master Database Directory", start)
         if path:
             self.master_field.setText(path)
 
     def browse_trip(self):
-        start = self.trips_root_field.text() or self.trip_field.text() or ""
+        start = start_folder(self.trips_root_field.text(), self.trip_field.text())
         path = QFileDialog.getExistingDirectory(self, "Select Trip Database Directory", start)
         if path:
             self.trip_field.setText(path)
 
     def browse_trips_root(self):
-        start = self.trips_root_field.text() or ""
+        start = start_folder(self.trips_root_field.text())
         path = QFileDialog.getExistingDirectory(self, "Select Trips Root Directory", start)
         if path:
             self.trips_root_field.setText(path)
 
     def browse_currentpictures_root(self):
-        start = self.currentpictures_root_field.text() or ""
+        start = start_folder(self.currentpictures_root_field.text())
         path = QFileDialog.getExistingDirectory(self, "Select CurrentPictures Root Directory", start)
         if path:
             self.currentpictures_root_field.setText(path)
 
     def browse_gpslogs_root(self):
-        start = self.gpslogs_root_field.text() or ""
+        start = start_folder(self.gpslogs_root_field.text())
         path = QFileDialog.getExistingDirectory(self, "Select GPS Logs Root Directory", start)
         if path:
             self.gpslogs_root_field.setText(path)
 
     def browse_virttrip(self):
-        start = self.virttrips_root_field.text() or self.virttrip_field.text() or ""
+        start = start_folder(self.virttrips_root_field.text(), self.virttrip_field.text())
         path = QFileDialog.getExistingDirectory(self, "Select Album Database Directory", start)
         if path:
             self.virttrip_field.setText(path)
 
     def browse_virttrips_root(self):
-        start = self.virttrips_root_field.text() or ""
+        start = start_folder(self.virttrips_root_field.text())
         path = QFileDialog.getExistingDirectory(self, "Select Albums Root Directory", start)
         if path:
             self.virttrips_root_field.setText(path)

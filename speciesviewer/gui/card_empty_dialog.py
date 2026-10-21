@@ -214,7 +214,10 @@ class EmptyCardDialog(QDialog):
         return row
 
     def _choose_card(self):
-        path = QFileDialog.getExistingDirectory(self, "The card you want to empty")
+        from utils.start_folder import card_folder
+        path = QFileDialog.getExistingDirectory(
+            self, "The card you want to empty",
+            card_folder(self._card or "", not_on=keeper_location()))
         if not path:
             return
         self._card = path
@@ -240,7 +243,9 @@ class EmptyCardDialog(QDialog):
         self._summary.setText("Press Check card.")
 
     def _choose_keeper(self):
-        path = QFileDialog.getExistingDirectory(self, "Where the keepers go")
+        from utils.start_folder import start_folder
+        path = QFileDialog.getExistingDirectory(self, "Where the keepers go",
+                                                start_folder(keeper_location()))
         if not path:
             return
         set_keeper_location(path)

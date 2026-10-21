@@ -51,8 +51,9 @@ def _active_day(main_window, action):
 def register_existing_day(main_window):
     """Register an existing YYYY-MM-DD folder (no copying)."""
     start = days_registry.load_days()
-    start_dir = start[0]["folder"] if start else \
-        _config_lastdir(main_window)
+    from utils.start_folder import start_folder
+    start_dir = start_folder(start[0]["folder"] if start else "",
+                             _config_lastdir(main_window))
     chosen = QFileDialog.getExistingDirectory(
         main_window, "Choose a day folder (named YYYY-MM-DD)", start_dir)
     if not chosen:

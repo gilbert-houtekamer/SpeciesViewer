@@ -197,8 +197,11 @@ def ensure_currentpictures_root(parent) -> str:
         "readable on another machine.\n\n"
         "You are asked this once."
         + (f"\n\nSuggested: {guess}" if guess else ""))
+    from pathlib import Path
+    from utils.start_folder import start_folder
     chosen = QFileDialog.getExistingDirectory(
-        parent, "Pictures folder (the one containing 2025, 2026, …)", guess or "")
+        parent, "Pictures folder (the one containing 2025, 2026, …)",
+        start_folder(guess, Path.home() / "Pictures"))
     if not chosen:
         return ""
     chosen = os.path.normpath(chosen)

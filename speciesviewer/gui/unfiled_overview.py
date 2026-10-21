@@ -286,8 +286,9 @@ def _move_elsewhere(self, row, folder):
     live somewhere sensible. The move is all SpeciesViewer does; it keeps no
     record of where the day went."""
     day = _day_at(self, row)
+    from utils.start_folder import start_folder
     chosen = QFileDialog.getExistingDirectory(
-        self, f"Move {day} into which folder?", os.path.dirname(folder))
+        self, f"Move {day} into which folder?", start_folder(os.path.dirname(folder)))
     if not chosen:
         return
     ok, msg = unfiled.move_day_to(folder, chosen)

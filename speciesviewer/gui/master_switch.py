@@ -131,8 +131,9 @@ class NewMasterDialog(QDialog):
 
     def _browse(self):
         from PyQt6.QtWidgets import QFileDialog
+        from utils.start_folder import start_folder
         chosen = QFileDialog.getExistingDirectory(
-            self, "Choose an EMPTY folder for the new collection")
+            self, "Choose an EMPTY folder for the new collection", start_folder())
         if chosen:
             self._folder_follows = False
             self.folder.setText(chosen)
@@ -404,8 +405,10 @@ def create_collection(main_window, folder=None) -> None:
     from PyQt6.QtWidgets import QApplication, QFileDialog
     from engine.master_create import CreateMasterError, check_folder, create_master_collection
     if folder is None:
+        from utils.start_folder import start_folder
         chosen = QFileDialog.getExistingDirectory(
-            main_window, "Choose an EMPTY folder for the new master collection")
+            main_window, "Choose an EMPTY folder for the new master collection",
+            start_folder())
         if not chosen:
             return
         folder = chosen

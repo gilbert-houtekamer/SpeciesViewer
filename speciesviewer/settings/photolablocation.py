@@ -78,7 +78,8 @@ class PhotoLabLocationDialog(QDialog):
             self.hint.setStyleSheet("color: #c0392b; font-size: 11px;")
 
     def _browse(self):
-        start = os.path.dirname(self.field.text().strip()) or "C:/Program Files"
+        from utils.start_folder import start_folder
+        start = start_folder(self.field.text(), "C:/Program Files")
         path, _ = QFileDialog.getOpenFileName(
             self, "Select the DxO PhotoLab program", start,
             "Programs (*.exe);;All files (*)")

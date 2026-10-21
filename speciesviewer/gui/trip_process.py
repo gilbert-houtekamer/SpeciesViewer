@@ -4285,9 +4285,8 @@ class CountSpeciesDialog(BaseTripModuleDialog):
                 f"✅ All {len(rows)} species have a JPG.")
 
     def save_report(self):
-        pic_dir = _config.get("project", "picturedirectory", fallback="").strip()
-        default_dir = str(Path(pic_dir).parent) if pic_dir else ""
-        default_path = str(Path(default_dir) / "Species overview.txt") if default_dir else ""
+        from utils.start_folder import start_file
+        default_path = start_file([], "Species overview.txt")   # the trip's picture folder
         filename, _ = QFileDialog.getSaveFileName(
             self, "Save Report As", default_path, "Text Files (*.txt);;All Files (*)"
         )
@@ -4310,9 +4309,8 @@ class CountSpeciesDialog(BaseTripModuleDialog):
             return
         with open(source, "r", encoding="utf-8-sig", newline="") as f:
             rows = list(csv.reader(f))
-        pic_dir = _config.get("project", "picturedirectory", fallback="").strip()
-        default_dir = str(Path(pic_dir).parent) if pic_dir else ""
-        default_path = str(Path(default_dir) / "Species table.xlsx") if default_dir else ""
+        from utils.start_folder import start_file
+        default_path = start_file([], "Species table.xlsx")     # the trip's picture folder
         filename, chosen = QFileDialog.getSaveFileName(
             self, "Save Species Table As", default_path,
             "Excel Workbook (*.xlsx);;CSV (*.csv)")
@@ -5464,8 +5462,8 @@ class ConvertAvibaseDialog(BaseTripModuleDialog):
 
     def _browse_source(self):
         current = self.source_field.text().strip()
-        start_dir = (os.path.dirname(current) if current
-                     else str(self.trip_root))
+        from utils.start_folder import start_folder
+        start_dir = start_folder(current, str(self.trip_root or ""))
         path, _ = QFileDialog.getOpenFileName(
             self, "Select the trip's bird list", start_dir,
             "Species lists (*.xlsx *.xlsm *.csv);;Spreadsheets (*.xlsx *.xlsm);;"
@@ -5962,8 +5960,11 @@ class ImportTripDialog(QDialog):
         self.zip_field.textChanged.connect(self._inspect)
 
     def _browse_zip(self):
+        from utils.start_folder import start_folder
         path, _ = QFileDialog.getOpenFileName(
-            self, "Select Trip ZIP", "", "ZIP files (*.zip);;All files (*)")
+            self, "Select Trip ZIP",
+            start_folder(self.zip_field.text(), Path.home() / "Downloads"),
+            "ZIP files (*.zip);;All files (*)")
         if path:
             self.zip_field.setText(path)
 
@@ -6322,8 +6323,11 @@ class InstallSmallMasterDialog(QDialog):
         self.zip_field.textChanged.connect(self._update_contents)
 
     def _browse_zip(self):
+        from utils.start_folder import start_folder
         path, _ = QFileDialog.getOpenFileName(
-            self, "Select SmallMaster ZIP", "", "ZIP files (*.zip);;All files (*)")
+            self, "Select SmallMaster ZIP",
+            start_folder(self.zip_field.text(), Path.home() / "Downloads"),
+            "ZIP files (*.zip);;All files (*)")
         if path:
             self.zip_field.setText(path)
 

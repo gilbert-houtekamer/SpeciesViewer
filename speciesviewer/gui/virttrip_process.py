@@ -1272,8 +1272,11 @@ class ImportVirtualTripDialog(QDialog):
         self.zip_field.textChanged.connect(self._update_destination)
 
     def _browse_zip(self):
+        from utils.start_folder import start_folder
         path, _ = QFileDialog.getOpenFileName(
-            self, "Select Album ZIP", "", "ZIP files (*.zip);;All files (*)")
+            self, "Select Album ZIP",
+            start_folder(self.zip_field.text(), Path.home() / "Downloads"),
+            "ZIP files (*.zip);;All files (*)")
         if path:
             self.zip_field.setText(path)
 

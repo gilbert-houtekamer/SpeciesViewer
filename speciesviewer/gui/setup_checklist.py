@@ -167,7 +167,9 @@ def locate_exiftool(parent) -> None:
         return
     if box.clickedButton() is not choose:
         return
-    chosen, _ = QFileDialog.getOpenFileName(parent, "Choose exiftool")
+    from utils.start_folder import start_folder
+    chosen, _ = QFileDialog.getOpenFileName(parent, "Choose exiftool",
+                                            start_folder(Path.home() / "Downloads"))
     if not chosen:
         return
     try:

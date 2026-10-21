@@ -156,8 +156,9 @@ class TracklogGeotagDialog(QDialog):
         # Next best (especially on a machine where nothing's been browsed
         # yet): the configured GPS-logs root, a real hint rather than a
         # coincidence. initial_dir (the card/day folder) is the last resort.
-        start_dir = (get_cache_gui_section("tracklog_geotag", "dir")
-                    or get_gpslogs_root() or self._initial_dir)
+        from utils.start_folder import start_folder
+        start_dir = start_folder(get_cache_gui_section("tracklog_geotag", "dir"),
+                                 get_gpslogs_root(), self._initial_dir)
         paths, _ = QFileDialog.getOpenFileNames(
             self, "Choose tracklog file(s)", start_dir,
             "Tracklog files (*.gpx *.log);;GPX files (*.gpx);;OM-1 log files (*.log)")

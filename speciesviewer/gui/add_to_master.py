@@ -729,8 +729,9 @@ class AddToMasterDialog(QDialog):
             logger.info(f"add_to_master: could not persist recurse: {e}")
 
     def _browse(self):
-        start = (self.dir_edit.text().strip()
-                 or _config.get("project", "picturedirectory", fallback=""))
+        from utils.start_folder import start_folder
+        start = start_folder(self.dir_edit.text(),
+                             _config.get("project", "picturedirectory", fallback=""))
         chosen = QFileDialog.getExistingDirectory(self, "Choose a picture folder", start)
         if chosen:
             self.dir_edit.setText(chosen)

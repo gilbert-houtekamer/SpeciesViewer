@@ -174,9 +174,8 @@ class TripNamePanel(QWidget):
         self._refresh()
 
     def _browse_pictures(self):
-        start = self.pictures.text().strip() or self.pictures_root
-        while start and not Path(start).is_dir() and Path(start).parent != Path(start):
-            start = str(Path(start).parent)
+        from utils.start_folder import start_folder
+        start = start_folder(self.pictures.text(), self.pictures_root)
         chosen = QFileDialog.getExistingDirectory(self, f"Choose the {self.kind}'s pictures folder", start)
         if chosen:
             self.pictures.setText(str(Path(chosen)))

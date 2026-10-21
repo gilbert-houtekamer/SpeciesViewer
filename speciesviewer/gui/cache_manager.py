@@ -569,9 +569,11 @@ class ManageCachesDialog(QDialog):
             is_overridden,
         )
         kind = row["kind"]
+        from utils.start_folder import start_folder
         current = cache_root(kind)
         chosen = QFileDialog.getExistingDirectory(
-            self, f"Choose a folder for the {row['title']} cache", str(current))
+            self, f"Choose a folder for the {row['title']} cache",
+            start_folder(str(current)))
         if not chosen:
             return
         chosen_p = Path(chosen)
