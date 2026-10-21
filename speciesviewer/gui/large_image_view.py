@@ -2002,7 +2002,8 @@ class LargeImageView(QDialog):
     def _update_crop_btn(self):
         if getattr(self, "_crop_mode", False):
             self._crop_btn.setText("✂ Cropping…")
-            self._crop_btn.setToolTip("Drawing a crop — Enter applies, Esc cancels.")
+            self._crop_btn.setToolTip("Drawing a crop — click here or press Enter to "
+                                      "apply it, Esc cancels.")
         else:
             self._crop_btn.setText("✂ Crop")
             self._crop_btn.setToolTip(
@@ -2011,7 +2012,10 @@ class LargeImageView(QDialog):
 
     def _toggle_crop_mode(self):
         if self._crop_mode:
-            self._exit_crop_mode(reload=True)
+            # A second click APPLIES, as Enter does — it used to cancel, which
+            # threw the drawn crop away (his expectation, 2026-10-21). Esc cancels.
+            if not self._apply_pending_crop():
+                self._exit_crop_mode(reload=True)   # nothing drawn: just leave
         else:
             self._enter_crop_mode()
 
@@ -2144,6 +2148,7 @@ class LargeImageView(QDialog):
         if self._item is None:
             return
         key = self._item.key
+        had_jpg = self._shows_a_jpg(self._item)   # before the rebind below
         try:
             res = self._item.set_crop(crop)
         except Exception as e:
@@ -2161,6 +2166,56 @@ class LargeImageView(QDialog):
             extra = f"  (created {', '.join(created)})" if created else ""
             logger.info("Crop suggestion written to PhotoLab + Lightroom "
                         f"sidecars.{extra}")
+            if had_jpg:
+                self._tell_jpg_keeps_old_crop()
+
+    def _shows_a_jpg(self, item) -> bool:
+        """Does this picture have a JPG the viewer shows instead of the RAW?
+        Asked of the DISK as well: a JPG PhotoLab exported after the last Read
+        & Summarize is not in the day's file table yet, but the viewer finds and
+        shows it (2026-10-21, NA193864_DxO.jpg) — the table alone said "no JPG"."""
+        if getattr(item, "has_jpg", False):
+            return True
+        try:
+            raw = self._collection.raw_path(item.key)
+        except Exception:
+            raw = None
+        if not raw:
+            return False
+        import glob
+        from pathlib import Path
+        raw = Path(raw)
+        stem = raw.stem.lower()
+        for p in raw.parent.glob(glob.escape(raw.stem) + "*"):
+            s = p.stem.lower()
+            # the same picture: "<name>.jpg", "<name>_DxO.jpg", "<name>-1.jpg" —
+            # not NA1938641.jpg, which merely starts with NA193864
+            same = s == stem or s[len(stem):len(stem) + 1] in ("_", "-")
+            if same and p.suffix.lower() in (".jpg", ".jpeg") and not s.endswith("-small"):
+                return True
+        return False
+
+    def _tell_jpg_keeps_old_crop(self):
+        """As designed, but surprising (his report, 2026-10-21): a picture with a
+        JPG is SHOWN as that JPG, so a new crop changes nothing on screen until
+        the JPG is made again. Say so — each time, until "Don't show this again"."""
+        from utils.gui_config import get_cache_gui_section, update_cache_gui_section
+        if get_cache_gui_section("crop", "jpg_notice_off") == "1":
+            return
+        from PyQt6.QtWidgets import QCheckBox, QMessageBox
+        box = QMessageBox(self)
+        box.setIcon(QMessageBox.Icon.Information)
+        box.setWindowTitle("Crop saved")
+        box.setText("The new crop is saved for PhotoLab and Lightroom.")
+        box.setInformativeText(
+            "This picture already has a JPG, and SpeciesViewer shows that JPG — "
+            "so you still see the old framing. Export the JPG again from PhotoLab "
+            "(or use Create JPG) to see the new crop here and on the website.")
+        never = QCheckBox("Don't show this again")
+        box.setCheckBox(never)
+        box.exec()
+        if never.isChecked():
+            update_cache_gui_section("crop", "jpg_notice_off", "1")
 
     def _on_create_jpg(self):
         """Bake a website-ready JPG (embedded preview + crop) for the current
