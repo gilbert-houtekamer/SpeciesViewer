@@ -449,8 +449,10 @@ class MasterDB:
         (build → checkpoint) is safe: checkpoint() never takes _build_lock."""
         import csv
 
-        def note(msg: str) -> None:
-            logger.info(msg)
+        def note(msg: str, level=logging.DEBUG) -> None:
+            # The steps are progress for the wait window; only the result is
+            # worth a line in the log (2026-10-21).
+            logger.log(level, msg)
             _diag(f"rebuild: {msg}")
             if progress_cb:
                 progress_cb(msg)
@@ -549,8 +551,11 @@ class MasterDB:
         dt = time.time() - t0
         n_pics = con.execute("SELECT COUNT(*) FROM pictures").fetchone()[0]
         n_files = con.execute("SELECT COUNT(*) FROM files").fetchone()[0]
-        note(f"Master DB built: {n_pics} pictures, {n_files} files in {dt:.1f}s "
-             f"({self._db_path})")
+        # The same database serves a trip (trip_<id>.db): say which it is —
+        # "Master DB built: 771 pictures" for a trip read as the master.
+        what = "Trip" if Path(self._db_path).name.startswith("trip_") else "Master"
+        note(f"{what} database built: {n_pics} pictures, {n_files} files in {dt:.1f}s "
+             f"({self._db_path})", level=logging.INFO)
 
     # ── queries (return dicts shaped like the CSV readers do) ─────────────
     def picture_count(self) -> int:

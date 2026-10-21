@@ -48,7 +48,8 @@ def main(args, config):
     msg = f"Cleared {removed} day directories and reset active data in {totaltime:.1f}s."
     if refreshed:
         msg += " The trip now uses the master's converted species list."
-    logger.info(msg)
+    # Returned, not logged: the runner puts the returned line in the log, and
+    # logging it here too printed it twice (2026-10-21).
     return msg
 
 

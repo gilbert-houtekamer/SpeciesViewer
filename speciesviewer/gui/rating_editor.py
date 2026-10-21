@@ -2710,8 +2710,8 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
                 self._album_db = db
                 if self._master_db is None:
                     self._master_db, self._master_root = db, master_root
-                logger.info(f"master viewer: {len(self._album_species)} species, "
-                            f"no date window")
+                logger.debug(f"Master viewer: {len(self._album_species)} species, "
+                             f"no date window.")
                 return self._album_db, self._album_days
             by_day = db.pictures_in_daterange(fromdate, todate)
             self._album_days = sorted(by_day)
