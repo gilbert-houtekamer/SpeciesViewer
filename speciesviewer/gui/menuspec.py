@@ -1482,6 +1482,9 @@ def build_menu_spec(main_window):
             f"Removed {r['removed_files']} dead file rows.\n"
             f"Repointed {r['repointed']} paths.\n"
             f"Reclassified {r.get('species_changed', 0)} pictures to their folder species.\n"
+            + (f"⚠ NOT reclassified (species unknown): "
+               f"{', '.join(sorted({s for _u, s in r['species_unresolved']}))}\n"
+               if r.get("species_unresolved") else "") +
             f"Dropped {r['pictures_dropped']} phantom pictures "
             f"(cleaned {r['files_cleaned']} Files lists).\n\n"
             f"Backups in: {r['backup_dir']}\n\n"

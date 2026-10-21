@@ -79,6 +79,30 @@ def _subspecies_of(master_repo):
     return out
 
 
+def _collection_names(master_repo):
+    """{scientific name (lower): (ScientificName, DutchName, EnglishName)} from the
+    full species list. The names a picture gets when it is re-filed into a species
+    the master has no picture of yet — there is no existing row to copy from."""
+    path = os.path.join(master_repo, "metadata", "active", "speciescollection.csv")
+    out = {}
+    try:
+        with open(path, "r", encoding="utf-8-sig", errors="replace", newline="") as fh:
+            for row in csv.DictReader(fh, delimiter=";"):
+                sci = (row.get("ScientificName") or "").strip()
+                if sci:
+                    out[sci.lower()] = (sci, (row.get("DutchName") or "").strip(),
+                                        (row.get("EnglishName") or "").strip())
+    except OSError:
+        pass
+    return out
+
+
+def _relative_species_dir(master_repo, path):
+    """'biota/…/<species>/' — the TargetPath form — for a file's absolute path."""
+    rel = os.path.relpath(os.path.dirname(path), master_repo).replace("\\", "/")
+    return rel.rstrip("/") + "/"
+
+
 def plan_rebuild(master_repo, out_dir=None):
     files_csv = os.path.join(master_repo, "metadata", "active", "data_files.csv")
     pics_csv = os.path.join(master_repo, "metadata", "active", "data_pictures.csv")
@@ -236,6 +260,21 @@ def execute_heal(master_repo, do_remove=True, do_repoint=True, do_species=True,
     if not (os.path.exists(files_csv) and os.path.exists(pics_csv)):
         return {"ok": False, "error": "master CSVs not found"}
 
+    # A folder that names no known species (a typo when moving by hand) cannot
+    # be re-filed — and its files would still be repointed into it, leaving the
+    # pictures black. Refuse the whole Apply before writing anything.
+    if species_needed:
+        known = set(_collection_names(master_repo))
+        with open(pics_csv, "r", encoding="utf-8", errors="replace", newline="") as fh:
+            known |= {(r.get("WetSoortNaam") or "").strip().lower()
+                      for r in csv.DictReader(fh, delimiter=";")}
+        unknown = sorted(species_needed - known)
+        if unknown and not out_dir:
+            return {"ok": False, "error":
+                    "These folders name no known species, so their pictures cannot "
+                    "be re-filed: " + ", ".join(unknown) + ". Check the folder "
+                    "names (they must be the scientific name). Nothing was changed."}
+
     # In preview mode the master is read-only: write healed copies into out_dir
     # and take no backup. Otherwise heal in place, backing up first.
     if out_dir:
@@ -278,6 +317,7 @@ def execute_heal(master_repo, do_remove=True, do_repoint=True, do_species=True,
 
     # --- data_pictures.csv: clean Files lists, drop empty pictures, reclassify ---
     pics_dropped = files_cleaned = species_changed = 0
+    species_unresolved = []   # (UPN, folder species) that could not be re-filed
     with open(pics_csv, "r", encoding="utf-8", errors="replace", newline="") as fh:
         reader = csv.reader(fh, delimiter=";")
         pheader = next(reader)
@@ -316,10 +356,30 @@ def execute_heal(master_repo, do_remove=True, do_repoint=True, do_species=True,
                 species_pending.append(row)
             out_pics.append(row)
 
+        # A species the master has no picture of yet has no row to copy from.
+        # This used to `continue` silently: the files were already repointed
+        # into the new folder, the picture kept its old species and TargetPath
+        # and went black (found 2026-10-21, re-filing split species by hand).
+        # Take the names from the full species list and the path from where
+        # the picture's files now are; a name in neither is reported, not guessed.
+        new_dirs = {}         # UPN -> the folder its repointed files now sit in
+        for (fname, _old), new in repoint_map.items():
+            new_dirs.setdefault(deriveUniquePictureName(fname), new)
+        collection = None
         for row in species_pending:
-            t = templates.get(species_target[row[ui]].lower())
+            target = species_target[row[ui]].lower()
+            t = templates.get(target)
             if not t:
-                continue          # no existing row of that species to copy from
+                if collection is None:
+                    collection = _collection_names(master_repo)
+                names = collection.get(target)
+                where = new_dirs.get(row[ui].lower()) or new_dirs.get(row[ui])
+                if names and where:
+                    t = {"wet": names[0], "nl": names[1], "eng": names[2],
+                         "tp": _relative_species_dir(master_repo, where)}
+                else:
+                    species_unresolved.append((row[ui], target))
+                    continue
             old_tp = row[tp_i] if tp_i is not None and tp_i < len(row) else ""
             if wet_i is not None and wet_i < len(row):
                 row[wet_i] = t["wet"]
@@ -338,6 +398,7 @@ def execute_heal(master_repo, do_remove=True, do_repoint=True, do_species=True,
             "removed_files": removed, "repointed": repointed,
             "kept_files": len(out_files), "pictures_dropped": pics_dropped,
             "files_cleaned": files_cleaned, "species_changed": species_changed,
+            "species_unresolved": species_unresolved,
             "backup_dir": None if out_dir else backup_dir}
 
 

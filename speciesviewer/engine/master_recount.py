@@ -13,11 +13,18 @@
 #             empty while pictures with a JPG exist (a pick that exists stays)
 #   groups    counts summed from their children (by Up); a group's best pick
 #             redone only when its picture no longer exists
+#   added     a species its pictures name but species.csv lacks (a picture
+#             re-filed by hand into a species new to the master — Refresh does
+#             the pictures, this the species row), with any missing group above
+#             it, from the full species list; the parent's Leaves get it too
+#   JPGmap    a JPG whose picture now belongs to ANOTHER species is dropped;
+#             an added species gets its pictures' JPGs (both 2026-10-21)
 #   untouched the "this run" counters (they belong to the pipeline), names, paths
 #
 # plan() changes nothing; apply() backs species.csv up first and writes it with
 # the Dropbox-safe replace.
 
+import ast
 import csv
 import os
 import time
@@ -60,6 +67,76 @@ def _best_pictures(pictures_csv):
     return best
 
 
+def _pictures_by_upn(pictures_csv):
+    """{UPN: (species lower, [JPG file names])} — the JPGs a species page may show."""
+    out = {}
+    with open(pictures_csv, "r", encoding="utf-8", errors="replace", newline="") as fh:
+        for r in csv.DictReader(fh, delimiter=";"):
+            upn = (r.get("UniquePictureName") or "").strip()
+            if not upn:
+                continue
+            try:
+                files = ast.literal_eval(r.get("Files") or "[]")
+            except (ValueError, SyntaxError):
+                files = []
+            jpgs = [f for f in files if f.lower().endswith(".jpg")
+                    and not f.lower().endswith("-small.jpg")]
+            out[upn.lower()] = ((r.get("WetSoortNaam") or "").strip().lower(), jpgs)
+    return out
+
+
+def _as_list(v):
+    try:
+        got = ast.literal_eval(v or "[]")
+        return list(got) if isinstance(got, (list, tuple)) else []
+    except (ValueError, SyntaxError):
+        return []
+
+
+def _add_missing_species(active, header, rows, by_name, actual):
+    """Rows for species that pictures name but species.csv lacks — and any group
+    above one that is missing too — from speciescollection.csv. Returns the names
+    added and the ones that could not be (not in the full list either)."""
+    lower = {n.lower(): n for n in by_name}
+    wanted = [s for s, a in actual.items() if a.get("pics") and s not in lower]
+    if not wanted:
+        return [], []
+    coll = {}
+    with open(os.path.join(active, "speciescollection.csv"), "r",
+              encoding="utf-8-sig", errors="replace", newline="") as fh:
+        for r in csv.DictReader(fh, delimiter=";"):
+            coll[(r.get("ScientificName") or "").strip().lower()] = r
+    added, missing = [], []
+    for name in wanted:
+        chain, cur = [], name
+        while cur and cur not in lower and cur in coll:
+            chain.append(coll[cur])
+            cur = (coll[cur].get("Up") or "").strip().lower()
+        if not chain or (cur and cur not in lower):
+            missing.append(name)          # not in the full list, or no way up to the tree
+            continue
+        for src in reversed(chain):       # top group first, so each parent exists
+            row = {h: "" for h in header}
+            for h in ("Level", "ScientificName", "DutchName", "EnglishName", "Up"):
+                row[h] = (src.get(h) or "").strip()
+            row["Leaves"], row["JPGmap"] = "[]", "[]"
+            for h in header:
+                if h.startswith("i") or h == "currentHighestRating":
+                    row[h] = "0"
+            parent = by_name[lower[row["Up"].lower()]]
+            row["TargetPath"] = (parent.get("TargetPath") or "").rstrip("/") \
+                + "/" + row["ScientificName"] + "/" if parent.get("TargetPath") else ""
+            leaves = _as_list(parent.get("Leaves"))
+            if row["ScientificName"] not in leaves:
+                leaves.append(row["ScientificName"])
+                parent["Leaves"] = str(leaves)
+            rows.append(row)
+            by_name[row["ScientificName"]] = row
+            lower[row["ScientificName"].lower()] = row["ScientificName"]
+            added.append(row["ScientificName"])
+    return added, missing
+
+
 def _recount(master_root):
     """(header, rows, changes) — rows recounted in memory, changes listed."""
     active, species_csv, pictures_csv = _paths(master_root)
@@ -68,8 +145,41 @@ def _recount(master_root):
     with open(species_csv, "r", encoding="utf-8", newline="") as fh:
         rd = csv.DictReader(fh, delimiter=";")
         header, rows = rd.fieldnames, list(rd)
-    before = {r["ScientificName"]: {c: r.get(c, "") for c in COUNTS + PICK} for r in rows}
+    before = {r["ScientificName"]: {c: r.get(c, "") for c in COUNTS + PICK + ("JPGmap", "Leaves")}
+              for r in rows}
     by_name = {r["ScientificName"]: r for r in rows}
+    added, missing = _add_missing_species(active, header, rows, by_name, actual)
+    if missing:
+        logger.warning(f"Recount: pictures name {len(missing)} species that are in no "
+                       f"species list, so they get no counters: {', '.join(sorted(missing))}")
+
+    # JPGmap: a JPG whose picture is now another species' MOVES to that species
+    # (the intermediate egret split left two in Ardea intermedia, 2026-10-21);
+    # an added species gets its pictures' JPGs. Nothing else in it is touched.
+    pics = _pictures_by_upn(pictures_csv)
+    from engine.handling import deriveUniquePictureName
+    species_rows = {r["ScientificName"].lower(): r for r in rows if r["Level"] == "Level.SPECIES"}
+    moving = {}                                   # species (lower) -> [JPG]
+    for name, r in species_rows.items():
+        jm = _as_list(r.get("JPGmap"))
+        if r["ScientificName"] in added:
+            kept = sorted({f for sp, jpgs in pics.values() if sp == name for f in jpgs})
+        else:
+            kept = []
+            for f in jm:
+                owner = pics.get(deriveUniquePictureName(f), (name, None))[0]
+                if owner in (name, "") or owner not in species_rows:
+                    kept.append(f)
+                else:
+                    moving.setdefault(owner, []).append(f)
+        if kept != jm:
+            r["JPGmap"] = str(kept)
+    for owner, files in moving.items():
+        r = species_rows[owner]
+        jm = _as_list(r.get("JPGmap"))
+        new = jm + [f for f in files if f not in jm]
+        if new != jm:
+            r["JPGmap"] = str(new)
     subspecies = read_subspecies(os.path.join(active, "speciescollection.csv"))
     kids = {}
     for r in rows:
@@ -100,8 +210,11 @@ def _recount(master_root):
             r["iSpeciesCollectionCount"] = "1" if a["pics"] else "0"
             # no best picture, or one whose picture is gone: the best picture
             # with a JPG (Nemosia pileata: 3 with a JPG, none picked — the
-            # website left the species off the All Species page)
-            if gone(r) or (empty(r) and best.get(name.lower())):
+            # website left the species off the All Species page). A picture
+            # re-filed to another species is gone from THIS one too.
+            owner = pics.get((r.get("BestUPN") or "").strip().lower(), (None,))[0]
+            elsewhere = owner not in (None, "", name.lower())
+            if gone(r) or elsewhere or (empty(r) and best.get(name.lower())):
                 b = best.get(name.lower())
                 set_pick(r, *(b if b else (0, "", "", "")))
             return
@@ -130,8 +243,11 @@ def _recount(master_root):
 
     changes = []
     for r in rows:
+        if r["ScientificName"] not in before:
+            changes.append((r["Level"], r["ScientificName"], "added", "", "new row"))
+            continue
         old = before[r["ScientificName"]]
-        for c in COUNTS + PICK:
+        for c in COUNTS + PICK + ("JPGmap", "Leaves"):
             if (old.get(c) or "") != (r.get(c) or ""):
                 changes.append((r["Level"], r["ScientificName"], c, old.get(c) or "", r.get(c) or ""))
     return header, rows, changes
