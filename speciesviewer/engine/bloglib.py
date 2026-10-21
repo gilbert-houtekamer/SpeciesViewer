@@ -41,6 +41,10 @@ _BLOG_ROW_DEFAULTS = {
     'OnlyNewSpecies': '',
     'MinimumScore':   '',
     'BestJPGs':       [],
+    # How many pictures per species (and per sex / age / plumage) the blog
+    # shows — 1 was the only choice before 2026-10-21. LAST column on purpose:
+    # an old blog_admin.csv without it reads as 1.
+    'MaxPerSpecies':  1,
 }
 
 BLOG_CSV_FIELDS = tuple(_BLOG_ROW_DEFAULTS)
@@ -81,7 +85,7 @@ class Blog:
 
     def initBlog(self, 
                  title_nl, title_en, message_nl, message_en, blogjpg,
-                 selectedgroup, onlynewspecies, minimumscore):
+                 selectedgroup, onlynewspecies, minimumscore, max_per_species=1):
         # settings that need to be provided (nl/uk should be Googletranslated)
         # handle language versions
         # TODO allow user to edit proposed translation
@@ -98,6 +102,10 @@ class Blog:
         self.SelectedSpeciesGroup = selectedgroup
         self.OnlyNewSpecies = onlynewspecies
         self.MinimumScore = minimumscore
+        try:
+            self.MaxPerSpecies = max(1, int(max_per_species or 1))
+        except (TypeError, ValueError):
+            self.MaxPerSpecies = 1
         self.blogjpg = blogjpg
         self.BestJPGs = []
         self.excluded_species = {"no_jpg": [], "below_score": []}
@@ -187,6 +195,7 @@ class Blog:
             row['SelectedGroup'] = self.SelectedSpeciesGroup
             row['OnlyNewSpecies'] = self.OnlyNewSpecies
             row['MinimumScore'] = self.MinimumScore
+            row['MaxPerSpecies'] = self.MaxPerSpecies
             # ⚠ A LIVE REFERENCE, deliberately not a copy. prepareBlogCreation runs
             # BEFORE makeRunSummaryPost, which is what fills BestJPGs (addBestJPG).
             # The row must see those later appends or write_BlogAdmin stores [] and
@@ -210,6 +219,7 @@ class Blog:
             row['SelectedGroup'] = self.SelectedSpeciesGroup
             row['OnlyNewSpecies'] = self.OnlyNewSpecies
             row['MinimumScore'] = self.MinimumScore
+            row['MaxPerSpecies'] = self.MaxPerSpecies
             row['BestJPGs'] = self.BestJPGs   # live reference — see above
 
         return
@@ -303,6 +313,7 @@ class Blog:
                 row['OnlyNewSpecies'] = blog_object['OnlyNewSpecies']
                 row['MinimumScore'] = blog_object['MinimumScore']
                 row['BestJPGs'] = blog_object['BestJPGs']
+                row['MaxPerSpecies'] = blog_object.get('MaxPerSpecies') or 1
                 writer.writerow(row)  
         return
 

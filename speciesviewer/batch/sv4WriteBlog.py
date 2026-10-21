@@ -86,6 +86,7 @@ def main(args, config):
         only_new = blogconfig.getboolean("blog_config","only_new")
         minimum_score = blogconfig.getint("blog_config","minimum_score")
         blog_column_width = blogconfig.getint("blog_config","column_width")
+        max_per_species = blogconfig.getint("blog_config", "max_per_species", fallback=1)
         selectspecies= blogconfig.get("blog_selection","species")
         if "blogjpg" in blogconfig["blog_text"]:
             blogjpg = blogconfig.get("blog_text","blogjpg")
@@ -99,6 +100,7 @@ def main(args, config):
     else:
         only_new = False
         minimum_score = 25
+        max_per_species = 1
         blog_column_width = 300        
         selectspecies = "biota"
         blogjpg = ""
@@ -107,7 +109,8 @@ def main(args, config):
         titel_en = ""
         message_en = ""
     blog = engine.bloglib.Blog(MyProject)
-    blog.initBlog(titel, titel_en, message, message_en, blogjpg, selectspecies, only_new, minimum_score)
+    blog.initBlog(titel, titel_en, message, message_en, blogjpg, selectspecies, only_new, minimum_score,
+                  max_per_species)
     blog.files = files
     blog.pictures = pictures
     blog.from_time = from_time

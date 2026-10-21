@@ -229,6 +229,7 @@ def _generate_blog_ini(ini_path: Path, day_num: int, rows: list,
         "[blog_config]\n"
         "only_new = False\n"
         f"minimum_score = {default_score}\n"
+        "max_per_species = 1\n"
         "column_width = 300\n"
         "reviewed = false\n"
         "\n"
@@ -281,6 +282,7 @@ def _read_blog_ini(ini_path: Path) -> dict:
         "only_new":      cfg.getboolean("blog_config", "only_new",     fallback=False),
         "minimum_score": cfg.getint    ("blog_config", "minimum_score", fallback=25),
         "column_width":  cfg.getint    ("blog_config", "column_width",  fallback=300),
+        "max_per_species": cfg.getint  ("blog_config", "max_per_species", fallback=1),
         "species":       cfg.get       ("blog_selection", "species",    fallback="biota"),
         "blogjpg":       _u8("blog_text", "blogjpg"),
         "titel_nl":      _u8("blog_text", "titel_nl"),
@@ -595,6 +597,7 @@ def main(args, config):
             bc["species"],
             bc["only_new"],
             bc["minimum_score"],
+            bc["max_per_species"],
         )
         blog.setBlogDay(today)   # OnlyNewSpecies is now set, so this is safe
         blog.files    = 0

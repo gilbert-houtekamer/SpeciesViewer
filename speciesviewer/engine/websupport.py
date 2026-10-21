@@ -1797,6 +1797,13 @@ def addSpeciesToSummaryPost(MyProject, speciesname, selected_species, excluded=N
 # 2. Add the "getPictureAgeSexePlumage" to the name for uniqueness, 
 #    so one species can generate two pictures (adult/juv, male/female, breeding)
 # 3. sort the best pictures of each type
+def _rate(v):
+    try:
+        return float(v)
+    except (TypeError, ValueError):
+        return 0.0
+
+
 def collectBestJPGs(MyProject, species_scientific_name, selected_species):
     try:
         candidate_jpgs = {}
@@ -1814,16 +1821,16 @@ def collectBestJPGs(MyProject, species_scientific_name, selected_species):
                             candidate_jpgs[sortname].append(info)
                         else:
                             candidate_jpgs[sortname] = [info]
-        # see if we have different sex / age / plumage, pick the best for each one
-        if len(candidate_jpgs) > 0:
-            for candidate in candidate_jpgs:               # the best JPG for every candidate
-                bestitem = candidate_jpgs[candidate][0]
-                if len(candidate_jpgs[candidate])>1:
-                    for item in candidate_jpgs[candidate][1:]:
-                        if bestitem[1] < item[1]:
-                            bestitem = item
-                # remember the JPG we want to use
-                selected_species[bestitem[0]] = MyProject.UniquePictureName_dict[MyProject.files_dict[bestitem[0]]['UniquePictureName']]['DateTimeOriginal']
+        # see if we have different sex / age / plumage: the best N for each one
+        # (N = the blog's "pictures per species", 1 unless set — 2026-10-21).
+        # Highest rating first; equal ratings keep the order they were shot in.
+        n = getattr(MyProject.Blog, "MaxPerSpecies", 1) or 1
+        for candidate in candidate_jpgs:
+            ranked = sorted(candidate_jpgs[candidate], key=lambda it: -_rate(it[1]))
+            for jpg, _r in ranked[:n]:
+                # remember the JPG we want to use (keyed by time → shown in time order)
+                selected_species[jpg] = MyProject.UniquePictureName_dict[
+                    MyProject.files_dict[jpg]['UniquePictureName']]['DateTimeOriginal']
     except Exception as e:
         logger.warning(f"collectBestJPGs('{species_scientific_name}') failed: {e}")
     return
@@ -1878,8 +1885,12 @@ def addOneSpeciesJPG(MyProject, jpgname, textCreated, templatehtml):
                     logger.warning(f"GPS strip failed for {targetstr}: {result.stdout.strip()} {result.stderr.strip()}")
             jpgResizeCopy(targetstr, horizontalsize = 600)
         if MyProject.getLanguage() == 'en':
+            # once per species — with several pictures per species it repeated
+            logged = MyProject.Blog.__dict__.setdefault('_rated_logged', set())
             if species is not None:
-                logger.info(f"Rated {species['currentHighestRating']:3}  {species['EnglishName']:32}  Species path {species['TargetPath']}")
+                if species['ScientificName'] not in logged:
+                    logged.add(species['ScientificName'])
+                    logger.info(f"Rated {species['currentHighestRating']:3}  {species['EnglishName']:32}  Species path {species['TargetPath']}")
             else:
                 logger.info(f"Blog extra        {picturedata.get('Headline', ''):32}  {filedata['File:FileName']}")
     except Exception as e:

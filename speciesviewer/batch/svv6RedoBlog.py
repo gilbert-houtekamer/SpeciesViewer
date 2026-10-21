@@ -123,7 +123,8 @@ def _init_blog_for_day(blog, ini_path):
     """Configure the blog object from a day's ini and set its blog-day key."""
     bc = _read_blog_ini(ini_path)
     blog.initBlog(bc["titel_nl"], bc["titel_en"], bc["message_nl"], bc["message_en"],
-                  bc["blogjpg"], bc["species"], bc["only_new"], bc["minimum_score"])
+                  bc["blogjpg"], bc["species"], bc["only_new"], bc["minimum_score"],
+                  bc["max_per_species"])
     blog.setBlogDay(blog.getDateFromPictures(0))
     blog.files    = 0
     blog.pictures = 0

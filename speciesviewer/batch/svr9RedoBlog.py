@@ -137,7 +137,8 @@ def main(args, config):
             if 'blogjpg' not in b:
                 b['blogjpg'] = ''
             blog.initBlog(b['title_nl'], b['title_en'], b['message_nl'], b['message_en'],
-                          b['blogjpg'], b['SelectedGroup'], b['OnlyNewSpecies'], b['MinimumScore'])
+                          b['blogjpg'], b['SelectedGroup'], b['OnlyNewSpecies'], b['MinimumScore'],
+                          b.get('MaxPerSpecies') or 1)
             blog.blogday = blogday
             blog.BestJPGs = b['BestJPGs']
             MyProject.setSkipJPGs(True)

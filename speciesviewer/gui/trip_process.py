@@ -3778,7 +3778,8 @@ class CreateBlogDialog(QDialog):
         self.parser["blog_config"] = {
             "only_new": "False",
             "minimum_score": "25",
-            "column_width": "300"
+            "column_width": "300",
+            "max_per_species": "1",
         }
         self.parser["blog_selection"] = {
             "species": "biota"
@@ -3901,8 +3902,21 @@ class CreateBlogDialog(QDialog):
         self.column_width.setRange(200, 500)
         self.column_width.setValue(self.parser.getint("blog_config", "column_width", fallback=300))
 
+        # More than one picture of a species on a day you photographed it a
+        # lot (2026-10-21). Per sex / age / plumage, as the one picture was.
+        self.max_per_species = QSpinBox()
+        self.max_per_species.setRange(1, 20)
+        self.max_per_species.setValue(
+            self.parser.getint("blog_config", "max_per_species", fallback=1))
+        self.max_per_species.setToolTip(
+            "How many pictures of each species the blog shows — the best-rated "
+            "ones, in the order they were taken.\nCounted separately for male / "
+            "female, adult / juvenile and plumage, so 2 can show 2 males and "
+            "2 females.")
+
         form.addRow("Minimum picture rating (1–200):", self.minimum_score)
         form.addRow("Minimum picture width (px):", self.column_width)
+        form.addRow("Pictures per species:", self.max_per_species)
 
         self.tabs.addTab(tab, "Configuration")
 
@@ -3910,7 +3924,8 @@ class CreateBlogDialog(QDialog):
         """Everything this dialog writes to blog.ini — compared on close."""
         return (self.title_nl.text(), self.message_nl.toPlainText(),
                 self.title_en.text(), self.message_en.toPlainText(),
-                self.minimum_score.value(), self.column_width.value())
+                self.minimum_score.value(), self.column_width.value(),
+                self.max_per_species.value())
 
     def _save_and_close(self):
         if self._values() != self._saved:
@@ -3945,6 +3960,7 @@ class CreateBlogDialog(QDialog):
 
         self.parser["blog_config"]["minimum_score"] = str(self.minimum_score.value())
         self.parser["blog_config"]["column_width"] = str(self.column_width.value())
+        self.parser["blog_config"]["max_per_species"] = str(self.max_per_species.value())
 
         with open(self.ini_path, "w", encoding="utf-8") as f:
             self.parser.write(f)
