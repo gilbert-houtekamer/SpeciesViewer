@@ -33,7 +33,7 @@ PROJECT_URL = "https://github.com/gilbert-houtekamer/SpeciesViewer"
 
 NOT_SET_UP_MSG = (
     "Choose where SpeciesViewer publishes your website — on this computer, or "
-    "on your web server: File ▸ Settings ▸ Global Settings (Website and "
+    "on your web server: File ▸ Settings… ▸ Global (Website and "
     "publishing).")
 
 # Where the website goes (docs/plans/website_optional_plan.md). The user must

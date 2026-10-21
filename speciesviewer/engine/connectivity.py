@@ -45,7 +45,7 @@ def probe(host: str, port: int, timeout: float = 6.0) -> dict:
     """Fast TCP reachability check. Returns {ok, ms, slow, error}."""
     if not host:
         return {"ok": False, "ms": 0, "slow": False,
-                "error": "Not set up — see File ▸ Settings ▸ Global Settings"}
+                "error": "Not set up — see File ▸ Settings… ▸ Global"}
     t = time.time()
     try:
         socket.create_connection((host, port), timeout=timeout).close()

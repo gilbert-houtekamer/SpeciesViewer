@@ -1331,8 +1331,8 @@ class ReadSDCardDialog(QDialog):
             QMessageBox.warning(
                 self, "DxO PhotoLab not found",
                 f"Could not find DxO PhotoLab at:\n\n{exe}\n\n"
-                "Set the correct path in Settings ▸ Interfaces to Lightroom "
-                "and PhotoLab ▸ PhotoLab Location.")
+                "Set the correct path in File ▸ Settings… ▸ Lightroom & PhotoLab "
+                "▸ PhotoLab location.")
             return
         # Crop/exposure edits held back while PhotoLab ran go to its .dop now —
         # before it starts, or just after it has re-read the folder (as in the

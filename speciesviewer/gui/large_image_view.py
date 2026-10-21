@@ -3990,7 +3990,7 @@ class LargeImageView(QDialog):
             QMessageBox.warning(
                 self, "DxO PhotoLab not found",
                 f"Could not find DxO PhotoLab at:\n\n{exe}\n\n"
-                "Set the correct path in Settings → Global Settings.")
+                "Set the correct path in File ▸ Settings… ▸ Lightroom & PhotoLab.")
             return
         if not launch_app_with_file(exe, raw):
             QMessageBox.warning(

@@ -26,15 +26,7 @@ from utils.trip_config import read_trip_ini
 import gui.days_process as days_process
 import gui.unfiled_view as unfiled_view
 import os
-from settings.globalsettings import GlobalSettingsDialog
-from settings.lookfeel import LookFeelDialog
-from settings.speciessettings import SpeciesSettingsDialog
-from settings.dbsettings import DatabaseSettingsDialog
-from settings.rawsettings import RawProcessingDialog
-from settings.locationsettings import LocationSettingsDialog
-from settings.sidecarsettings import SidecarSettingsDialog
-from settings.photolabdenoise import PhotoLabDenoiseDialog
-from settings.photolablocation import PhotoLabLocationDialog
+from settings.settings_window import SettingsWindow
 from dialogs.setting import AboutDialog
 from utils.batch_config import generate_svconfig_ini
 from engine.statemachine import StateMachine
@@ -1795,43 +1787,14 @@ def build_menu_spec(main_window):
     return {
         "File": {
             "Settings": {
-                "Global Settings": MenuSpec(
-                    callback=lambda: GlobalSettingsDialog(main_window).exec(),
+                # One window, a tab per subject — the seven items here looked
+                # alike and he often opened the wrong one (2026-10-21).
+                "Settings…": MenuSpec(
+                    callback=lambda: SettingsWindow(main_window).exec(),
                     shortcut="Ctrl+G",
+                    tooltip="Global, Look & Feel, Species, Database, Decode quality, "
+                            "Location, Lightroom & PhotoLab — one tab each",
                 ),
-                "Look & Feel…": MenuSpec(
-                    callback=lambda: LookFeelDialog(main_window).exec(),
-                ),
-                "Species Settings": MenuSpec(
-                    callback=lambda: SpeciesSettingsDialog(main_window).exec(),
-                ),
-                "Database Settings": MenuSpec(
-                    callback=lambda: DatabaseSettingsDialog(main_window).exec(),
-                ),
-                "Decode Quality…": MenuSpec(
-                    callback=lambda: RawProcessingDialog(main_window).exec(),
-                ),
-                "Location Settings…": MenuSpec(
-                    callback=lambda: LocationSettingsDialog(main_window).exec(),
-                ),
-                # The three DxO/Lightroom options were scattered (the program
-                # path sat in Global Settings, the other two loose in this menu).
-                # Grouped, because they are one subject: how we hand pictures to
-                # PhotoLab and Lightroom, and what those two read back.
-                "Interfaces to Lightroom and PhotoLab": {
-                    "PhotoLab Location…": MenuSpec(
-                        callback=lambda: PhotoLabLocationDialog(main_window).exec(),
-                        tooltip="Where DxO PhotoLab is installed",
-                    ),
-                    "PhotoLab Denoise…": MenuSpec(
-                        callback=lambda: PhotoLabDenoiseDialog(main_window).exec(),
-                        tooltip="Which denoise method to stamp into the .dop on a crop",
-                    ),
-                    "Sidecar Behaviour…": MenuSpec(
-                        callback=lambda: SidecarSettingsDialog(main_window).exec(),
-                        tooltip="What is written to the .dop and .xmp, and how to run PhotoLab",
-                    ),
-                },
                 f"{MenuSpec.separator()}_settings_caches": None,
                 "Manage Caches…": manage_caches,
                 "Rescan master EXIF cache": rescan_master_cache,
