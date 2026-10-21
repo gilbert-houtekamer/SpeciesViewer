@@ -272,22 +272,28 @@ class Sftp:
         if not os.path.isfile(source_local_path):
             logger.warning(f"FTP upload skipped — source missing: {source_local_path}")
             return True
-        # search by target name, value is path and length/crc on computer
-        if source_local_path.endswith('.jpg'):
-            sizeOrCRC = os.path.getsize(source_local_path)
-        else:
-            # Read the content of the file
+        # search by target name, value is path and length/crc on computer.
+        # A JPG by its size, ANY case: ".JPG" used to fall to the CRC branch,
+        # which reads the whole file — 1,741 master pictures, gigabytes, on
+        # every master rebuild once that sends all pictures (2026-10-21).
+        def _crc():
             with open(source_local_path, 'rb') as file:
-                content = file.read()
-            # Calculate the CRC32 checksum
-            sizeOrCRC = binascii.crc32(content) & 0xFFFFFFFF
+                return binascii.crc32(file.read()) & 0xFFFFFFFF
+        is_jpg = source_local_path.lower().endswith('.jpg')
+        sizeOrCRC = os.path.getsize(source_local_path) if is_jpg else _crc()
 
         if  remote_path in self.openFTPCache:                   # present
             cachedObject = self.openFTPCache[remote_path]       # get file name and length
-            if os.path.basename(source_local_path) == os.path.basename(cachedObject[0]) and \
-                sizeOrCRC == cachedObject[1]:
-                self.FTPhits += 1
-                return True
+            if os.path.basename(source_local_path) == os.path.basename(cachedObject[0]):
+                if sizeOrCRC == cachedObject[1]:
+                    self.FTPhits += 1
+                    return True
+                # An entry from before: a ".JPG" stored by CRC. Same content →
+                # rewrite it as a size, so the file is read this once only.
+                if is_jpg and not source_local_path.endswith('.jpg') and _crc() == cachedObject[1]:
+                    self.openFTPCache[remote_path] = (source_local_path, sizeOrCRC)
+                    self.FTPhits += 1
+                    return True
         # not this one cached or nothing found
         try:
             self.connection.put(source_local_path, remote_path, preserve_mtime=True)

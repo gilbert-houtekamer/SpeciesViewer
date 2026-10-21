@@ -129,10 +129,13 @@ def main(args, config):
     # Upload only — the same publish path sv7 uses (frozen/biota + summary +
     # intro + small JPGs). Does NOT commit any data CSVs.
     sv7WriteCommit.putRecursiveTreeWeb(MyProject, config)
-    # After the tree itself changed (a species-list conversion, ch.6) the site
-    # has the full-size pictures only at their old paths: send them once.
-    if getattr(args, "pictures", False) or config.getboolean("rebuild", "pictures", fallback=False):
-        sv7WriteCommit.putAllPictures(MyProject, config)
+    # Every full-size picture to its CURRENT place, every rebuild. It used to
+    # be on request only (after a species-list conversion, ch.6); but pictures
+    # re-filed by hand into another species (Refresh + Recount) had pages that
+    # pointed at their new folder while the JPGs were only at the old one —
+    # every picture on those pages broken (2026-10-21). The upload cache skips
+    # what is already there, so this costs seconds once the site is current.
+    sv7WriteCommit.putAllPictures(MyProject, config)
 
     logger.info(f"✅ svMasterRebuildWeb complete in {time.time() - starttime:.1f}s.")
     return "Successfully run."
@@ -142,8 +145,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="svMasterRebuildWeb")
     parser.add_argument("--config", type=str, default=str(svconfig_path()))
     parser.add_argument("--pictures", action="store_true",
-                        help="also send every full-size picture to its current place "
-                             "(once, after a species-list conversion)")
+                        help="(no longer needed: every rebuild now sends each full-size "
+                             "picture to its current place)")
     cli_args = parser.parse_args()
     cfg = configparser.ConfigParser()
     read_ini(cfg, cli_args.config)
