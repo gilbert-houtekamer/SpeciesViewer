@@ -2205,6 +2205,11 @@ class LargeImageView(QDialog):
         from PyQt6.QtWidgets import QCheckBox, QMessageBox
         box = QMessageBox(self)
         box.setIcon(QMessageBox.Icon.Information)
+        # the melba finch on the left (his Firefly set, 2026-10-21)
+        from gui.wait_picture import picture_label
+        pic = picture_label("melba_finch", 160, self.devicePixelRatioF())
+        if pic is not None:
+            box.setIconPixmap(pic.pixmap())
         box.setWindowTitle("Crop saved")
         box.setText("The new crop is saved for PhotoLab and Lightroom.")
         box.setInformativeText(

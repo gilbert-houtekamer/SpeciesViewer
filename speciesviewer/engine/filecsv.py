@@ -72,8 +72,8 @@ class Files:
         # per-day CSVs are written via their own day objects instead. Skip rather
         # than open('') and crash. (write_project_summary already guards this.)
         if not self.filename:
-            logger.warning("write_project_files: no filename set — skipping "
-                           "(merged in-memory Files object; persist per-day instead).")
+            logger.debug("write_project_files: no filename set — skipping "
+                         "(merged in-memory Files object; persist per-day instead).")
             return
         with open(self.filename, "w", newline="", encoding='utf-8') as csvfile:
             writer = csv.DictWriter(

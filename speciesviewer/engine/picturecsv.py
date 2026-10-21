@@ -54,10 +54,18 @@ class Pictures:
         # print(f"Update project CSV {self.picturefile}")
         # Write Picture CSV file
         # check if the output can be written, avoid annoying wait
+        # No file of its own: the merged, all-days table of a Trip-scope viewer.
+        # Its days are saved through their own tables; nothing to do here. It
+        # used to try open('') and blame Excel: "Picture file () is locked…".
+        if not self.picturefile:
+            logger.debug("write_project_summary: no file — the merged all-days "
+                         "table is saved per day.")
+            return
         try:
             pictures_out_csvfile = open(self.picturefile, "w", encoding='utf-8', newline="")
-        except:
-            logger.warning(f"Picture file ({self.picturefile}) is locked by (most likely) Excel, please close it in Excel and re-run.")
+        except OSError as e:
+            logger.warning(f"Could not save the picture table ({self.picturefile}): {e}. "
+                           f"If it is open in Excel, close it there and try again.")
             return
 
         with pictures_out_csvfile as csvfile:
