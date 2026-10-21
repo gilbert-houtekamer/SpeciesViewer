@@ -10,7 +10,7 @@ from pathlib import Path
 
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QPixmap
-from PyQt6.QtWidgets import QDialog, QHBoxLayout, QLabel, QVBoxLayout
+from PyQt6.QtWidgets import QApplication, QDialog, QHBoxLayout, QLabel, QVBoxLayout
 
 _ASSETS = Path(__file__).resolve().parent.parent / "assets"
 SIDE = 180          # the picture's edge on screen, in pixels
@@ -67,7 +67,26 @@ def picture_column(dialog, picture: str, side: int = 220):
     column = QVBoxLayout()
     column.setSpacing(6)     # a nested layout inherits its parent's 24 px otherwise
     row.addLayout(column, 1)
+    # Checked once the dialog is built (its content goes into `column` after
+    # this returns): when dialog + picture do not fit the screen, the picture
+    # goes — the content never gets squeezed for it (2026-10-21).
+    from PyQt6.QtCore import QTimer
+    QTimer.singleShot(0, lambda: _drop_picture_if_too_wide(dialog, pic))
     return column
+
+
+def _drop_picture_if_too_wide(dialog, pic) -> None:
+    try:
+        screen = dialog.screen() or QApplication.primaryScreen()
+        room = screen.availableGeometry().width()
+        if dialog.minimumSizeHint().width() <= room - 40:
+            return
+        pic.hide()
+        dialog.layout().activate()      # measure WITHOUT the picture
+        if dialog.width() > room - 40:
+            dialog.resize(max(dialog.minimumSizeHint().width(), room - 40), dialog.height())
+    except RuntimeError:     # the dialog was closed before the check ran
+        pass
 
 
 def run_waiting(parent, message: str, work, picture: str | None = "macaws"):
