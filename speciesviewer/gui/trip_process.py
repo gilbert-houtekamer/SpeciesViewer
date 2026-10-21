@@ -1122,12 +1122,14 @@ class ReadSDCardDialog(QDialog):
         # The weaver keeps you company where the long copy runs: a collection
         # is woven strand by strand (see docs/illustrations.md).
         card_row = QHBoxLayout(tab2)
-        card_row.setContentsMargins(12, 12, 12, 12)
-        card_row.setSpacing(14)
+        # Same layout as Create Excel / Rebuild all (2026-10-21): 220 px, centred
+        # beside the column — it stays centred as the tab grows after a scan.
+        card_row.setContentsMargins(20, 20, 20, 20)
+        card_row.setSpacing(24)
         from gui.wait_picture import picture_label
-        weaver = picture_label("weaver", 140, self.devicePixelRatioF())
+        weaver = picture_label("weaver", 220, self.devicePixelRatioF())
         if weaver is not None:
-            card_row.addWidget(weaver, alignment=Qt.AlignmentFlag.AlignTop)
+            card_row.addWidget(weaver, alignment=Qt.AlignmentFlag.AlignVCenter)
         card_layout = QVBoxLayout()
         card_layout.setContentsMargins(0, 0, 0, 0)
         card_layout.setSpacing(10)
