@@ -34,7 +34,7 @@ class GlobalSettingsDialog(QDialog):
         # Species names: the label under each picture + the translation key, in
         # one form so label and field stay together (a bare label + combo in this
         # tall window were pulled apart by the spare height).
-        names_box = QGroupBox("Species names")
+        names_box = QGroupBox("Species names and text translation")
         names_form = QFormLayout(names_box)
         # Preferred names — which of NL/EN/Sci reads out under each picture (a
         # fallback chain). Per-trip overrides live in Create Trip ▸ Images & dates.

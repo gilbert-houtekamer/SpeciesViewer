@@ -398,7 +398,7 @@ single choice — so a profile like *EN/Sci* shows the English name where there 
 one and the scientific name otherwise, and never falls back to Dutch.
 
 The selector is a **per-session override**. The lasting default is in
-*File ▸ Settings ▸ Species Settings*.
+*File ▸ Settings ▸ Global*, under *Species names and text translation*.
 
 > Known gap: the album preview still shows scientific names regardless of the
 > profile.

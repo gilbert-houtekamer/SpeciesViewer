@@ -20,7 +20,6 @@ def _pages():
     """(tab title, dialog class) — or (tab title, [sub-pages]) for a group."""
     from settings.globalsettings import GlobalSettingsDialog
     from settings.lookfeel import LookFeelDialog
-    from settings.speciessettings import SpeciesSettingsDialog
     from settings.dbsettings import DatabaseSettingsDialog
     from settings.rawsettings import RawProcessingDialog
     from settings.locationsettings import LocationSettingsDialog
@@ -30,7 +29,6 @@ def _pages():
     return [
         ("Global", GlobalSettingsDialog),
         ("Look && Feel", LookFeelDialog),
-        ("Species", SpeciesSettingsDialog),
         ("Database", DatabaseSettingsDialog),
         ("Decode quality", RawProcessingDialog),
         ("Location", LocationSettingsDialog),

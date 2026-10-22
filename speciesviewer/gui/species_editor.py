@@ -456,6 +456,8 @@ class SpeciesInfoPanel(QWidget):
             self.suggestion_dropdown.setVisible(False)
             return
 
+        # [Species] name_type: no longer in Settings (the tab went in 0.5.0);
+        # "Auto" unless an old .ini still says otherwise.
         name_type = _config.get("Species", "name_type", fallback="Auto")
 
         try:
@@ -707,6 +709,8 @@ class SpeciesInfoPanel(QWidget):
             if _is_empty(original_subject):
                 matching_files = [full_path]
             else:
+                # [Species] correction_scope: no longer in Settings (0.5.0) —
+                # the day folder unless an old .ini still says otherwise.
                 saved_scope = _config.get(
                     "Species", "correction_scope",
                     fallback="All files with same name error in day folder")
