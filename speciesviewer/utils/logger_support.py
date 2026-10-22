@@ -5,7 +5,7 @@ from pathlib import Path
 
 from PyQt6.QtCore import QObject, pyqtSignal
 
-# How long previous sessions of studio.log are kept alongside the current one.
+# How long previous sessions of speciesviewer.log are kept alongside the current one.
 # One file per run, not per size: away from home the interesting log is usually
 # the one from the run BEFORE the one you are staring at.
 #
@@ -18,27 +18,46 @@ LOG_KEEP_DAYS = 14
 LOG_MIN_SESSIONS = 5
 
 
+# The log was "studio.log" until 0.5.0 (a name from the first Qt version);
+# files by the old name are archived and swept the same way.
+LOG_STEM = "speciesviewer"
+_OLD_STEMS = ("studio",)
+
+
+def _archive_one(path: Path, stem: str) -> None:
+    import time
+    stamp = time.strftime("%Y-%m-%d_%H-%M-%S", time.localtime(path.stat().st_mtime))
+    dest = path.with_name(f"{stem}-{stamp}.log")
+    n = 1
+    while dest.exists():
+        dest = path.with_name(f"{stem}-{stamp}-{n}.log")
+        n += 1
+    path.rename(dest)
+
+
 def _archive_previous_log(path: Path) -> None:
-    """Move the previous session's studio.log aside as studio-<end time>.log,
-    then delete archived sessions older than LOG_KEEP_DAYS (always keeping the
-    newest LOG_MIN_SESSIONS). Also sweeps the old studio.log.N rotation files.
+    """Move the previous session's speciesviewer.log aside as
+    speciesviewer-<end time>.log, then delete archived sessions older than
+    LOG_KEEP_DAYS (always keeping the newest LOG_MIN_SESSIONS). Also sweeps the
+    old studio.log / studio-*.log / .log.N files.
     Never raises: a log that cannot be archived must not stop the program."""
     import time
     try:
         if path.exists() and path.stat().st_size:
-            stamp = time.strftime("%Y-%m-%d_%H-%M-%S",
-                                  time.localtime(path.stat().st_mtime))
-            dest = path.with_name(f"studio-{stamp}.log")
-            n = 1
-            while dest.exists():
-                dest = path.with_name(f"studio-{stamp}-{n}.log")
-                n += 1
-            path.rename(dest)
+            _archive_one(path, LOG_STEM)
     except OSError:
         return      # a second instance holding the file: leave it, append below
+    for stem in _OLD_STEMS:
+        try:
+            old_current = path.with_name(f"{stem}.log")
+            if old_current.exists():
+                _archive_one(old_current, stem)
+        except OSError:
+            pass
     try:
         old = [p for p in path.parent.iterdir()
-               if p.name != path.name and p.name.startswith("studio")
+               if p.name != path.name
+               and p.name.startswith((LOG_STEM,) + _OLD_STEMS)
                and (p.suffix == ".log" or ".log." in p.name)]
         old.sort(key=lambda p: p.stat().st_mtime, reverse=True)
         cutoff = time.time() - LOG_KEEP_DAYS * 86400
@@ -50,9 +69,9 @@ def _archive_previous_log(path: Path) -> None:
 
 
 def log_path() -> Path:
-    """Absolute path of studio.log.
+    """Absolute path of speciesviewer.log.
 
-    It used to be the bare relative name "studio.log", which meant the file
+    It used to be the bare relative name "speciesviewer.log", which meant the file
     landed wherever SpeciesViewer happened to be launched from — the repo root
     from VS Code, somewhere else entirely from a shortcut — so there was no
     answer to "where is the log?". It now lives beside the other per-machine
@@ -65,13 +84,13 @@ def log_path() -> Path:
         from utils.cache_paths import app_data_dir
         d = app_data_dir() / "logs"
         d.mkdir(parents=True, exist_ok=True)
-        return d / "studio.log"
+        return d / f"{LOG_STEM}.log"
     except OSError:
-        return Path("studio.log").resolve()
+        return Path(f"{LOG_STEM}.log").resolve()
 
 def log_file(name: str) -> Path:
     """Absolute path for an extra log or debug dump `name` (e.g. the Freeze
-    "Species print.txt"), in the same logs folder as studio.log — never the
+    "Species print.txt"), in the same logs folder as speciesviewer.log — never the
     working directory, which put these files in the source tree."""
     return log_path().parent / name
 
@@ -100,9 +119,10 @@ class CapitalFirst(logging.Filter):
         if record.levelno < logging.INFO:
             return True
         msg = record.getMessage()
-        if (len(msg) > 1 and msg[0].islower() and not msg[1].isupper()
-                and msg[1] != ":"):
-            record.msg, record.args = msg[0].upper() + msg[1:], None
+        i = len(msg) - len(msg.lstrip())       # an indented line ("   not validated: …")
+        if (len(msg) > i + 1 and msg[i].islower() and not msg[i + 1].isupper()
+                and msg[i + 1] != ":"):
+            record.msg, record.args = msg[:i] + msg[i].upper() + msg[i + 1:], None
         return True
 
 
@@ -184,7 +204,7 @@ _crash_trace_file = None
 
 
 def _enable_crash_trace(path: Path) -> None:
-    """Write a Python stack trace into studio.log when SV dies below Python.
+    """Write a Python stack trace into speciesviewer.log when SV dies below Python.
 
     A crash inside Qt (2026-10-20: a stale modal window after Read SD-card)
     ends the process with no exception and no log line — the log simply stops.
@@ -221,8 +241,8 @@ def init_logger(log_widget):
     logger.addFilter(warning_counter)
     logger.warning_counter = warning_counter  # Attach for easy access    
 
-    # File output. One log file per session: studio.log is always the current
-    # run, and each earlier run is kept beside it as studio-<end time>.log (see
+    # File output. One log file per session: speciesviewer.log is always the current
+    # run, and each earlier run is kept beside it as speciesviewer-<end time>.log (see
     # _archive_previous_log). The old mode="w" wiped the file on every start, so
     # the moment you restarted to look at what went wrong, the evidence was gone.
     path = log_path()
@@ -255,7 +275,7 @@ def init_logger(log_widget):
     # directory, so this line is the only thing that makes it findable — and it
     # is the first thing you want when asking someone to send you their log.
     logger.info(f"Log file: {path}  (earlier runs kept alongside as "
-                f"studio-<date>.log for {LOG_KEEP_DAYS} days)")
+                f"{LOG_STEM}-<date>.log for {LOG_KEEP_DAYS} days)")
 
     # Global filters
     logger.addFilter(SuppressExifToolOutput())

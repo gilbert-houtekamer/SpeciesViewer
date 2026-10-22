@@ -1888,6 +1888,12 @@ def addOneSpeciesJPG(MyProject, jpgname, textCreated, templatehtml):
         if MyProject.getLanguage() == 'en':
             # once per species — with several pictures per species it repeated
             logged = MyProject.Blog.__dict__.setdefault('_rated_logged', set())
+            # One intro line before the first "is selected" line, so the list
+            # reads as a list (none selected = no intro).
+            if not MyProject.Blog.__dict__.get('_selected_intro_logged'):
+                MyProject.Blog._selected_intro_logged = True
+                logger.info(f"Pictures selected for the blog (the minimum rating is "
+                            f"{MyProject.Blog.getMinimumScore()}):")
             if species is not None:
                 if species['ScientificName'] not in logged:
                     logged.add(species['ScientificName'])

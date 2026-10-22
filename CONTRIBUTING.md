@@ -11,7 +11,7 @@ include:
 
 - what you did, what you expected, and what happened instead;
 - the version (*Help ▸ About*) and Windows or macOS;
-- the log file, `%LOCALAPPDATA%\SpeciesViewer\logs\studio.log` (its full path is the first line
+- the log file, `%LOCALAPPDATA%\SpeciesViewer\logs\speciesviewer.log` (its full path is the first line
   of the Log panel at the bottom of the main window);
 - a screenshot, when it is about something on screen.
 

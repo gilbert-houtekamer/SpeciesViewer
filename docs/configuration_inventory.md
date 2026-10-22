@@ -106,7 +106,7 @@ there once, renaming the old copy `<name>.moved-to-appdata`.
 | `photolab_denoise.ini` | ini | DxO PhotoLab denoise codes per installed PL version, seeded from built-in defaults. Written only on the crop path. | ✅ | 🟢 reseeded |
 | `days_<hostname>.json` | json | The "Days" lane: ad-hoc `YYYY-MM-DD` folders being reviewed and their status. Real state lives in the XMP sidecars; this is only the list. | ✅ | 🟡 re-add the folders |
 | `sv_gui_cache.json` | json | Convenience state: `recent_projects`, `trip_project_map`, `sdcard_ingest` (**the card prefix**), `culling_species` (last-20 species LRU), `usage_stats`. **No credentials** — which is why this one may ride along on a card. | ✅ | 🟢 rebuilt by use |
-| `studio.log` | text | This run's log; truncated at launch. | ✅ | 🟢 |
+| `speciesviewer.log` | text | This run's log (`studio.log` until 0.5.0); earlier runs kept as `speciesviewer-<date>.log` for 14 days. | ✅ | 🟢 |
 
 ### What lives inside `sv_config_<hostname>.ini`
 
@@ -230,7 +230,7 @@ source, not a suspicion.
 1. ✅ **FIXED 2026-10-10 (0.4)** — files now in app-data `config/` + `state/`; see docs/plans/config_out_of_repo.md. *Was:* **The machine config lives in the repository root.** `CONFIG_DIR` is the
    source tree ([utils/config.py:12](../speciesviewer/utils/config.py#L12)), so
    `sv_config_<host>.ini`, `days_<host>.json`, `sv_gui_cache.json`,
-   `photolab_denoise.ini`, `svconfig.ini` and `studio.log` all land among the
+   `photolab_denoise.ini`, `svconfig.ini` and `speciesviewer.log` all land among the
    code. Fine for a clone in `d:\code`; it is exactly the first-run blocker
    ch.20 names, because an installed application directory is not writable.
    `utils/cache_paths.app_data_dir()` is already the right destination and is
@@ -263,7 +263,7 @@ source, not a suspicion.
 
 ## Deletion cheat sheet
 
-| 🟢 Safe to delete | `studio.log`, `sv_gui_cache.json`, `svconfig.ini`, `fullres_cache/`, `preview_cache/`, `runtime/*.txt`, `FTPcache.json`, `speclist.*`, `TransCache.csv`, `display_status.csv`, `.sv_sidecar_cache.json`, `.sv_ingest_cache.json`, `exif_cache*.bak*`, `master.db-wal`, `master.db-shm`, `metadata/reports/*` |
+| 🟢 Safe to delete | `speciesviewer.log`, `sv_gui_cache.json`, `svconfig.ini`, `fullres_cache/`, `preview_cache/`, `runtime/*.txt`, `FTPcache.json`, `speclist.*`, `TransCache.csv`, `display_status.csv`, `.sv_sidecar_cache.json`, `.sv_ingest_cache.json`, `exif_cache*.bak*`, `master.db-wal`, `master.db-shm`, `metadata/reports/*` |
 | 🟡 Caution | `sv_config_<host>.ini` (paths + password), `days_<host>.json`, `master.db` (slow rebuild), `exif_cache*.json` (slow re-scan), `statemachine.ini` (re-runs every step), `metadata/frozen/`, `metadata/backup/`, `admin/trip_admin.csv`, `admin/survivors.json`, `master_species_baseline.csv` |
 | 🔴 Never delete | `data_pictures.csv`, `data_files.csv`, `species.csv`, `speciescollection.csv`, `trip.ini`, `virttrip.ini`, `blog.ini`, `blog_admin.csv`, `master.wal.jsonl`, `.trash/**`, `admin/trip_species_summary.csv`, `admin/trip_reports/**`, `*.xmp`, `*.dop` |
 

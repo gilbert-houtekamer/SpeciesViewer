@@ -41,7 +41,7 @@ def _warm_master_db_in_background(done_event: threading.Event) -> None:
     def _run():
         # Diagnostic prints go straight to stderr so they survive
         # init_logger()'s handler.clear() + mode="w" reset once the main
-        # window starts; the post-init logger.info also writes to studio.log.
+        # window starts; the post-init logger.info also writes to speciesviewer.log.
         def diag(msg):
             if _config.get("Global", "debug_tools", fallback="no") == "yes":
                 print(f"[splash-warm] {msg}", file=sys.stderr, flush=True)
