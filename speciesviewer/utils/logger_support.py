@@ -90,6 +90,22 @@ class SuppressExifToolOutput(logging.Filter):
             return logging.getLogger("speciesviewer").isEnabledFor(logging.DEBUG)
         return True
 
+class CapitalFirst(logging.Filter):
+    """Every message the user reads starts with a capital, like a sentence
+    ("northern nutcracker (…) is selected" → "Northern nutcracker …"). One rule
+    here instead of a hunt through every log call. Left alone: "iPhone"-style
+    words (second letter upper case) and a lower-case drive ("c:\…")."""
+
+    def filter(self, record):
+        if record.levelno < logging.INFO:
+            return True
+        msg = record.getMessage()
+        if (len(msg) > 1 and msg[0].islower() and not msg[1].isupper()
+                and msg[1] != ":"):
+            record.msg, record.args = msg[0].upper() + msg[1:], None
+        return True
+
+
 # Cross-thread signal carrier for the GUI handler. Kept as a SEPARATE QObject
 # (composition, not inheritance) so that LogHandler itself stays a pure-Python
 # logging.Handler. At interpreter exit the stdlib's logging.shutdown walks every
@@ -243,7 +259,8 @@ def init_logger(log_widget):
 
     # Global filters
     logger.addFilter(SuppressExifToolOutput())
+    logger.addFilter(CapitalFirst())
 
-    logger.info("Logging configured")
+    logger.debug("Logging configured")
 
     return logger

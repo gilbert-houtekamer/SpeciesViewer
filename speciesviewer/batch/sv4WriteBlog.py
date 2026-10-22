@@ -63,7 +63,7 @@ def main(args, config):
     sp = engine.specieslib.Species(MyProject)
     MyProject.registerSpecies(sp)
 
-    logger.info(f"WriteBlog: Create a blog for project {MyProject.ProjectName()}")
+    logger.debug(f"WriteBlog: Create a blog for project {MyProject.ProjectName()}")
 
     import engine.connectivity as connectivity
     if not connectivity.publish_reachable():
@@ -153,7 +153,8 @@ def main(args, config):
         MyProject.setSkipJPGs(False)
 
         blog.write_BlogAdmin()
-        logger.info(f"""Created summary blog in "{MyProject.getBiotaBlogWeb() + blog.getBlogDay() + '/'}" in Dutch and English versions.""")
+        logger.info("Blog written in Dutch and English.")
+        logger.debug(f"""Blog folder: "{MyProject.getBiotaBlogWeb() + blog.getBlogDay() + '/'}".""")
         blog.updateIndexPage()
 
     from utils import site_config     # the local website needs no network

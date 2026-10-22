@@ -191,6 +191,6 @@ def archive(trip_repo, master_repo, trip_id, trip_name="",
     rows.sort(key=lambda r: ((r.get("fromdate") or ""), (r.get("trip_id") or "")))
     _write_summary(summary_path(master_repo), rows)
 
-    logger.info(f"Trip verdict archived for {trip_id}: {row['species_count']} species, "
+    logger.debug(f"Trip verdict archived for {trip_id}: {row['species_count']} species, "
                 f"{row['new_count']} new ({row['baseline']} baseline).")
     return row

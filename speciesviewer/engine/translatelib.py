@@ -123,7 +123,7 @@ class CachedTranslate:
         os.makedirs(self.admindir, exist_ok=True)
         while True:
             try:
-                logger.info(f'Writing {len(self.translation_cache)} cached translations to CSV file "{cachefile}".')
+                logger.debug(f'Writing {len(self.translation_cache)} cached translations to CSV file "{cachefile}".')
                 with open(cachefile, "w", newline="", encoding='utf-8') as csvfile:
                     writer = csv.DictWriter(csvfile,
                                             fieldnames=['crctext', 'translatedtext', 'source_lang', 'verified'],

@@ -13,7 +13,6 @@ import configparser
 import logging
 import os
 import sys
-import time
 
 # add directory to python path (only when run as executable)
 if __name__ == "__main__":
@@ -32,7 +31,6 @@ logger = logging.getLogger("speciesviewer")
 
 
 def main(args, config):
-    starttime = time.time()
 
     trip_repo = config.get("repository", "BiotaDatabase")
     master_repo = config.get("master", "MasterBiotaDatabase", fallback="")
@@ -62,9 +60,8 @@ def main(args, config):
         fromdate=fromdate, todate=todate,
     )
 
-    logger.info(f"Archived species verdict for {row['trip_id']}: "
-                f"{row['new_count']} new of {row['species_count']} species "
-                f"in {time.time() - starttime:.1f}s.")
+    logger.info(f"Lifers counted for {row.get('trip_name') or row['trip_id']}: "
+                f"{row['species_count']} species, {row['new_count']} new.")
     return row
 
 

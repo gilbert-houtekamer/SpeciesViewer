@@ -61,13 +61,13 @@ def main(args, config):
     sp = engine.specieslib.Species(MyProject)
     MyProject.registerSpecies(sp)
 
-    logger.info(f"BuildWebsite: Add new species for project {MyProject.ProjectName()} on local copy on Windows")
+    logger.debug(f"BuildWebsite: Add new species for project {MyProject.ProjectName()} on local copy on Windows")
 
     MyProject.readProject(getEarlierDays = True)
     thissteptime = time.time()     
 
     totaltime = time.time() - starttime
-    logger.info(f'Create Website updates for project in {totaltime:.1f} seconds.')
+    logger.info(f'Species pages updated in {totaltime:.1f} seconds.')
 
     # A day can hold JPGs but no recognized species at all — then the species tree
     # has no 'biota' root and every page builder below would raise KeyError: 'biota'.

@@ -190,7 +190,7 @@ def _read_sidecar_rows(xmp_paths: list, *, quiet_stats: dict | None = None) -> t
         quiet_stats["cached"] = quiet_stats.get("cached", 0) + len(rows)
         quiet_stats["stale"] = quiet_stats.get("stale", 0) + stale_count
     elif stale_count:
-        logger.info(f"Sidecar cache: {len(rows)} cached, {stale_count} stale/missing — reading via exiftool")
+        logger.debug(f"Sidecar cache: {len(rows)} cached, {stale_count} stale/missing — reading via exiftool")
 
     for folder, stale in stale_by_folder.items():
         fresh = read_xmp_rows(stale)

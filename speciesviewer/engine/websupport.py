@@ -1891,9 +1891,18 @@ def addOneSpeciesJPG(MyProject, jpgname, textCreated, templatehtml):
             if species is not None:
                 if species['ScientificName'] not in logged:
                     logged.add(species['ScientificName'])
-                    logger.info(f"Rated {species['currentHighestRating']:3}  {species['EnglishName']:32}  Species path {species['TargetPath']}")
+                    # Says WHY a species is in the blog: its best rating made the
+                    # cut (the ones that did not are a warning in bloglib).
+                    sci = (species.get('ScientificName') or '').strip()
+                    sci = sci[:1].upper() + sci[1:]
+                    common = (species.get('EnglishName') or species.get('DutchName') or '').strip()
+                    who = f"{common} ({sci})" if common and sci else (common or sci)
+                    logger.info(f"{who} with rating {species['currentHighestRating']} "
+                                f"is selected for the blog.")
+                    logger.debug(f"Species path {species['TargetPath']}")
             else:
-                logger.info(f"Blog extra        {picturedata.get('Headline', ''):32}  {filedata['File:FileName']}")
+                logger.info(f"Extra picture \"{picturedata.get('Headline', '')}\" "
+                            f"({filedata['File:FileName']}) is selected for the blog.")
     except Exception as e:
         logger.warning(f"addOneSpeciesJPG failed for '{jpgname}': {e}")
     return textCreated

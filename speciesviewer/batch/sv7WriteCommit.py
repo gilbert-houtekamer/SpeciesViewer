@@ -53,9 +53,9 @@ def commitProjectFiles(MyProject):
     today = datetime.today().strftime('%Y-%m-%d')
 
     # save old versions
-    logger.info(f"Keep old files for each day in {activebackupdir}, oldest per day is kept.")
+    logger.debug(f"Keep old files for each day in {activebackupdir}, oldest per day is kept.")
     if not os.path.exists(os.path.join(activebackupdir, today + "_data_files.csv")):
-        logger.info(f'rename active files with prefix "{today}" to directory "{activebackupdir}".')
+        logger.debug(f'rename active files with prefix "{today}" to directory "{activebackupdir}".')
         os.makedirs(activebackupdir, exist_ok=True)
         shutil.copy(os.path.join(activedir, "data_files.csv"),        os.path.join(activebackupdir, today + "_data_files.csv"))
         shutil.copy(os.path.join(activedir, "data_pictures.csv"),     os.path.join(activebackupdir, today + "_data_pictures.csv"))
@@ -119,7 +119,7 @@ def putSharedWebAssets(MyProject, sftp):
     if missing:
         logger.info(f"Supplied {len(missing)} missing picture(s) to the site's 'includes web'.")
     if sent:
-        logger.info(f"Refreshed {sent} shared web asset(s) (stylesheet / map library).")
+        logger.debug(f"Refreshed {sent} shared web asset(s) (stylesheet / map library).")
     else:
         logger.debug("Shared web assets (stylesheet / map library) were already current.")
 
@@ -268,7 +268,7 @@ def main(args, config):
     # if trip, initialze master
     MyProject.initMasterAndTrip(config, inittrip=True)
     
-    logger.info(f"WriteCommit: Commit project {MyProject.ProjectName()} on repository.")
+    logger.debug(f"WriteCommit: Commit project {MyProject.ProjectName()} on repository.")
     # The website is optional (docs/plans/website_optional_plan.md): without
     # one the master is updated on disk only. With one, the server must answer
     # BEFORE anything is committed — a half-published commit is the worse state.

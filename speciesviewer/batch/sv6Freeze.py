@@ -241,7 +241,7 @@ def AppendChangedFileData(MyProject, firstNewFile):
                 writer.writerow(filespec)
             written += 1
 
-    logger.info(f'{written} file records written to {datafilename} (current-schema header).')
+    logger.debug(f'{written} file records written to {datafilename} (current-schema header).')
     return
 
 _COLLECTION_COUNTERS = ("iSpeciesCollectionCount", "iPictureCollectionCount",
@@ -320,12 +320,12 @@ def mergeCurrentTripTotals(MyProject):
     if added or corrected:
         logger.warning(f"This day's species list was older than the trip data: took "
                        f"{added} species/groups from the current trip and updated the totals of {corrected} more.")
-    logger.info(f"Species with a picture on the trip website: {before} before this day, {after} after.")
+    logger.debug(f"Species with a picture on the trip website: {before} before this day, {after} after.")
     if after < before:
         raise SVException(
             f"Publishing this day would drop the trip website from {before} to {after} "
             f"species with a picture. Nothing was published; please report this.")
-    return species_count
+    return (*species_count, after) if species_count else None
 
 def _recountSpeciesTotals(day, sc_dict=None):
     """Species counters are COUNTED from the tree, never added up.
@@ -410,7 +410,7 @@ def AppendChangedPictureData(MyProject, firstNewPicture):
         logger.info(f'{extras_skipped} un-routed blog-extra picture(s) excluded from the master collection.')
     if untagged_skipped:
         logger.info(f'{untagged_skipped} untagged picture(s) excluded from the master (no species).')
-    logger.info(f'{written} picture records written to {picturename} (current-schema header).')
+    logger.debug(f'{written} picture records written to {picturename} (current-schema header).')
     return
 
 def main(args, config):
@@ -435,7 +435,7 @@ def main(args, config):
     sp = engine.specieslib.Species(MyProject)
     MyProject.registerSpecies(sp)   
     
-    logger.info(f"Freeze: Freeze data for project {MyProject.ProjectName()} on local copy on Windows")
+    logger.debug(f"Freeze: Freeze data for project {MyProject.ProjectName()} on local copy on Windows")
 
     RepositoryFileCount, RepositoryPictureCount, from_time, last_time = MyProject.readProject()
     species_count = mergeCurrentTripTotals(MyProject)
@@ -447,8 +447,12 @@ def main(args, config):
 
     # copy all files to big file depository based on classification of data
     # logger.info(f"Will copy all files to destination.")
+    # The per-file copy trace (logs/Species print.txt) only with debug on: it
+    # used to be written on every Publish, headed "Debug enabled".
     from utils.logger_support import log_file
-    debugfile = open(log_file("Species print.txt"), "w", encoding="utf-8")
+    from utils.config import debug_enabled
+    debugfile = (open(log_file("Species print.txt"), "w", encoding="utf-8")
+                 if debug_enabled() else open(os.devnull, "w", encoding="utf-8"))
     count = 0
     print(f"Debug enabled for Species copy.", file=debugfile)
     # Copy gate by mode (confirmed live on Kreta 2026-07-24):
@@ -521,9 +525,14 @@ def main(args, config):
     logger.debug(f'Total time for all other work {totaltime:.1f} seconds.')
     # The one number to check after a publish: it ends up as the step's own
     # result line ("✅ Day published — …") instead of drowning in the log.
+    # Two different numbers, both true: every species NAMED on the trip (RAW or
+    # JPG), and those with a JPG, i.e. what the trip website shows. One line
+    # used to call the first "on the trip website" (0.5.0 release test: "8
+    # species" there while the website showed 5).
     if species_count:
-        total, new = species_count
-        return f"trip website now has {total} species ({new} new this day)"
+        total, new, on_website = species_count
+        return (f"{total} species on this trip ({new} new this day); "
+                f"{on_website} with a picture on the trip website")
     return None
 
 if __name__ == "__main__":

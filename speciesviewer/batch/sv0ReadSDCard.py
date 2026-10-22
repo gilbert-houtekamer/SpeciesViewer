@@ -189,15 +189,22 @@ def describe_ignored(ignored) -> str:
                      sorted(ignored.items(), key=lambda kv: (-kv[1], kv[0])))
 
 
+_warned_ignored: set = set()
+
+
 def _warn_ignored(ignored, source, log):
-    """Say what is being left behind, once, where it will be seen."""
+    """Say what is being left behind, once, where it will be seen. Scan and
+    Read both find the same files: the second time it is debug."""
     if not ignored:
         return
-    log.warning(f"Not copied from {source}: {describe_ignored(ignored)} — these "
-                f"file types are not recognised as pictures. If one of them is a "
-                f"camera format you shoot, it needs adding to RAW in "
-                f"utils/raw_extensions.py "
-                f"before this card is formatted.")
+    key = (str(source), describe_ignored(ignored))
+    if key in _warned_ignored:
+        log.debug(f"Not copied (again): {key[1]}")
+        return
+    _warned_ignored.add(key)
+    log.warning(f"Not copied: {describe_ignored(ignored)} file(s) (not a picture). "
+                f"If one of them is a picture format of your camera, please report "
+                f"it before you format this card.")
 
 
 # ── File hashing ──────────────────────────────────────────────────────────────
@@ -744,7 +751,7 @@ def _build_buckets(files, tz_offset_hours, cache: "_CardCache | None", log,
         need_exif.append(f)
 
     hits = len(files) - len(need_exif) - skipped_far
-    log.info(f"{len(files)} picture(s) on the card: {hits} already have a known "
+    log.debug(f"{len(files)} picture(s) on the card: {hits} already have a known "
              f"date, {skipped_far} are clearly outside the selected day(s) "
              f"(from file date), {len(need_exif)} need to be read from EXIF.")
     if need_exif:
@@ -1623,7 +1630,7 @@ def copy_card(source, dest, prefix="", bucket_by_date=False, tz_offset_hours=0.0
     elif summary["sidecars_missing"]:
         log.warning(f"⚠️ {line}")
     else:
-        log.info(line)
+        log.debug(line)        # the Read dialog's "✅ Read complete" says it for the user
     summary["targets"] = targets
     return summary
 

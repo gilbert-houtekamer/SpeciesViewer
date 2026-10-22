@@ -222,7 +222,7 @@ def main(args, config):
 
         metadatareadertime = time.time() - starttime
         total_hits = stats["imm_hit"] + stats["mut_hit"]
-        logger.info(
+        logger.debug(
             f"Reading EXIF metadata took {metadatareadertime:.1f} seconds for "
             f"{len(metadata)} files ({total_hits} from cache, {len(misses)} read)."
         )
@@ -563,7 +563,7 @@ def main(args, config):
             pending_gps_writes.clear()
 
         if sibling_fill_count:
-            logger.info(
+            logger.debug(
                 f"GPS backfill: copied GPS from XMP to RAW picture in "
                 f"{sibling_fill_count} CSV row(s)."
             )

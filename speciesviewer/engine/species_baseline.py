@@ -293,7 +293,7 @@ def write_baseline(master_repo, trip_repo, source_csv=None, taken_at=None,
         f.write("ScientificName\n")
         for name in sorted(names):
             f.write(name + "\n")
-    logger.info(f"Species baseline: froze {len(names)} master species into {target}.")
+    logger.debug(f"Species baseline: froze {len(names)} master species into {target}.")
     return target
 
 

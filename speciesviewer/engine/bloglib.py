@@ -113,13 +113,27 @@ class Blog:
         return
 
     def logExcludedSpecies(self):
+        # Both lists name the species, so a JPG that is there but not shown is
+        # explained: its rating is too low (0 = no JPG, or a JPG rated 0).
         if self.excluded_species["below_score"]:
-            logger.warning(f"{len(self.excluded_species['below_score'])} species excluded from blog "
-                           f"(score below {self.MinimumScore}): "
-                           + ", ".join(f"{name} ({score})" for name, score in self.excluded_species["below_score"]))
+            logger.warning(f"{len(self.excluded_species['below_score'])} species not in the blog: "
+                           f"best rating below the minimum of {self.MinimumScore} — "
+                           + ", ".join(f"{self._shown_name(name)} ({score})"
+                                       for name, score in self.excluded_species["below_score"]))
         if self.excluded_species["no_jpg"]:
-            logger.info(f"{len(self.excluded_species['no_jpg'])} species have no corresponding JPGs "
-                        f"and will therefore not be shown.")
+            logger.info(f"{len(self.excluded_species['no_jpg'])} species not in the blog: "
+                        f"no JPG yet, or its JPG is rated 0 (the minimum is "
+                        f"{self.MinimumScore}) — "
+                        + ", ".join(self._shown_name(n) for n in self.excluded_species["no_jpg"]))
+
+    def _shown_name(self, leaf):
+        """English, else Dutch, else the scientific name of a species key."""
+        try:
+            d = self.mp.sp.species_dict.get(leaf) or {}
+        except AttributeError:
+            d = {}
+        return ((d.get("EnglishName") or d.get("DutchName") or "").strip()
+                or leaf[:1].upper() + leaf[1:])
     
     # keep name for blog
     def setBlogDay(self, today):
@@ -464,7 +478,7 @@ class Blog:
         biotablog = MyProject.getBiotaBlogDir()
         fromfile = biotablog + self.getBlogDay() + '-nl.html'
         toweb = sftp.remotePrefix() + MyProject.getBiotaBlogWeb() + self.getBlogDay() + '-nl.html'
-        logger.info(f'Create HTML files for blog in slider and text versions.')
+        logger.debug(f'Create HTML files for blog in slider and text versions.')
         # print(f'{fromfile} to {toweb}')
         sftp.upload(fromfile, toweb)
         sftp.upload(fromfile.replace('-nl','-en'), toweb.replace('-nl','-en'))

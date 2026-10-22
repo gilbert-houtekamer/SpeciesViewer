@@ -95,7 +95,7 @@ def ensure_skeleton(sftp, repo_dir, web_root) -> bool:
     if present:
         return False
     publish_skeleton(sftp, repo_dir, web_root)
-    logger.info(f"Site skeleton supplied for {web_root} (from {repo_dir}).")
+    logger.debug(f"Site skeleton supplied for {web_root} (from {repo_dir}).")
     return True
 
 
@@ -104,7 +104,7 @@ def main(args, config):
     NEW_DB_TREE = config.get("repository","BiotaDatabase")    # "e:/test3/SpeciesViewDB/"
     WEB_TREE = config.get("repository","BiotaWebRoot")
 
-    logger.info("MakeReposity: define repository and disk and Web.")
+    logger.debug("MakeReposity: define repository and disk and Web.")
     os.makedirs(NEW_DB_TREE, exist_ok=True)               # root for data, metadata and web contents
     #
     # root for data repository with all pictures (will be very big)

@@ -390,5 +390,5 @@ def write_trip_index(MyProject, language, folder):
             print(line, file=fileTripIndex)
         fileTripIndex.close()
 
-    logger.info(f'Trip index written to {os.path.join(folder, "tripindex-" + language + ".html")}.')
+    logger.debug(f'Trip index written to {os.path.join(folder, "tripindex-" + language + ".html")}.')
     return
