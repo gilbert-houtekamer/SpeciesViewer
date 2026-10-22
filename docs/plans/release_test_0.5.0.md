@@ -103,3 +103,5 @@ Fix what the list says → rebuild → set version **0.5.0** in `speciesviewer/u
 | 22 | Merge again (laptop) | "Nothing to add" did not show: steps 1–3 were still green, so Run went to "Continue at step 4?" and skipped the check | DONE: check runs whenever the trip was merged before — retest |
 | 23 | Start-up | 4 copies started by repeated double-clicks | DONE: utils/single_instance.py — a 2nd start brings the running one to the front; a master switch restart waits for the old one |
 | 24 | NOTICE | Firefly illustrations based on his photographs — credit? | DONE: NOTICE.md "Illustrations": made with Adobe Firefly from his photographs, © him, GPL-3 (window pictures only; splash + icon are not Firefly) |
+
+**Result (2026-10-22 evening):** all 24 findings fixed and checked on the laptop. Released as 0.5.0, tag `v0.5.0` (three parts, like v0.4.0 / v0.4.1). Left for later: #14.
