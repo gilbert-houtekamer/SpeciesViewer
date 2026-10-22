@@ -30,7 +30,8 @@ def restart_into(main_window, name: str) -> None:
     SV_MASTER names the OLD one and would otherwise be inherited)."""
     masters.set_active(name)
     main_window.close()
-    _start_detached({**os.environ, masters.ENV_VAR: name})
+    from utils.single_instance import ENV_RESTARTING
+    _start_detached({**os.environ, masters.ENV_VAR: name, ENV_RESTARTING: "1"})
 
 
 def _start_detached(env: dict) -> None:

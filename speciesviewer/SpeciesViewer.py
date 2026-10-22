@@ -169,6 +169,8 @@ def start_main():
         from gui.trip_overview import populate_trip_overview
         global _main_window
         _main_window = MainWindow()
+        from utils import single_instance
+        single_instance.set_window(_main_window)
         main_window = _main_window
         main_window.logger = init_logger(main_window.green_log_box)           # ✅ Set up logging
         from utils import masters
@@ -276,6 +278,9 @@ def _set_windows_app_id() -> None:
 def main():
     _set_windows_app_id()
     app = QApplication(sys.argv)
+    from utils import single_instance
+    if not single_instance.claim():
+        sys.exit(0)                       # the running one comes to the front
     app.setWindowIcon(_app_icon())        # every window and dialog inherits it
     QToolTip.setFont(QFont("SansSerif", 12))
     from gui import theme

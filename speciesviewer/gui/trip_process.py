@@ -5218,7 +5218,10 @@ class MasterPipelineDialog(QDialog):
         first_open = next((i for i, r in enumerate(self.rows)
                            if r['state'] != 'done'), None)
         start = 0
-        if first_open in (None, 0) and self._committed_at() and self._nothing_new():
+        # Merged before: first make sure there is something to add — also when
+        # steps 1–3 are still green from an earlier run (the laptop test went
+        # straight to "Continue at step 4?" and ran them again).
+        if self._committed_at() and self._nothing_new():
             return
         if first_open not in (None, 0):
             box = QMessageBox(self)
@@ -5256,7 +5259,7 @@ class MasterPipelineDialog(QDialog):
             none_new, n = run_waiting(self, "Checking what the master already has…",
                                       lambda: nothing_new(trip_db, master))
         except Exception as e:
-            self.logger.debug(f"merge check skipped: {e}")
+            self.logger.warning(f"Could not check what the master already has: {e}")
             return False
         if none_new:
             QMessageBox.information(
