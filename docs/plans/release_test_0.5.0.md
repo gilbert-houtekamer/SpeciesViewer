@@ -79,4 +79,8 @@ Fix what the list says → rebuild → set version **0.5.0** in `speciesviewer/u
 
 | # | Where | What | Fix now / later |
 |---|---|---|---|
-| 1 | | | |
+| 1 | Day viewer + Trip overview count after Reset Trip (also right after reading a card) | The movie is missing: 9 instead of 10. Culling mode never got video support (only the trip-data viewer did, 4cde8a3) | FIXED in the 09:09 ZIP, uncommitted — check: 10 cards, frame + play symbol, `v` plays, overview says 10 |
+| 2 | Log after Reset | "SidecarCollection built: …" and "load_species_classification: …" reach the user log | FIXED (moved to debug), same ZIP |
+| 3 | Editing in the viewer (packaged .exe only) | Black console windows flash; editing feels sluggish. Every exiftool run without CREATE_NO_WINDOW opens its own console window (invisible under F5) | FIXED: utils/no_window.run at 12 call sites — check: no flashes; OK on the laptop (responsive again) |
+| 4 | To Master ▸ Publish Species Names | Feature: a picture, like the other dialogs | DONE: coati (assets/wait_coati.jpg), not yet in a ZIP |
+| 5 | File ▸ Settings ▸ Global | Google Translate key only editable in the .ini; Preferred names label and list far apart | DONE: "Species names" box (preferred names + Google Translate key, hidden like the password); stretch above Save — layout OK on BigBoy. + eye in both hidden fields (gui.widgets.password_eye) — check F5 |
