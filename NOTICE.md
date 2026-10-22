@@ -127,6 +127,15 @@ Dutch and English.
 
 ---
 
+## Illustrations
+
+The bird and animal pictures in SpeciesViewer's windows — the owl of the Setup Checklist,
+the toucan of Reset Trip, the coati, the macaws while you wait, and the others — were made
+with **Adobe Firefly** from photographs by Gilbert Houtekamer. © Gilbert Houtekamer. They
+are part of SpeciesViewer and carry the same licence, the GPL version 3.
+
+---
+
 ## Your pictures
 
 Your photographs, their metadata and the websites SpeciesViewer makes from them remain yours.

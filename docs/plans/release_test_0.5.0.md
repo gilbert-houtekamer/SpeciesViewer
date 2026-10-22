@@ -102,4 +102,4 @@ Fix what the list says → rebuild → set version **0.5.0** in `speciesviewer/u
 | 21 | Log file name | studio.log (first-Qt-version name) | DONE: speciesviewer.log; old studio*.log archived + swept after 14 days |
 | 22 | Merge again (laptop) | "Nothing to add" did not show: steps 1–3 were still green, so Run went to "Continue at step 4?" and skipped the check | DONE: check runs whenever the trip was merged before — retest |
 | 23 | Start-up | 4 copies started by repeated double-clicks | DONE: utils/single_instance.py — a 2nd start brings the running one to the front; a master switch restart waits for the old one |
-| 24 | NOTICE | Firefly illustrations based on his photographs — credit? | proposal — his choice of licence |
+| 24 | NOTICE | Firefly illustrations based on his photographs — credit? | DONE: NOTICE.md "Illustrations": made with Adobe Firefly from his photographs, © him, GPL-3 (window pictures only; splash + icon are not Firefly) |
