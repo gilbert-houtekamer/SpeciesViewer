@@ -39,7 +39,7 @@ from utils.sidecar_policy import (
 )
 from engine.handling import deriveUniquePictureName
 from utils.raw_extensions import (RAW, JPEG, OTHER_IMAGE, RAW_OR_HEIC,
-                                  SELF_DESCRIBING)
+                                  SELF_DESCRIBING, VIDEO)
 
 logger = logging.getLogger("speciesviewer")
 
@@ -62,6 +62,11 @@ _RAW_EXTS = RAW  # canonical table — see utils/raw_extensions.py
 # already having a JPG. Displayable is not the same as web-ready — his words:
 # shown as if it were a JPG, which does not make it suitable for websites.
 _SOURCE_EXTS = RAW_OR_HEIC | SELF_DESCRIBING  # canonical table — see utils/raw_extensions.py
+# A movie also goes in the "raw" slot: it is the original, its .xmp sits beside it,
+# and delete/trash/move then carry it like any source. It is never a RAW to
+# develop — raw_path() hides it, so crop, exposure and PhotoLab leave it alone,
+# and video_path() hands it to the Quick view player instead.
+_CARD_SOURCE_EXTS = _SOURCE_EXTS | VIDEO
 # Where a picture's annotations live when they are NOT in a sidecar — the whole
 # rationale is on the set itself in the canonical table.
 _SELF_DESCRIBING = SELF_DESCRIBING  # canonical table — see utils/raw_extensions.py
@@ -235,7 +240,7 @@ class SidecarItem(PictureItem):
         # PhotoLab reads on its next open, so it is a real, useful write even though
         # the viewer changes nothing itself (the virtual-trip case).
         self.can_set_crop = ((not collection.readonly or collection.allow_crop)
-                             and bool(collection._groups.get(stem, {}).get("raw")))
+                             and bool(collection.raw_path(stem)))
         # Same carve-out as crop — a suggestion written to the RAW's sidecars,
         # not a pixel edit this app develops itself.
         self.can_set_exposure = self.can_set_crop
@@ -541,7 +546,7 @@ class SidecarCollection(MasterCardOpsMixin, PictureCollection):
     # handed over 279 HEICs plus 7 PNGs that were discarded here in silence,
     # reporting "460 copied" and then showing 49. A caller that filters by this
     # set can still discard files, but it now knows which, and can say so.
-    CARD_EXTENSIONS = frozenset(_SOURCE_EXTS | _JPG_EXTS)
+    CARD_EXTENSIONS = frozenset(_CARD_SOURCE_EXTS | _JPG_EXTS)
 
     # Class-level defaults, mirroring PreviewCollection, so the flags can be read off
     # the class and never come back missing on an instance built by an older caller.
@@ -614,7 +619,7 @@ class SidecarCollection(MasterCardOpsMixin, PictureCollection):
             p = Path(p)
             ext = p.suffix.lower()
             grp = self._groups.setdefault(deriveUniquePictureName(p.name), {})
-            if ext in _SOURCE_EXTS:
+            if ext in _CARD_SOURCE_EXTS:
                 grp["raw"] = p
             elif ext in _JPG_EXTS:
                 grp.setdefault("jpg", p)
@@ -703,7 +708,7 @@ class SidecarCollection(MasterCardOpsMixin, PictureCollection):
         self.rebuild()
         _mark("rebuild")
         total = sum(ms for _, ms in _phase)
-        logger.info("SidecarCollection built: %d pictures in %.2f s  ·  %s",
+        logger.debug("SidecarCollection built: %d pictures in %.2f s  ·  %s",
                     len(self._groups), total / 1000,
                     ", ".join(f"{lbl} {ms:.0f}ms" for lbl, ms in _phase if ms >= 1))
 
@@ -893,7 +898,16 @@ class SidecarCollection(MasterCardOpsMixin, PictureCollection):
 
     def raw_path(self, key: str):
         raw = self._groups.get(key, {}).get("raw")
+        if raw and Path(raw).suffix.lower() in VIDEO:
+            return None   # a movie — see video_path()
         return raw if raw and Path(raw).exists() else None
+
+    def video_path(self, key: str):
+        """The movie file of a movie card, for the Quick view player."""
+        raw = self._groups.get(key, {}).get("raw")
+        if raw and Path(raw).suffix.lower() in VIDEO and Path(raw).exists():
+            return Path(raw)
+        return None
 
     def photolab_path(self, key: str):
         # "raw" here is any source file — a HEIC, but also a PNG PhotoLab is no use for.
@@ -1257,8 +1271,8 @@ class SidecarCollection(MasterCardOpsMixin, PictureCollection):
         picture that already has a tracked JPG we did NOT bake (a camera JPEG in
         RAW+JPEG mode, or a DxO render) so nothing is clobbered."""
         g = self._groups.get(key, {})
-        raw = g.get("raw")
-        if not raw or not Path(raw).exists():
+        raw = self.raw_path(key)   # never a movie
+        if not raw:
             # Its only file IS a JPG: nothing to bake, and saying "no RAW"
             # about it was true and useless. Never an in-place resize — a derived
             # file must not overwrite its source, and <stem>.jpg IS the source here

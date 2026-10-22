@@ -738,7 +738,8 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
     def discover_images(self, image_dir):
         """File discovery for the no-metadata day-folder mode (no fpr)."""
         path = Path(image_dir)
-        raw_exts = RAW_OR_HEIC  # canonical table — see utils/raw_extensions.py
+        # A movie is a card too (frame + play symbol), as in the trip-data mode.
+        raw_exts = RAW_OR_HEIC | VIDEO  # canonical table — see utils/raw_extensions.py
         if not path.is_dir():
             return []
         if self.mode == "jpg":

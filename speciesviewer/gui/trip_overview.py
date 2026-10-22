@@ -14,7 +14,7 @@ from gui import theme
 from gui.overview_table import make_overview_table
 from utils.config import _config
 from utils.virttrip_config import read_excluded_days, write_excluded_days
-from utils.raw_extensions import CAMERA_PHOTO, PICTURE, bare
+from utils.raw_extensions import CAMERA_PHOTO, PICTURE, VIDEO, bare
 
 GPS_COL = 3
 # Geotag (🛰️) sits right after GPS: it is the ANSWER to what the GPS column
@@ -302,8 +302,9 @@ def _count_pictures(day_path, files=None):
     # count has no business depending on the DELETE scanner's constant, and the
     # coupling had teeth: when every other list learned .nrw, this one did not,
     # and the Pictures column read 342 for a day the pipeline had just written
-    # 377 rows for. Same table as everyone else now.
-    primary = PICTURE
+    # 377 rows for. Same table as everyone else now. A movie is a picture of
+    # the day too: without VIDEO a reset day counted 9 of its 10.
+    primary = PICTURE | VIDEO
     upns = set()
     for f in (files if files is not None else day_path.glob("*")):
         if f.is_file() and f.suffix.lower() in primary:
