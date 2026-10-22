@@ -1243,7 +1243,7 @@ class PreviewCollection(PictureCollection):
                 self.fpr.upn.write_project_summary()
             except Exception as e:
                 logger.warning(f"External-edit refresh: could not persist summary: {e}")
-            logger.info(f"External-edit refresh: {len(changed)} picture(s) updated from disk (colour/rating).")
+            logger.debug(f"External-edit refresh: {len(changed)} picture(s) updated from disk (colour/rating).")
         # A render may have appeared since the last scan — fold it in so the
         # file-type note gains JPG (no exiftool, just a folder listing).
         changed |= self._scan_extra_jpgs()
@@ -1829,6 +1829,19 @@ class PreviewCollection(PictureCollection):
                     frow["XMP:Rating"] = str(new_stars)
                 if new_color is not None:
                     frow["XMP:Label"] = new_color
+            side = self._video_sidecar_to_create(upn_key)
+            if side is not None and color_rating_to_xmp_enabled():
+                args = []
+                if new_stars is not None:
+                    args.append(f"-XMP:Rating={new_stars}")
+                if new_color is not None:
+                    args.append(f"-XMP:Label={new_color}")
+                if args:
+                    try:
+                        exiftool_write(side, args)
+                        wrote_file = True
+                    except Exception as e:
+                        logger.error(f"exiftool write failed for {side.name}: {e}")
             # Colour/rating into the DxO .dop (PhotoLab reads it on 'import sidecars').
             if raw_path and color_rating_to_dop_enabled():
                 push_metadata_to_dop(raw_path, color=new_color, rating=new_stars)
@@ -1896,8 +1909,8 @@ class PreviewCollection(PictureCollection):
                 upn_row["Rating"] = str(new_stars)
             if new_color is not None:
                 upn_row["Label"] = new_color
-            if self._heic_only_upn(key):
-                heic_keys.append(key)
+            if self._heic_only_upn(key) or self._video_sidecar_to_create(key):
+                heic_keys.append(key)     # single-picture route (it creates the .xmp)
                 continue
             for fname in (upn_row.get("Files") or []):
                 frow = self.fpr.fi.files_dict.get(fname)
@@ -1967,7 +1980,8 @@ class PreviewCollection(PictureCollection):
                     except Exception as e:
                         logger.warning(f"apply_many: .dop write failed for {rp}: {e}")
 
-        # HEIC-only ones go the single-picture route, CSVs and all.
+        # HEIC-only ones (and a movie without .xmp) go the single-picture route,
+        # CSVs and all.
         for key in heic_keys:
             self.apply(key, new_stars=new_stars, new_color=new_color)
 
@@ -2002,7 +2016,28 @@ class PreviewCollection(PictureCollection):
             ext = frow.get("WindowsExtension", "").lower()
             if ext in ("jpg", "jpeg") or ext in raws:
                 return False
+            if "." + ext in _VIDEO_EXTS:
+                return False      # a movie's colour lives in its .xmp, as a RAW's does
         return True
+
+    def _video_sidecar_to_create(self, upn_key: str):
+        """The .xmp to create for a movie that has none yet, else None. A colour
+        given to such a movie found no file to write and was silently lost (and
+        before that, the movie counted as HEIC-only: "No HEIC/PNG to write
+        rating/colour into", 0.5.0 release test). Culling mode creates the same
+        file beside the movie."""
+        video = None
+        for fname in self._files(upn_key):
+            frow = self.fpr.fi.files_dict.get(fname) or {}
+            ext = frow.get("WindowsExtension", "").lower()
+            if ext == "xmp":
+                return None
+            if "." + ext in _VIDEO_EXTS and video is None:
+                video = Path(frow.get("WindowsFileName", ""))
+        if video is None or not video.exists():
+            return None
+        xmp = video.with_suffix(".xmp")
+        return None if xmp.exists() else xmp
 
     def _write_into_heic(self, upn_key: str, rating: str, label: str) -> bool:
         """Write XMP:Rating/Label (+ EXIF:Rating) INTO the HEIC (or PNG) itself —
