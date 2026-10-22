@@ -3,8 +3,8 @@
 ONE job: make the right thing the easy thing, for the cases where Qt's default
 is a trap rather than a preference.
 
-So far that is two cases: wrapped labels, and a combo list whose type-ahead
-lands the match at the top.
+So far that is three cases: wrapped labels, a combo list whose type-ahead
+lands the match at the top, and an eye that shows a hidden field's text.
 """
 
 from PyQt6.QtCore import QObject, QEvent, QTimer
@@ -71,3 +71,42 @@ def type_ahead_to_top(combo: QComboBox) -> QComboBox:
     combo._type_ahead_filter = _TypeAheadToTop(view)
     view.installEventFilter(combo._type_ahead_filter)
     return combo
+
+
+def _eye_icon(crossed: bool, color) -> "QIcon":
+    """An eye, drawn here (no icon font or emoji needed); `crossed` = struck through."""
+    from PyQt6.QtCore import QPointF, QRectF, Qt
+    from PyQt6.QtGui import QIcon, QPainter, QPainterPath, QPen, QPixmap
+    pm = QPixmap(64, 64)
+    pm.fill(Qt.GlobalColor.transparent)
+    p = QPainter(pm)
+    p.setRenderHint(QPainter.RenderHint.Antialiasing)
+    p.setPen(QPen(color, 5))
+    outline = QPainterPath(QPointF(6, 32))
+    outline.quadTo(32, 6, 58, 32)
+    outline.quadTo(32, 58, 6, 32)
+    p.drawPath(outline)
+    p.setBrush(color)
+    p.drawEllipse(QRectF(23, 23, 18, 18))
+    if crossed:
+        p.drawLine(QPointF(12, 54), QPointF(52, 10))
+    p.end()
+    return QIcon(pm)
+
+
+def password_eye(field):
+    """Put an eye at the right end of a hidden (password) QLineEdit: click it to
+    see what you typed, click again to hide it — as most apps do."""
+    from PyQt6.QtWidgets import QLineEdit
+    color = field.palette().color(field.foregroundRole())
+    show_icon, hide_icon = _eye_icon(False, color), _eye_icon(True, color)
+    action = field.addAction(show_icon, QLineEdit.ActionPosition.TrailingPosition)
+    action.setToolTip("Show what you typed")
+
+    def toggle():
+        hidden = field.echoMode() == QLineEdit.EchoMode.Password
+        field.setEchoMode(QLineEdit.EchoMode.Normal if hidden else QLineEdit.EchoMode.Password)
+        action.setIcon(hide_icon if hidden else show_icon)
+        action.setToolTip("Hide it again" if hidden else "Show what you typed")
+    action.triggered.connect(toggle)
+    return field

@@ -2,7 +2,7 @@ from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QFormLayout, QGroupBox, QLabel, QLineEdit, QCheckBox,
     QComboBox, QPushButton, QMessageBox, QRadioButton, QButtonGroup
 )
-from gui.widgets import wrapped
+from gui.widgets import password_eye, wrapped
 from utils.config import _config, persist_config
 from utils.name_profile import (profile_keys, profile_label, global_profile,
                                 set_global_profile)
@@ -31,9 +31,13 @@ class GlobalSettingsDialog(QDialog):
             _config.get("Global", "debug_tools", fallback="no") == "yes")
         layout.addWidget(self.debug_switch)
 
+        # Species names: the label under each picture + the translation key, in
+        # one form so label and field stay together (a bare label + combo in this
+        # tall window were pulled apart by the spare height).
+        names_box = QGroupBox("Species names")
+        names_form = QFormLayout(names_box)
         # Preferred names — which of NL/EN/Sci reads out under each picture (a
         # fallback chain). Per-trip overrides live in Create Trip ▸ Images & dates.
-        layout.addWidget(QLabel("Preferred names (shown under each picture)"))
         self.names_combo = QComboBox()
         for key in profile_keys():
             self.names_combo.addItem(profile_label(key), key)
@@ -44,7 +48,20 @@ class GlobalSettingsDialog(QDialog):
             "Which of Dutch / English / Scientific reads out as the label under "
             "each picture, tried in order — so 'English / Scientific' never shows "
             "Dutch. The window size is not set here: the app remembers it.")
-        layout.addWidget(self.names_combo)
+        names_form.addRow("Shown under each picture", self.names_combo)
+        # Read by engine/translatelib.py (Google's Cloud Translation API, tried
+        # first). Until 0.5.0 it could only be typed into the .ini.
+        self.translate_key_field = QLineEdit(
+            _config.get("translate", "google_api_key", fallback=""))
+        self.translate_key_field.setEchoMode(QLineEdit.EchoMode.Password)
+        password_eye(self.translate_key_field)
+        self.translate_key_field.setPlaceholderText("optional")
+        self.translate_key_field.setToolTip(
+            "Your Google Cloud Translation API key, used to translate species "
+            "names and blog texts.\nOptional: without it SpeciesViewer uses "
+            "Google's free translation page, and MyMemory when that page refuses.")
+        names_form.addRow("Google Translate key", self.translate_key_field)
+        layout.addWidget(names_box)
 
         # Where this installation publishes — read by utils/site_config.py.
         # The choice is REQUIRED (docs/plans/website_optional_plan.md): this
@@ -74,6 +91,7 @@ class GlobalSettingsDialog(QDialog):
             f.setPlaceholderText(placeholder)
             if password:
                 f.setEchoMode(QLineEdit.EchoMode.Password)
+                password_eye(f)
             form.addRow(label, f)
             return f
 
@@ -98,6 +116,7 @@ class GlobalSettingsDialog(QDialog):
         # and PhotoLab ▸ PhotoLab Location, so the three DxO options sit together
         # instead of one being stranded here. The [Global] dxo_path key is unchanged.
 
+        layout.addStretch(1)     # spare height goes here, not between the rows
         save_button = QPushButton("Save")
         save_button.clicked.connect(self.save_settings)
         layout.addWidget(save_button)
@@ -110,6 +129,13 @@ class GlobalSettingsDialog(QDialog):
         _config.set("Global", "splash_enabled", "yes" if self.splash_switch.isChecked() else "no")
         _config.set("Global", "debug_tools", "yes" if self.debug_switch.isChecked() else "no")
         set_global_profile(self.names_combo.currentData())
+        if not _config.has_section("translate"):
+            _config.add_section("translate")
+        _config.set("translate", "google_api_key", self.translate_key_field.text().strip())
+        # A key refused earlier this session stops the API being asked; a new
+        # key deserves a fresh try.
+        from engine.translatelib import CachedTranslate
+        CachedTranslate._official_off_reason = None
         if not _config.has_section("websettings"):
             _config.add_section("websettings")
         for key, f in (("base_url", self.base_url_field),
