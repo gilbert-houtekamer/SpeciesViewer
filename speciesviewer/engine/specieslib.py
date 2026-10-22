@@ -335,9 +335,9 @@ class Species:
         species = self.species_dict[soort]
         if int(species['iPictureCollectionCount']) > 0:
             if species['BestJPG'] == "":
-                logger.info(f"""{species['Level']} {species['ScientificName']} ({species['EnglishName']}) has no identified JPGs to show from {species['iPicturesWithJPGsCollection']} JPGs.""")
+                logger.debug(f"""{species['Level']} {species['ScientificName']} ({species['EnglishName']}) has no identified JPGs to show from {species['iPicturesWithJPGsCollection']} JPGs.""")
             if species['currentHighestRating'] == '0':
-                logger.info(f"{species['Level']} {species['ScientificName']} ({species['EnglishName']}) has zero as text string.")
+                logger.debug(f"{species['Level']} {species['ScientificName']} ({species['EnglishName']}) has zero as text string.")
         for leave in species['Leaves']:
             self.printDataForSpecies(leave, debugfile)
         return

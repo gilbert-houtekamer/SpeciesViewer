@@ -44,6 +44,7 @@ class Files:
                 pictures_root = Path(pic_dir).parent
         except Exception:
             pass
+        duplicates = []
         with open(filename, "r", newline="", encoding='utf-8') as csvfile:
             reader = csv.DictReader(csvfile, delimiter=';')
             for row in reader:
@@ -61,8 +62,10 @@ class Files:
                         if last_time < row['EXIF:DateTimeOriginal']:
                             last_time = row['EXIF:DateTimeOriginal']
                 elif not silent:
-                    logger.warning(f"Unexpected duplicate file {row['WindowsFileName']} not added, ")
-                    logger.warning(f"File was already found here {self.files_dict[row['File:FileName']]['WindowsFileName']}.")
+                    duplicates.append((row['WindowsFileName'],
+                                       self.files_dict[row['File:FileName']]['WindowsFileName']))
+        from engine.handling import _report_duplicates
+        _report_duplicates(duplicates)
         logger.debug(f'Read EXIF data for {len(self.files_dict)-runningcounter} files from CSV file {filename}.')
         return len(self.files_dict), from_time, last_time
     

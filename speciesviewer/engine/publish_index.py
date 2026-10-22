@@ -91,10 +91,15 @@ def load_admin_base(trip, config) -> str:
             trip.read_TripAdmin()
             source = "local (live index unreachable)"
     else:
-        logger.warning("base_url not configured — falling back to local trip_admin.csv.")
+        # A website on this computer has no base_url by design: the local
+        # trip_admin.csv IS the index, nothing to warn about.
+        from utils import site_config
+        local_site = site_config.publish_target() == site_config.LOCAL
+        (logger.debug if local_site else logger.warning)(
+            "base_url not configured — falling back to local trip_admin.csv.")
         trip.read_TripAdmin()
         source = "local (no base_url)"
-    logger.info(f"  {len(trip.trip_dict)} existing trip(s) loaded from {source}.")
+    logger.debug(f"  {len(trip.trip_dict)} existing trip(s) loaded from {source}.")
     return source
 
 

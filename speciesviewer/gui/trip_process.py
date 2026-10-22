@@ -5218,6 +5218,8 @@ class MasterPipelineDialog(QDialog):
         first_open = next((i for i, r in enumerate(self.rows)
                            if r['state'] != 'done'), None)
         start = 0
+        if first_open in (None, 0) and self._committed_at() and self._nothing_new():
+            return
         if first_open not in (None, 0):
             box = QMessageBox(self)
             box.setWindowTitle("Add Trip Pictures to Master")
@@ -5240,6 +5242,29 @@ class MasterPipelineDialog(QDialog):
         self._chaining = True
         self.run_all_btn.setEnabled(False)
         self._run_step(start)
+
+    def _nothing_new(self) -> bool:
+        """Merged before: check, before any step runs, that the trip still has
+        files the master lacks. Says so and returns True when it has none."""
+        trip_db = _config.get("trip", "tripbiotadatabase", fallback="")
+        master = _config.get("master", "masterbiotadatabase", fallback="")
+        if not (trip_db and master):
+            return False
+        try:
+            from engine.merge_check import nothing_new
+            from gui.wait_picture import run_waiting
+            none_new, n = run_waiting(self, "Checking what the master already has…",
+                                      lambda: nothing_new(trip_db, master))
+        except Exception as e:
+            self.logger.debug(f"merge check skipped: {e}")
+            return False
+        if none_new:
+            QMessageBox.information(
+                self, "Nothing to add",
+                f"All {n} files of this trip's pictures are already in the master "
+                f"(merged {self._committed_at()}).\n\nReset Trip and publishing "
+                f"again does not make them new. Nothing was run.")
+        return none_new
 
     def _stop_chain(self):
         self._chaining = False

@@ -67,6 +67,7 @@ def read_file(MyProject, filename, silent=False):
     last_time = ""
     filecount = len(MyProject.files_dict)
     pictures_root = Path(MyProject.getProjectPath()).parent if MyProject is not None else None
+    duplicates = []
     with open(filename, "r", newline="", encoding='utf-8') as csvfile:
         reader = csv.DictReader(csvfile, delimiter=';')
         for row in reader:
@@ -81,10 +82,24 @@ def read_file(MyProject, filename, silent=False):
                     if last_time < row['EXIF:DateTimeOriginal']:
                         last_time = row['EXIF:DateTimeOriginal']
             elif not silent:
-                logger.warning(f"Unexpected duplicate file {row['WindowsFileName']} not added, ")
-                logger.warning(f"File was already found here {MyProject.files_dict[row['File:FileName']]['WindowsFileName']}.")
+                duplicates.append((row['WindowsFileName'],
+                                   MyProject.files_dict[row['File:FileName']]['WindowsFileName']))
+    _report_duplicates(duplicates)
     logger.debug(f'Read EXIF data for {len(MyProject.files_dict)-filecount} files from CSV file {filename}.')
     return len(MyProject.files_dict), from_time, last_time
+
+def _report_duplicates(duplicates):
+    """One warning for files that are already there (e.g. a trip added to the
+    master twice: 23 pairs of warnings in the 0.5.0 release test). Nothing is
+    added twice either way; the pairs are in the debug log."""
+    if not duplicates:
+        return
+    for new, old in duplicates:
+        logger.debug(f"Duplicate file not added: {new} (already: {old})")
+    first_new, first_old = duplicates[0]
+    logger.warning(f"{len(duplicates)} file(s) were already there and were not added "
+                   f"again — e.g. {os.path.basename(first_new)}, already in "
+                   f"{os.path.dirname(first_old)}.")
 
 # read picture data file, one record for each picture, with links to files (ORF, jpg, XMP, etc)
 # For second call, additional data is appended

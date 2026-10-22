@@ -1145,6 +1145,17 @@ class Project:
             counters = []
             counters = sp.summarizeSpeciesCounters('biota', counters, debugfile)
             sp.printDataForSpecies('biota', debugfile)
+            # One line for the user instead of one per species and per level
+            # above it (debug keeps those).
+            no_jpg = sum(1 for d in sp.species_dict.values()
+                         if getattr(d.get('Level'), 'name', '') == 'SPECIES'   # two Level enums: by NAME
+                         and d.get('BestJPG', '') == ""
+                         and int(d.get('iPictureCollectionCount', 0) or 0) > 0)
+            if no_jpg:
+                hint = (" — see Master ▸ Maintain Master Database ▸ Species Without a "
+                        "Website Picture…" if self.isMasterRepository() else "")
+                logger.info(f"{no_jpg} species have pictures but no JPG to show "
+                            f"on the website yet{hint}.")
 
         # Same rollup for the non-taxonomic topics/ branch (see engine/topics.py)
         # so topic leaves carry counters + best-JPG up to topics/<topic>, which
