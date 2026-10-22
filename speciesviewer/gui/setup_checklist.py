@@ -151,7 +151,7 @@ EXIFTOOL_HOWTO = (
 def locate_exiftool(parent) -> None:
     """Explain where to get exiftool, then choose it; keep it only if it
     answers with a version."""
-    import subprocess
+    from utils import no_window
     from PyQt6.QtCore import QUrl
     from PyQt6.QtGui import QDesktopServices
     from PyQt6.QtWidgets import QFileDialog, QMessageBox
@@ -173,7 +173,7 @@ def locate_exiftool(parent) -> None:
     if not chosen:
         return
     try:
-        out = subprocess.run([chosen, "-ver"], capture_output=True, text=True, timeout=20)
+        out = no_window.run([chosen, "-ver"], capture_output=True, text=True, timeout=20)
         version = out.stdout.strip()
         if out.returncode != 0 or not version:
             raise RuntimeError(out.stderr.strip() or "no version reported")

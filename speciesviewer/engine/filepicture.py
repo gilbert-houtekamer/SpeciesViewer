@@ -12,6 +12,7 @@ import time
 import os
 from pathlib import Path
 import subprocess
+from utils import no_window
 import json
 import ast
 import pdb  # For debugging
@@ -305,7 +306,7 @@ class FilePicture:
         # exiftool interpret args/output as UTF-8; encoding='utf-8' makes Python
         # decode stdout as UTF-8 instead of the Windows local code page.
         try:
-            result = subprocess.run(
+            result = no_window.run(
                 [exiftool_exe(), '-charset', 'filename=utf8', '-charset', 'utf8',
                  '-j', '-XMP:Subject', str(filepath)],
                 stdout=subprocess.PIPE,

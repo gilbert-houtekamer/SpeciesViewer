@@ -40,6 +40,7 @@ import json
 import logging
 import shutil
 import subprocess
+from utils import no_window
 import time
 from datetime import date, datetime
 from pathlib import Path
@@ -443,7 +444,7 @@ def _exif_batch(paths: list[Path]) -> dict:
             af = fh.name
             for p in paths:
                 fh.write(str(p) + "\n")
-        out = subprocess.run(
+        out = no_window.run(
             [exiftool_exe(), "-j", "-q", "-charset", "filename=utf8", "-charset", "utf8",
              "-ImageSize", "-XMP:Rating", "-XMP:Label", "-XMP:Subject",
              "-EXIF:DateTimeOriginal", "-@", af],
@@ -573,7 +574,7 @@ def _read_exif_row(path: Path, master_root: Path, rel: str, upn: str) -> dict:
     row["File:Directory"] = str(path.parent)
     row["UniquePictureName"] = upn
     try:
-        out = subprocess.run(
+        out = no_window.run(
             [exiftool_exe(), "-j", "-charset", "filename=utf8", "-charset", "utf8",
              "-ImageSize", "-XMP:Rating", "-XMP:Label", "-XMP:Subject",
              "-EXIF:DateTimeOriginal", str(path)],

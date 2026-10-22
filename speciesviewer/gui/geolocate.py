@@ -17,6 +17,7 @@ import logging
 
 from utils import site_config
 import subprocess
+from utils import no_window
 from utils.exiftool_path import exe as exiftool_exe
 
 logger = logging.getLogger("speciesviewer")
@@ -56,7 +57,7 @@ def save_geolocate_config(cfg: dict) -> None:
 def gps_decimal(path):
     """Signed decimal (lat, lon) read from a file's GPS (via exiftool's Composite,
     which applies the N/S/E/W refs), or None if there is no GPS."""
-    out = subprocess.run(
+    out = no_window.run(
         [exiftool_exe(), "-n", "-G", "-j",
          "-Composite:GPSLatitude", "-Composite:GPSLongitude",
          "-XMP:GPSLatitude", "-XMP:GPSLongitude", str(path)],
@@ -97,7 +98,7 @@ def read_location_fields(path):
         hit = _LOCATION_READ_CACHE.get(key)
         if hit is not None and hit[0] == mtime:
             return dict(hit[1])     # copy — callers must not mutate the cached dict
-    out = subprocess.run(
+    out = no_window.run(
         [exiftool_exe(), "-config", _exiftool_config(), "-charset", "utf8", "-j",
          "-location", "-city", "-state", "-country", "-countrycode",
          "-XMP-sv:Municipality", str(path)],

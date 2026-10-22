@@ -2,6 +2,7 @@ import logging
 import os
 import re
 import subprocess
+from utils import no_window
 import tempfile
 import threading
 from pathlib import Path
@@ -134,7 +135,7 @@ def exiftool_write(
             "-@", tmp_path,
             str(filepath),
         ]
-        res = subprocess.run(
+        res = no_window.run(
             cmd,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
@@ -189,7 +190,7 @@ def exiftool_write_batch(items, *, overwrite_original: bool = True) -> int:
                 tmp.write("-execute\n")
         cmd = [exiftool_exe(), "-charset", "utf8", "-charset", "filename=utf8",
                "-@", tmp_path]
-        proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+        proc = no_window.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                               text=True, encoding="utf-8")
         if proc.returncode:
             logger.warning(
@@ -220,7 +221,7 @@ def run_exiftool_files(option_args, files, *, pre_args=None, timeout=None):
                 f.write(token + "\n")
         cmd = ([exiftool_exe()] + list(pre_args or [])
                + ["-charset", "utf8", "-charset", "filename=utf8", "-@", arg_path])
-        return subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+        return no_window.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                               text=True, encoding="utf-8", timeout=timeout)
     finally:
         try:

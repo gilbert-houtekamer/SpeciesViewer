@@ -4,6 +4,7 @@ import re
 import posixpath
 import shutil
 import subprocess
+from utils import no_window
 import time
 import tempfile
 import math
@@ -1877,7 +1878,7 @@ def addOneSpeciesJPG(MyProject, jpgname, textCreated, templatehtml):
         if not MyProject.getSkipJPGs():
             copy_with_retry(sourcestr, targetstr)
             if species is not None and isObscure(MyProject, species):
-                result = subprocess.run([exiftool_exe(), '-GPS:all=', '-overwrite_original', targetstr],
+                result = no_window.run([exiftool_exe(), '-GPS:all=', '-overwrite_original', targetstr],
                                         stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
                 if '1 image files updated' in result.stdout:
                     logger.info(f"🔒 GPS stripped from species for which the location must be hidden (obscured): {os.path.basename(targetstr)}")

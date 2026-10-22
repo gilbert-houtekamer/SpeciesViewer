@@ -514,7 +514,7 @@ class RatingEditorCollection(PictureCollection):
         changed."""
         import json as _json
         import os
-        import subprocess
+        from utils import no_window
         import tempfile
         from gui.rating_editor import _compute_rate, _safe_int
 
@@ -548,7 +548,7 @@ class RatingEditorCollection(PictureCollection):
                 af = fh.name
                 for _k, _f, p in targets:
                     fh.write(p + "\n")
-            out = subprocess.run(
+            out = no_window.run(
                 [exiftool_exe(), "-j", "-q", "-charset", "filename=utf8",
                  "-XMP:Rating", "-XMP:Label", "-@", af],
                 capture_output=True, text=True, encoding="utf-8", timeout=300).stdout
