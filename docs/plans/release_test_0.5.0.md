@@ -62,11 +62,11 @@ time, gone when closed.*
 - File ▸ Settings… (albatross, 7 tabs — do they fit on one row at 1440?)
 - Help ▸ Connection status (woodpecker); Trip overview: Metadata backup / RAW backup (jays).
 - Utilities ▸ Rebuild all Albums and the Master website (sandgrouse) — dry run only.
-- The log file: `C:\Users\svtest\AppData\Local\SpeciesViewer\logs\studio.log`.
+- The log file: `C:\Users\svtest\AppData\Local\SpeciesViewer\logs\speciesviewer.log`.
 
 ## 6. Afterwards
 
-- Copy the svtest `studio.log` to `\\SMALLBOY\transfer` for Claude.
+- Copy the svtest `speciesviewer.log` to `\\SMALLBOY\transfer` for Claude.
 - Remove the test account (Settings ▸ Accounts ▸ Other users ▸ Remove) — that removes its
   SpeciesViewer settings too; or keep it for the next release.
 
@@ -96,3 +96,7 @@ Fix what the list says → rebuild → set version **0.5.0** in `speciesviewer/u
 | 15 | Every message | Should start with a capital ("northern nutcracker … is selected") | DONE: CapitalFirst log filter (INFO+), not for iPhone / c:\ |
 | 16 | Blog log | "N species have no JPG yet" hides the minimum rating | DONE: both lines name the species; "no JPG yet, or its JPG is rated 0 (the minimum is N)" |
 | 17 | Taskbar pin (F5 on BigBoy) | Pinned SV shows the Python icon | dev only (pins python.exe) — check: pin SpeciesViewer.exe on the laptop |
+| 18 | Step dialogs | After a step, Run Step stays selected (Reset Trip, Merge Trip Species) | DONE: Close becomes the default on success (BatchModuleRunner) |
+| 19 | Log | Indented "not validated:" lines not capitalised; no intro before the selected species | DONE: CapitalFirst skips indent; "Pictures selected for the blog (the minimum rating is N):" |
+| 20 | Merge Pictures into Master, 2nd time (also after Reset + Publish) | 3 steps ran, 23 pairs of duplicate warnings + 10 "Level.ORDER … no identified JPGs" lines | DONE: Run first checks the master (engine/merge_check.py) → "Nothing to add", nothing runs; one duplicate summary; one "N species … no JPG" line; base_url warning quiet for a local site — laptop test |
+| 21 | Log file name | studio.log (first-Qt-version name) | DONE: speciesviewer.log; old studio*.log archived + swept after 14 days |
