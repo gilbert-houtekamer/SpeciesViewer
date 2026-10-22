@@ -127,7 +127,8 @@ message_en = {_ini_escape(message_en)}
     try:
         with open(ini_path, "w", encoding="utf-8") as f:
             f.write(ini_text)
-        logger.info(f"✅ trip.ini written to {ini_path}")
+        logger.info("✅ Trip settings saved.")
+        logger.debug(f"trip.ini written to {ini_path}")
         return
     except Exception as err:
         logger.error(f"❌ Could not write trip.ini ({ini_path}): {err}")
@@ -498,7 +499,7 @@ class TripCreationDialog(QDialog):
     def on_write_tripini_clicked(self):
         if not self.create_trip_ini():
             return
-        self.logger.info("Trip settings updated (trip.ini written; repository not rebuilt).")
+        self.logger.debug("Trip settings updated (trip.ini written; repository not rebuilt).")
         self.passed_parent.status_bar.showMessage("Trip settings updated.")
         self.status_label.setText("✅ Trip settings saved.")
 
@@ -2187,7 +2188,9 @@ class ReadSDCardDialog(QDialog):
         from engine.exifcache import _fmt_duration
         elapsed = _fmt_duration(time.time() - start)
         days = self._days_copied_count()
-        return f" over {days} day(s) in {elapsed}" if days else f" in {elapsed}"
+        # Its own sentence: it is appended after sentences that end in a period.
+        return (f" Time: {elapsed} for {days} day(s)." if days
+                else f" Time: {elapsed}.")
 
     def _done_marker(self):
         """'✅ Done —' for a clean read; a warning marker when the copy phase
@@ -2324,7 +2327,7 @@ class ReadSDCardDialog(QDialog):
             self.close_btn.setText("Cancel")
             self._close_connected = False
         days_note = "all days" if include_dates is None else f"{len(include_dates)} selected day(s)"
-        self.logger.info(
+        self.logger.debug(
             f"Reading SD-card from {source} → {dest} (prefix: {prefix or '(none)'}, "
             f"by-date: {bucket_by_date}, tz-offset: {tz_offset}h, sidecars: {write_sidecars}, "
             f"days: {days_note})"
@@ -2433,8 +2436,10 @@ class ReadSDCardDialog(QDialog):
         self._last_per_day = summary.get("per_day") or {}
         self._fill_copied_column(self._last_per_day)
         carried = summary.get("sidecars_copied", 0)
-        carried_txt = (f" {carried} existing sidecar(s) carried across with their "
-                       f"pictures." if carried else "")
+        carried_txt = (f" {carried} sidecar(s) came along with their pictures "
+                       f"(species, ratings, colours)." if carried else "")
+        made = summary.get("sidecars", 0)
+        made_txt = f" {made} sidecar(s) created." if made else ""
         # A RAW with no sidecar has nowhere to keep a species, a star or a crop,
         # so a read that leaves some behind (the sidecar phase is the last one and
         # is skipped on cancel) must SAY so here, not only in the log — that is
@@ -2445,8 +2450,8 @@ class ReadSDCardDialog(QDialog):
                     f"finish the job." if bare_raws else "")
         tail = (f"skipped {summary.get('skipped', 0)}{deselected_txt}{culled_txt}, "
                 f"failed {summary.get('failed', 0)} "
-                f"of {summary.get('total', 0)} pictures; "
-                f"{summary.get('sidecars', 0)} sidecar(s).{carried_txt}{bare_txt}")
+                f"of {summary.get('total', 0)} pictures."
+                f"{made_txt}{carried_txt}{bare_txt}")
         cancelled = getattr(self, "_cancelled", False)
         # The copy is only the first phase: when "Add location names" is ticked, a
         # reverse-geocode run follows and keeps writing for another minute. Saying
@@ -4158,12 +4163,40 @@ class EmptyTripDataDialog(BaseTripModuleDialog):
                       "This unlocks the trip: it clears the day directories and resets the "
                       "active data to empty templates so the whole pipeline can be re-run "
                       "(your pictures and the master are untouched).",
-            subdirectory=False
+            subdirectory=False,
+            picture="toucan",
         )
 
     def on_write(self):
+        _close_picture_windows()
         runner = BatchModuleRunner(self, self.passed_parent)
         runner.run(self.menu_spec, on_success=lambda: populate_trip_overview(self.passed_parent))
+
+
+def _close_picture_windows() -> int:
+    """Close every open picture window before Reset Trip clears the day data
+    under them. Left open, a day viewer kept writing a day CSV that no longer
+    existed ("could not persist summary", 0.5.0 release test). Closing first also
+    lands their pending colour/rating writes. Large views and Quick views go
+    before the grids they were opened from. Returns how many were closed."""
+    from PyQt6.QtWidgets import QApplication
+    from gui.image_viewer import ImagePreviewDialog
+    from gui.large_image_view import LargeImageView
+    from gui.quick_viewer import QuickViewer
+    from gui.rating_editor import RatingEditorDialog
+    windows = [w for w in QApplication.topLevelWidgets() if w.isVisible()]
+    order = (QuickViewer, LargeImageView, ImagePreviewDialog, RatingEditorDialog)
+    closed = 0
+    for cls in order:
+        for w in windows:
+            if isinstance(w, cls) and w.isVisible():
+                w._suppress_rerun = True      # no "re-run Read & Summarize?" now
+                w.close()
+                closed += 1
+    if closed:
+        logging.getLogger("speciesviewer").info(
+            f"Closed {closed} picture window(s) before the reset.")
+    return closed
 
 
 class WriteCommitDialog(BaseTripModuleDialog):
