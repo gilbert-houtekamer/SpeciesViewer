@@ -278,6 +278,15 @@ class BatchModuleRunner:
                             pass
                 self.status_label.setText(f"{display_msg}{warn_suffix}")
                 self.status_bar.showMessage(f"{display_msg}{warn_suffix}")
+                # Done: Close is the next thing to press, not Run Step again
+                # (0.5.0 release test — Reset Trip, Merge Trip Species, …).
+                close_btn = getattr(self.parent, "close_btn", None)
+                if close_btn is not None:
+                    write_btn = getattr(self.parent, "write_btn", None)
+                    if write_btn is not None:
+                        write_btn.setDefault(False)
+                    close_btn.setDefault(True)
+                    close_btn.setFocus()
                 if on_success:
                     on_success()
 
