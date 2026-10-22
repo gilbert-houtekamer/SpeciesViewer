@@ -5282,7 +5282,8 @@ class MergeTripDialog(BaseTripModuleDialog):
                        "are highlighted yellow. You can keep the merged "
                        "master, continue reviewing, or restore the previous "
                        "master from the transient backup."),
-            subdirectory=False
+            subdirectory=False,
+            picture="coati",
         )
 
     def on_write(self):
