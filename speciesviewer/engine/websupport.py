@@ -1190,10 +1190,13 @@ def formatToken(tokenno, MyProject, species_param, file, picture):
                     workstr += '            class="w3-border" style="padding:8px;max-width:100%" title="Click to go to ' + blog["title_" + language] + '"></a>\n'                    
                 else:
                     # pict the best picture from the current pictures in the blog
-                    if blog['blogjpg'] == "":
-                        bestjpg = str(MyProject.Blog.getBestJPGinList(logname))
-                    else:  # override for preferred picture on index
+                    # The chosen cover only while it is still IN the blog — the
+                    # img points into the blog's own folder; a picture the
+                    # blog dropped would show as a broken image.
+                    if blog['blogjpg'] and blog['blogjpg'] in blog['BestJPGs']:
                         bestjpg = blog['blogjpg']
+                    else:
+                        bestjpg = str(MyProject.Blog.getBestJPGinList(logname))
                     altforjpg = getAltTextForJPG(MyProject, bestjpg)
                     workstr += f'          <a href="{logname}-slider-' + language + '.html"><img\n'
                     workstr += '            src="' + logname + '/' +  bestjpg + '" alt="' + altforjpg + '"\n'

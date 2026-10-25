@@ -3707,7 +3707,7 @@ class CreateBlogDialog(QDialog):
     def __init__(self, parent, menu_spec):
         super().__init__(parent)
         self.setWindowTitle("Configure Blog Post")
-        self.resize(600, 400)
+        self.resize(760, 620)       # room for the cover picker's thumbnails
 
         self.menu_spec = menu_spec
         self.ini_path = Path(_config["project"]["picturedirectory"]) / "blog.ini"
@@ -3923,6 +3923,16 @@ class CreateBlogDialog(QDialog):
         form.addRow("Minimum picture width (px):", self.column_width)
         form.addRow("Pictures per species:", self.max_per_species)
 
+        # The picture that stands for this day on the blog index (blogjpg).
+        from gui.blog_cover_picker import BlogCoverPicker
+        self.cover_picker = BlogCoverPicker(
+            _config.get("trip", "tripbiotadatabase", fallback="").strip(),
+            Path(_config["project"]["picturedirectory"]).name,
+            self.parser.get("blog_selection", "species", fallback="biota"),
+            self.parser.get("blog_text", "blogjpg", fallback=""))
+        form.addRow(QLabel("Picture on the blog index:"))
+        form.addRow(self.cover_picker)
+
         self.tabs.addTab(tab, "Configuration")
 
     def _values(self):
@@ -3930,7 +3940,7 @@ class CreateBlogDialog(QDialog):
         return (self.title_nl.text(), self.message_nl.toPlainText(),
                 self.title_en.text(), self.message_en.toPlainText(),
                 self.minimum_score.value(), self.column_width.value(),
-                self.max_per_species.value())
+                self.max_per_species.value(), self.cover_picker.choice())
 
     def _save_and_close(self):
         if self._values() != self._saved:
@@ -3966,6 +3976,11 @@ class CreateBlogDialog(QDialog):
         self.parser["blog_config"]["minimum_score"] = str(self.minimum_score.value())
         self.parser["blog_config"]["column_width"] = str(self.column_width.value())
         self.parser["blog_config"]["max_per_species"] = str(self.max_per_species.value())
+        cover = self.cover_picker.choice()
+        if cover:
+            self.parser["blog_text"]["blogjpg"] = cover
+        else:
+            self.parser.remove_option("blog_text", "blogjpg")
 
         with open(self.ini_path, "w", encoding="utf-8") as f:
             self.parser.write(f)
@@ -3979,6 +3994,9 @@ class CreateBlogDialog(QDialog):
             self.save_ini()  # Ensure latest edits are saved
 
             def open_blog_in_browser():
+                # The build may have chosen other pictures: show those.
+                self.cover_picker.reload()
+                self._saved = self._values()
                 if self.open_after_checkbox.isChecked():
                     webbrowser.open(self.get_blog_url())
 
