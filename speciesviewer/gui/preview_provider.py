@@ -40,6 +40,9 @@ from utils.raw_extensions import RAW, DXO_RAW, VIDEO, bare, HEIC, JPEG, OTHER_IM
 
 logger = logging.getLogger("speciesviewer")
 
+# (picture, colour) pairs already reported as "Colour kept" this session.
+_KEEPS_LOGGED: set = set()
+
 _RAW_EXTS = RAW  # canonical table; was missing .cr3/.dng/.raf — see utils/raw_extensions.py
 _VIDEO_EXTS = VIDEO  # canonical table — see utils/raw_extensions.py
 
@@ -1206,10 +1209,16 @@ class PreviewCollection(PictureCollection):
                 # removed the colour" is what carried that loss into the CSV.
                 # Keep the colour, say so; svr_label_audit.py lists the drift.
                 # Clearing a colour in SV goes through apply(), not here.
-                logger.warning(
-                    f"[colour] refresh KEEPS         {key:34} "
-                    f"memory={was_label!r}: its sidecar now has no label "
-                    f"(raw_disk={_label_on_disk(xmp)!r}); not clearing it")
+                # Nothing is lost, so info, not a highlighted warning — and once
+                # per picture: three viewers refreshing printed it 3× (2026-10-25).
+                if (key, was_label) not in _KEEPS_LOGGED:
+                    _KEEPS_LOGGED.add((key, was_label))
+                    logger.info(
+                        f"Colour kept: {Path(str(xmp)).name} lost its colour "
+                        f"{was_label!r} outside SpeciesViewer (probably PhotoLab); "
+                        f"SpeciesViewer keeps {was_label!r}.")
+                logger.debug(f"[colour] refresh KEEPS {key} memory={was_label!r} "
+                             f"raw_disk={_label_on_disk(xmp)!r}")
             elif new_label != was_label:
                 logger.debug(
                     f"[colour] refresh updates      {key:34} "

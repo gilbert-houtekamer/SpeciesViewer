@@ -401,7 +401,9 @@ class FilePicture:
             lookup_name = corrected_subject
         scientific_name = self.sc.getSpecies(lookup_name)
         if scientific_name == "":  # still no name found
-            logger.warning(f"The species name is not recognized, but the updated keywords are stored in the files.")
+            # 'landscape' is no species on purpose — no warning for it.
+            if not SpeciesClassification.isBlogExtra(corrected_subject):
+                logger.warning(f"The species name is not recognized, but the updated keywords are stored in the files.")
             sc_object = None
         else:
             sc_object = self.sc.sc_dict[scientific_name]
@@ -459,7 +461,8 @@ class FilePicture:
             lookup_name = corrected_subject
         scientific_name = self.sc.getSpecies(lookup_name) if corrected_subject != "" else ""
         sc_object = self.sc.sc_dict[scientific_name] if scientific_name else None
-        if corrected_subject != "" and scientific_name == "":
+        if (corrected_subject != "" and scientific_name == ""
+                and not SpeciesClassification.isBlogExtra(corrected_subject)):
             logger.warning("The species name is not recognized, but the updated "
                            "keywords are stored in the files.")
         correct_for_xmp = (format_subject_for_xmp(corrected_subject)

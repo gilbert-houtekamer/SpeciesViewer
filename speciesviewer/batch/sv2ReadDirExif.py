@@ -96,6 +96,30 @@ TRANSLATABLE_EXTENSIONS = bare(CAMERA_PHOTO)  # canonical table — see utils/ra
 logger = logging.getLogger("speciesviewer")
 
 
+def _warn_dateless(all_rows, extensions):
+    """A picture without a capture date cannot be placed in a day, so the blog
+    leaves it out. WhatsApp and other forwarded pictures lose their date — and
+    are usually not the user's own photo either. One line in total, one name per
+    picture (UPN), not per file: the _DxO.jpg twin has no date either. Returns
+    the names warned about."""
+    dateless = {}
+    for r in all_rows:
+        if (not r.get("EXIF:DateTimeOriginal")
+                and r.get("WindowsExtension", "") in extensions):
+            dateless.setdefault(r.get("UniquePictureName", ""), r.get("File:FileName", "?"))
+    names = list(dateless.values())
+    if names:
+        shown = ", ".join(names[:5]) + (", …" if len(names) > 5 else "")
+        logger.warning(
+            f"No capture date on {len(names)} picture(s): {shown} — these stay "
+            f"out of the blog. WhatsApp downloads and pictures received from "
+            f"others usually have no date; use the original file from the "
+            f"camera or phone.")
+        for n in names:
+            logger.debug(f"No capture date: {n}")
+    return names
+
+
 def _report_unverified_translations(MyProject, all_rows):
     """Log each Headline/Description text whose translation isn't human-verified
     yet. Pure cache lookup — no prompt, no network. Normalization matches the
@@ -598,6 +622,8 @@ def main(args, config):
                               if len(names) > 5 else ""))
             for n in names:
                 logger.debug(f"GPS missing: {n}")
+
+        _warn_dateless(all_rows, WARN_EXTENSIONS)
 
         # Pull in DxO .dop recipe sidecars (exiftool skips them) so they travel
         # into the master with their RAW.

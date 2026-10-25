@@ -1152,8 +1152,9 @@ class SidecarCollection(MasterCardOpsMixin, PictureCollection):
         for k, was in labels_before.items():
             row = self._rows.get(k)
             if row is not None and not row.get("Label"):
-                logger.warning(f"[colour] refresh: {Path(str(row.get('SourceFile', k))).name} "
-                               f"lost its colour {was!r} on disk (changed outside SV)")
+                logger.warning(f"{Path(str(row.get('SourceFile', k))).name} lost its "
+                               f"colour {was!r}: it was changed outside SpeciesViewer "
+                               f"(probably by PhotoLab).")
 
     def _drop_thumb_caches(self, stem):
         """Forget every cached thumbnail (RAM + on-disk) for one picture."""

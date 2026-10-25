@@ -1025,6 +1025,7 @@ def formatToken(tokenno, MyProject, species_param, file, picture):
                 # "aves" excludes landscapes, which belong to no group.
                 if MyProject.Blog.getSelectedSpeciesGroup() in ("", "biota"):
                     collectBlogExtras(MyProject, selected_dict)
+                warnDatelessJPGs(MyProject)
                 # step 2: order the cards. Normal photos run chronologically;
                 # obscured (location-hidden) species are pulled OUT of the time
                 # line — their chronological neighbours would otherwise give away
@@ -1854,6 +1855,28 @@ def collectBlogExtras(MyProject, selected_species):
     except Exception as e:
         logger.warning(f"collectBlogExtras failed: {e}")
     return
+
+def warnDatelessJPGs(MyProject):
+    """Say which pictures the blog leaves out for lack of a capture date.
+    collectBestJPGs and collectBlogExtras keep only pictures inside the day's
+    time window; an empty date is never inside it, so these vanished without a
+    word (2026-10-25: two WhatsApp landscapes). Left out on purpose — such a
+    picture is often not the user's own — but never silently. Once per build."""
+    if MyProject.Blog.__dict__.get('_dateless_logged'):
+        return
+    MyProject.Blog._dateless_logged = True
+    try:
+        names = [os.path.basename(upn_item['BestJPG'])
+                 for upn_item in MyProject.UniquePictureName_dict.values()
+                 if upn_item['BestJPG'] != "" and not upn_item['DateTimeOriginal']]
+        if names:
+            logger.warning(
+                f"Left out of the blog — no capture date: {', '.join(names)}. "
+                f"WhatsApp downloads and pictures received from others usually "
+                f"have no date; use the original file from the camera or phone.")
+    except Exception as e:
+        logger.warning(f"warnDatelessJPGs failed: {e}")
+
 
 def addOneSpeciesJPG(MyProject, jpgname, textCreated, templatehtml):
     try:
