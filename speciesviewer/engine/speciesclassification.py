@@ -493,13 +493,39 @@ class SpeciesClassification:
         return written
 
     # merge both SpeciesCollections
-    def mergeSpeciesCollections(self, newSC):
+    def mergeSpeciesCollections(self, newSC, used_names=None):
+        """Fold newSC's species that this collection lacks into it.
+
+        used_names (the names the trip's pictures carry): when given, a "?"
+        placeholder no picture uses is NOT merged — nor a parent row that would
+        exist only for such placeholders. Every trip starts with a copy of the
+        master's list, so a placeholder once removed from the master came back
+        with the next trip merge ("? phacelia", 2026-10-26). Real species merge
+        exactly as before. Returns the set of names left out."""
+        skip = set()
+        if used_names is not None:
+            skip = {n for n in newSC
+                    if n not in self.sc_dict and n.startswith('?') and n not in used_names}
+            changed = bool(skip)
+            while changed:
+                changed = False
+                for n, obj in newSC.items():
+                    leaves = obj.get('Leaves') or []
+                    if (n not in skip and n not in self.sc_dict and leaves
+                            and all(leaf in skip for leaf in leaves)):
+                        skip.add(n)
+                        changed = True
         for species in newSC:
-            if species in self.sc_dict: continue
-            speciesobject = newSC[species] 
+            if species in self.sc_dict or species in skip: continue
+            speciesobject = newSC[species]
+            if skip and speciesobject.get('Leaves'):
+                speciesobject = dict(speciesobject)
+                speciesobject['Leaves'] = [l for l in speciesobject['Leaves'] if l not in skip]
             self.sc_dict[species] = speciesobject
-    
-        return
+        if skip:
+            logger.info(f"Not merged into the master — placeholder(s) no picture uses: "
+                        f"{', '.join(sorted(skip))}.")
+        return skip
 
 
     # keep previous version and latest

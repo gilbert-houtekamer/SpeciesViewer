@@ -31,6 +31,31 @@ def readConfig():
     read_ini(config, INI_LOCATION)
     return config
 
+def trip_picture_names(metadatadir):
+    """Every species name the trip's pictures carry (WetSoortNaam and subject,
+    lowercase) — active and every review day. The merge keeps a "?" placeholder
+    only when one of these uses it."""
+    import csv, glob, ast
+    names = set()
+    paths = [os.path.join(metadatadir, "active", "data_pictures.csv")]
+    paths += glob.glob(os.path.join(metadatadir, "review", "*", "data_pictures.csv"))
+    for path in paths:
+        try:
+            with open(path, newline="", encoding="utf-8") as f:
+                for row in csv.DictReader(f, delimiter=";"):
+                    names.add((row.get("WetSoortNaam") or "").strip().lower())
+                    subject = (row.get("subject") or "").strip()
+                    try:
+                        parts = ast.literal_eval(subject) if subject.startswith("[") else [subject]
+                    except Exception:
+                        parts = [subject]
+                    names.update(str(p).strip().lower() for p in parts)
+        except OSError:
+            continue
+    names.discard("")
+    return names
+
+
 def main(args, config):
     global starttime, SpeciesDebug, Reference_sp
     starttime = time.time()
@@ -62,7 +87,7 @@ def main(args, config):
     # can use to drive the Keep / Restore review flow.
     masterSpeciesCollection = os.path.join(MyProject.MasterRepository, 'metadata', 'active', 'speciescollection.csv')
     sc.readSpeciesCollection(masterSpeciesCollection, True)
-    sc.mergeSpeciesCollections(newSC)
+    sc.mergeSpeciesCollections(newSC, used_names=trip_picture_names(metadatadir))
     sc.updateSpeciesCollection(masterSpeciesCollection)
         
     totaltime = time.time() - starttime      
