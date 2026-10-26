@@ -137,7 +137,7 @@ def ensureSiteSkeletons(MyProject, sftp):
                         masterWebRoot(MyProject, ""))
 
 
-def putTripImages(MyProject, sftp):
+def putTripImages(MyProject, sftp, cached=True):
     """Upload the trip's banner and trip picture to the trip's web root.
 
     Only repository creation (sv1MakeReposity) ever uploaded them, so a banner
@@ -167,7 +167,11 @@ def putTripImages(MyProject, sftp):
             logger.warning(f"Trip banner/picture not found in the trip folder, "
                            f"not uploaded: {src}")
             continue
-        if not sftp.cachedUpload(src, target.rstrip("/") + "/" + name, preserve_mtime=True):
+        remote = target.rstrip("/") + "/" + name
+        if not cached:          # no upload cache open (svr4UpdateTrips): two small files
+            sftp.upload(src, remote)
+            logger.info(f"Uploaded trip image {name}.")
+        elif not sftp.cachedUpload(src, remote, preserve_mtime=True):
             logger.info(f"Uploaded trip image {name}.")
 
 

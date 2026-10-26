@@ -502,6 +502,43 @@ class TripCreationDialog(QDialog):
         self.logger.debug("Trip settings updated (trip.ini written; repository not rebuilt).")
         self.passed_parent.status_bar.showMessage("Trip settings updated.")
         self.status_label.setText("✅ Trip settings saved.")
+        self._update_trip_on_site()
+
+    def _update_trip_on_site(self):
+        """Bring the website's trip list (title, text, picture, banner) in line
+        with the trip.ini just saved — only for a trip that is ALREADY listed:
+        saving settings must never publish a trip still in draft. The same
+        step as Manage Trip Publication ▸ List on the site (svr4UpdateTrips)."""
+        trip_dir = self.root_field.get_text()
+        active = _config.get("trip", "tripbiotadatabase", fallback="").strip()
+        if not active or Path(trip_dir).resolve() != Path(active).resolve():
+            # svr4 works on the ACTIVE trip; another one would be published instead.
+            self.logger.info("Website not updated: this is not the selected trip. "
+                             "Select it, then Update Trip Settings again.")
+            return
+        from utils.trip_config import read_trip_ini
+        from engine.publish_index import advertised_names
+        trip_name = (read_trip_ini(trip_dir) or {}).get("trip_name", "")
+        names = advertised_names(_config.get("websettings", "base_url", fallback=""),
+                                 _config.get("master", "masterbiotawebroot", fallback="/nature/"))
+        if names is None:
+            self.logger.warning("Website not updated: the site could not be reached.")
+            return
+        if trip_name not in names:
+            self.logger.info("This trip is not on the website's trip list, so only "
+                             "trip.ini was saved. Trip ▸ Manage Trip Publication "
+                             "puts it on the site.")
+            return
+        import batch.svr4UpdateTrips
+        from gui.menu import MenuSpec
+        spec = MenuSpec(callback=None, batch_parms={
+            "statusname":    "",
+            "module_called": batch.svr4UpdateTrips.main,
+            "before_msg":    "Updating the trip on the website…",
+            "after_msg":     "✅ Trip settings saved and the website updated.",
+            "virttrip_mode": False,
+        })
+        BatchModuleRunner(self, self.passed_parent).run(spec)
 
     def _refuse_save(self, reason: str) -> bool:
         """A refused save must be SEEN: the red hint sits on the first tab, and

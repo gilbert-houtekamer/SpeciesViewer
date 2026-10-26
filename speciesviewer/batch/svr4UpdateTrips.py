@@ -83,6 +83,10 @@ def main(args, config):
     ensureSiteSkeletons(trip.mp, sftp)
     trip.uploadTrip(sftp)
     trip.uploadTripAdmin(sftp, trip.getTripAdminWeb())
+    # The trip index shows the trip picture: a picture chosen after the last
+    # commit was listed but not on the server (a broken image). Both images.
+    from batch.sv7WriteCommit import putTripImages
+    putTripImages(trip.mp, sftp, cached=False)
     sftp.disconnect()
 
         

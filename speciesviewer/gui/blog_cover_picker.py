@@ -59,6 +59,9 @@ class BlogCoverPicker(QWidget):
         self._list.setMovement(QListView.Movement.Static)
         self._list.setSpacing(6)
         self._list.setWordWrap(True)
+        # The chosen picture must be unmistakable — the same frame as Trip ▸ Trash.
+        self._list.setStyleSheet(
+            "QListWidget::item:selected { border: 5px solid #2f7de1; }")
         lay.addWidget(self._list, 1)
         self.reload()
 
