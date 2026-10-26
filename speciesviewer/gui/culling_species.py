@@ -249,6 +249,100 @@ def flush_learned_species(sc):
     return True, ""
 
 
+def remember_local_name(sc, name, sci):
+    """Keep `name` (a local name a guide used) as another name for `sci`, in
+    the MASTER's alias table and in this trip's, at once (ch.6). Returns
+    (ok, message). The master comes first and is required, for the same reason
+    as flush_learned_species: a name kept only in the trip is lost with it.
+    A laptop master's table reaches the main master through the trip — the
+    trip export, svr5 and Install Small Master all merge it."""
+    from engine.species_aliases import ALIAS_FILE, add_alias, alias_problem
+    problem = alias_problem(sc, name, sci)
+    if problem:
+        return False, problem
+    master_db = _config.get("master", "masterbiotadatabase", fallback="")
+    if not master_db or not os.path.isdir(os.path.join(master_db, "metadata", "active")):
+        return False, ("The master is not reachable, so the name cannot be kept. "
+                       "Reconnect the master and try again.")
+    master = os.path.join(master_db, "metadata", "active", ALIAS_FILE)
+    local_dir = os.path.dirname(getattr(sc, "_source_path", "") or "")
+    local = os.path.join(local_dir, ALIAS_FILE) if local_dir else ""
+    trip = os.path.basename(os.path.dirname(os.path.dirname(local_dir))) if local_dir else ""
+    try:
+        add_alias([master, local], name, sci, source=trip)
+    except Exception as e:
+        logger.warning(f"Could not keep the name '{name}': {e}")
+        return False, f"The name could not be saved:\n{e}"
+    sc.alias_dict[name.strip().lower()] = sci.strip().lower()
+    return True, ""
+
+
+class LocalNameDialog(QDialog):
+    """Ask which species a local name means. ONE JOB: return a scientific name
+    from the species list that the name may point at — OK stays disabled
+    until the choice is one alias_problem accepts."""
+
+    def __init__(self, sc, local_name: str, parent=None):
+        super().__init__(parent)
+        from gui.widgets import wrapped
+        self._sc = sc
+        self._local = local_name.strip()
+        self.sci = ""
+        self.chosen = ""
+        self.setWindowTitle("A local name")
+        self.setMinimumWidth(480)
+        layout = QVBoxLayout(self)
+        layout.addWidget(wrapped(
+            f"Which species is “{self._local}”? From now on SpeciesViewer "
+            f"recognises “{self._local}” as that species — on this trip, in "
+            f"your master and in every later trip.", self))
+        self.field = QLineEdit()
+        completer = QCompleter(species_name_candidates(sc), self)
+        completer.setCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
+        completer.setFilterMode(Qt.MatchFlag.MatchContains)
+        self.field.setCompleter(completer)
+        layout.addWidget(self.field)
+        self.feedback = wrapped("", self)
+        layout.addWidget(self.feedback)
+        row = QHBoxLayout()
+        row.addStretch()
+        self.ok_btn = QPushButton("Remember the name")
+        cancel = QPushButton("Cancel")
+        row.addWidget(self.ok_btn)
+        row.addWidget(cancel)
+        layout.addLayout(row)
+        self.ok_btn.setEnabled(False)
+        self.field.textChanged.connect(self._check)
+        self.field.returnPressed.connect(self._accept)
+        self.ok_btn.clicked.connect(self._accept)
+        cancel.clicked.connect(self.reject)
+        self.field.setFocus()
+
+    def _check(self):
+        from engine.species_aliases import alias_problem
+        text = self.field.text().strip()
+        try:
+            sci = self._sc.getKnownSpecies(text.lower(), False, LookUpInGBIF=False) if text else ""
+        except Exception:
+            sci = ""
+        problem = alias_problem(self._sc, self._local, sci) if sci else ""
+        if not text:
+            self.feedback.setText("")
+        elif not sci:
+            self.feedback.setText("⚠️ not in your species list")
+        elif problem:
+            self.feedback.setText(f"⚠️ {problem}")
+        else:
+            self.feedback.setText(f"✓ <b>{sci}</b>")
+        self.sci = sci if sci and not problem else ""
+        self.ok_btn.setEnabled(bool(self.sci))
+
+    def _accept(self):
+        if self.sci:
+            self.chosen = self.field.text().strip()
+            self.accept()
+
+
 def flush_learned_species_from(scs, parent=None):
     """Flush several classifications at once — a viewer may have touched both
     the standalone culling collection and the pipeline's (fpr.sc). Reports at
@@ -1207,16 +1301,23 @@ class CullingSpeciesWidget(QWidget):
         # into the recents). Only the typed field is checked — recent buttons are
         # already-trusted names and commit straight away.
         if not self._is_known:
-            resp = QMessageBox.question(
-                self, "Unknown species name",
+            box = QMessageBox(QMessageBox.Icon.Question, "Unknown species name",
                 f"“{name}” isn’t in your species list and hasn’t been confirmed "
                 f"online.\n\n"
                 f"Yes — store it as typed.\n"
                 f"No — go back and correct the name (or use “Check online (GBIF)”).\n"
+                f"Local name — it is another name for a species you have; "
+                f"remember it.\n"
                 f"Cancel — close without setting a species.",
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
-                | QMessageBox.StandardButton.Cancel,
-                QMessageBox.StandardButton.No)
+                | QMessageBox.StandardButton.Cancel, self)
+            local_btn = box.addButton("Local name…", QMessageBox.ButtonRole.ActionRole)
+            box.setDefaultButton(QMessageBox.StandardButton.No)
+            box.exec()
+            if box.clickedButton() is local_btn:
+                self._learn_local_name(name)
+                return
+            resp = box.standardButton(box.clickedButton())
             if resp == QMessageBox.StandardButton.Cancel:
                 self.cancelled.emit()
                 return
@@ -1225,6 +1326,22 @@ class CullingSpeciesWidget(QWidget):
                 self.field.selectAll()
                 return
         self._commit(name)
+
+    def _learn_local_name(self, name: str):
+        """"Local name…": ask which species `name` means, keep it as an alias,
+        and set the pictures to that species. Cancel leaves the field as typed."""
+        dlg = LocalNameDialog(self._sc, name, self)
+        if dlg.exec() != QDialog.DialogCode.Accepted:
+            self.field.setFocus()
+            return
+        ok, msg = remember_local_name(self._sc, name, dlg.sci)
+        if not ok:
+            QMessageBox.warning(self, "Name not kept", msg)
+            self.field.setFocus()
+            return
+        self._attach_completer()
+        self.field.setText(dlg.chosen)
+        self._commit(dlg.chosen)
 
     def _update_qualifier_visibility(self, sciname: str):
         """Show only the qualifier rows that mean something for this taxon.

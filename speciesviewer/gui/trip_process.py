@@ -6252,7 +6252,7 @@ class ImportTripDialog(QDialog):
         import configparser as _cp
         import time as _time
         from engine.trip_transfer import (restore_identity, merge_species_collection,
-                                          restore_baseline, merge_transcache,
+                                          restore_baseline, merge_transcache, merge_aliases,
                                           pull_trip_admin)
         from utils.batch_config import generate_svconfig_ini
         from utils.trip_identity import resolve_trip_picture_root
@@ -6328,6 +6328,9 @@ class ImportTripDialog(QDialog):
                           "kept": "Kept the lifer status already here.",
                           "absent": "No lifer status in the ZIP — Count Species will "
                                     "use the trip's start date."}[base])
+            names_added = merge_aliases(zip_path, dest)
+            if names_added:
+                notes.append(f"Species names merged: {names_added} new.")
             tc = merge_transcache(zip_path, dest)
             if tc:
                 kept = (f", {tc['kept_verified']} checked translations kept"
@@ -6578,13 +6581,23 @@ class InstallSmallMasterDialog(QDialog):
                     existing_sc_content = _f.read()
             except Exception:
                 pass
+        # The alias table too: a local name learned on this machine lives only
+        # here until a trip carries it home.
+        from engine.species_aliases import alias_path
+        existing_alias_text = None
+        if os.path.isfile(alias_path(target)):
+            try:
+                with open(alias_path(target), "r", encoding="utf-8", newline="") as _f:
+                    existing_alias_text = _f.read()
+            except Exception:
+                pass
 
         t0 = _time.time()
         self.status_label.setText("")
         box, say = self._install_wait_box()
         try:
             msg = self._install_steps(zip_path, target, existing_sc_content,
-                                      sc_path, t0, say)
+                                      sc_path, t0, say, existing_alias_text)
         finally:
             box.close()
             box.deleteLater()
@@ -6614,7 +6627,8 @@ class InstallSmallMasterDialog(QDialog):
             QApplication.processEvents()
         return box, say
 
-    def _install_steps(self, zip_path, target, existing_sc_content, sc_path, t0, say):
+    def _install_steps(self, zip_path, target, existing_sc_content, sc_path, t0, say,
+                       existing_alias_text=None):
         """Extract, merge, rebuild the DB, lock read-only. Returns the result line."""
         import tempfile as _tmp
         import zipfile as _zf
@@ -6665,6 +6679,14 @@ class InstallSmallMasterDialog(QDialog):
                     merged_note = f"  Merged {len(new_entries)} local species entries into speciescollection."
             except Exception as e:
                 merged_note = f"  (speciescollection merge skipped: {e})"
+        if existing_alias_text:
+            try:
+                from engine.species_aliases import alias_path, merge_alias_text
+                n = merge_alias_text(existing_alias_text, alias_path(target))
+                if n:
+                    merged_note += f"  Kept {n} species name(s) learned on this computer."
+            except Exception as e:
+                merged_note += f"  (species names merge skipped: {e})"
 
         # Rebuild the master DB immediately so it is ready on first use.
         db_note = ""

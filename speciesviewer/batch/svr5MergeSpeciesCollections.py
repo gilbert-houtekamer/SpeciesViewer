@@ -89,7 +89,12 @@ def main(args, config):
     sc.readSpeciesCollection(masterSpeciesCollection, True)
     sc.mergeSpeciesCollections(newSC, used_names=trip_picture_names(metadatadir))
     sc.updateSpeciesCollection(masterSpeciesCollection)
-        
+    # The trip's alias table too (ch.6): a local name learned on a laptop trip
+    # reaches this master only here. A union — nothing in the master changes.
+    from engine.species_aliases import ALIAS_FILE, merge_alias_files
+    merge_alias_files(os.path.join(metadatadir, "active", ALIAS_FILE),
+                      os.path.join(MyProject.MasterRepository, 'metadata', 'active', ALIAS_FILE))
+
     totaltime = time.time() - starttime      
     print(f'Total time for all other work {totaltime:.1f} seconds.')
 

@@ -13,6 +13,8 @@ What travels, and why (see docs/plans/trip_export_import_plan.md):
   trip.ini                                  hard to recreate — the whole identity
   <trip_picture> / <trip_banner>            the two images named by trip.ini
   metadata/active/speciescollection.csv     easy to forget — merged, never replaced
+  metadata/active/speciesnames.csv          the alias table — local names learned
+                                            on the trip; merged (a union)
   metadata/initialize/master_species_baseline.csv
                                             the lifer answer; NEVER regenerated on
                                             import (a partial master would mark
@@ -58,6 +60,7 @@ TRIP_INI_REL   = "trip.ini"
 MACHINE_LOCAL_KEYS = ("master_repository_disk", "picture_root", "created")
 COLLECTION_REL = "metadata/active/speciescollection.csv"
 BASELINE_REL   = "metadata/initialize/master_species_baseline.csv"
+ALIASES_REL    = "metadata/active/speciesnames.csv"
 TRANSCACHE_REL = "admin/TransCache.csv"
 
 # TransCache.csv is written by engine/translatelib.py — that module owns the
@@ -233,7 +236,7 @@ def export_trip(trip_root, target_dir, master_root="", machine="", master_web_ro
     trip_data = read_trip_ini(trip_root) or {}
 
     # The images are whatever trip.ini NAMES — never hardcode tripbanner.jpg.
-    wanted = [TRIP_INI_REL, COLLECTION_REL, BASELINE_REL, TRANSCACHE_REL]
+    wanted = [TRIP_INI_REL, COLLECTION_REL, ALIASES_REL, BASELINE_REL, TRANSCACHE_REL]
     for key in ("trip_picture", "trip_banner"):
         rel = (trip_data.get(key) or "").strip().replace("\\", "/")
         if rel and rel not in wanted:
@@ -424,6 +427,19 @@ def merge_species_collection(zip_path, dest_root, backup=True):
     sc_zip.writeSpeciesCollection(dest_csv)
     return {"from_zip": from_zip, "kept_local": added,
             "overridden": overridden, "total": len(sc_zip.sc_dict)}
+
+
+def merge_aliases(zip_path, dest_root):
+    """Fold the exported alias table into the target's — a union, so a local
+    name learned on either machine survives. Returns the number of names added,
+    or None when the ZIP carries no table (an export from before 0.5.1)."""
+    from engine.species_aliases import merge_alias_text
+
+    with zipfile.ZipFile(zip_path, "r") as zf:
+        if ALIASES_REL not in zf.namelist():
+            return None
+        text = zf.read(ALIASES_REL).decode("utf-8")
+    return merge_alias_text(text, os.path.join(dest_root, ALIASES_REL.replace("/", os.sep)))
 
 
 def restore_baseline(zip_path, dest_root):

@@ -160,13 +160,13 @@ def restore_trip_identity(identity_zip, trip_root, logger_=None) -> dict:
     not stop them going in.
     """
     log = logger_ or logger
-    out = {"collection": None, "baseline": "", "transcache": None, "errors": []}
+    out = {"collection": None, "aliases": None, "baseline": "", "transcache": None, "errors": []}
     if identity_zip is None or not trip_root:
         out["errors"].append("no trip identity ZIP on the card")
         return out
     from engine import trip_transfer
 
-    # Three independent parts: one failing must not cost the other two.
+    # Independent parts: one failing must not cost the others.
     try:
         out["collection"] = trip_transfer.merge_species_collection(
             str(identity_zip), str(trip_root))
@@ -178,6 +178,15 @@ def restore_trip_identity(identity_zip, trip_root, logger_=None) -> dict:
     except Exception as e:
         out["errors"].append(f"species list: {e}")
         log.warning(f"Restore: could not merge the species list: {e}")
+
+    try:
+        out["aliases"] = trip_transfer.merge_aliases(
+            str(identity_zip), str(trip_root))
+        if out["aliases"]:
+            log.info(f"Restore: {out['aliases']} species name(s) merged from the card.")
+    except Exception as e:
+        out["errors"].append(f"species names: {e}")
+        log.warning(f"Restore: could not merge the species names: {e}")
 
     try:
         out["baseline"] = trip_transfer.restore_baseline(

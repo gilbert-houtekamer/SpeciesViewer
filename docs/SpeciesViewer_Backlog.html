@@ -522,6 +522,28 @@ and <code>docs/plans/taxonomy_order_design.md</code>.</p>
     The nominate subspecies is the species itself (no &ldquo;ssp corone&rdquo;). Works for any number of subspecies.
     Open edge: a species with no pictures of its own and two or more pictured subspecies counts once but shows
     each subspecies as its own tile (none in the master yet).</li>
+  <li><span class="tag-shipped">SHIPPED</span> <strong>Aliases for common names</strong> (0.5.0) &mdash;
+    every list from outside disagrees somewhere (86 of the 576 birds two Brazil lists share were
+    named differently), in three ways: spelling (<em>Gray/Grey</em>), a genuinely different name
+    (<em>Bank Swallow</em> against <em>Sand Martin</em>), and a split or lump, where an old name no
+    longer means one species. The alias table <code>speciesnames.csv</code> beside the species
+    list holds <em>name &rarr; scientific name</em>, with its language, kind and source (3,299 rows
+    from the conversion). <strong>Two rules</strong> hold it together: an alias points at a
+    <em>scientific</em> name, never at another common name, so no chains form; and a name that would
+    mean two species is refused rather than guessed &mdash; better unresolved than filed under the
+    wrong bird.</li>
+  <li><span class="tag-test">NEEDS TEST</span> <strong>Local names learned on a trip</strong> (26 Oct) &mdash;
+    when a guide uses a local name, the species step's &ldquo;Unknown species name&rdquo; question has a
+    fourth choice, <strong>Local name&hellip;</strong>: pick the species it means, and the name is kept
+    as an alias in the master <em>and</em> the trip at once, and the pictures get that species. A name
+    that is already a species, or already means another one, is refused. The name travels by
+    itself: the trip export (and the card backup) carries the table, the import merges it, the trip
+    merge into the master (svr5) merges it, and Install Small Master keeps the names learned on the
+    laptop. Every merge is a union &mdash; nothing is dropped or changed.</li>
+  <li><span class="tag-open">OPEN</span> <strong>More places that could use aliases</strong> &mdash;
+    the Species Editor in the trip pipeline (it still has only Yes/No for an unknown name); reading
+    a tour operator's list; the waarneming.nl import; searching for a species by a name you happen
+    to remember.</li>
   <li><span class="tag-new">NEW</span> <strong>Wikipedia beside the species</strong> &mdash;
     reviewing the 29 species GBIF calls a synonym went fastest with Wikipedia open: almost none
     needed merging, and it gave better English names (Western Swamphen, Wild Water Buffalo,
@@ -533,14 +555,6 @@ and <code>docs/plans/taxonomy_order_design.md</code>.</p>
   <li><span class="tag-parked">PARKED</span> <strong>Placeholder-species cleanup</strong> — the
     “? &lt;name&gt;” placeholders, coordinated cleanup.</li>
   <li><span class="tag-parked">PARKED</span> <strong>Regional most-likely-birds</strong> (eBird).</li>
-  <li><span class="tag-parked">PARKED</span> <strong>Aliases for common names</strong> — the
-    collection settled on its own names (IOC 10.5 with GBIF), and every list from outside
-    disagrees somewhere. Comparing the two Brazil lists put a number on it:
-    <strong>86 of the 576 birds they share are named differently</strong>, and merging all four
-    lists in the trip found 98. Three different problems wear the same face:
-    <ul>
-      <li><strong>Spelling convention</strong> — <em>Gray/Grey</em>, <em>Golden-Plover</em>
-        against <em>Golden Plover</em>. Mechanical, and the widest slice of the 98.</li>
       <li><strong>A genuinely different name</strong> for the same bird —
         <em>Bank Swallow</em> against <em>Sand Martin</em>, <em>Mealy Amazon</em> against
         <em>Mealy Parrot</em>. No rule derives one from the other; it has to be recorded.</li>
@@ -820,7 +834,7 @@ alongside.</p>
     listed in the log so it stays visible which lists disagree. This matters past tidiness: a
     keyword typed in the field comes back through the pipeline later, and one that matches
     <code>species.csv</code> is one less unrecognised species downstream.
-    <br>It is the narrow version of the alias system now written up in ch. 6 — it handles
+    <br>It is the narrow version of the ch. 6 alias table (shipped in 0.5.0) — it handles
     spelling and alternative names, and knows nothing about splits.</li>
   <li><strong>Outputs carry the name of the list they came from</strong>
     <span class="tag-shipped">SHIPPED</span> (2026-08-19) — the checklist and the
