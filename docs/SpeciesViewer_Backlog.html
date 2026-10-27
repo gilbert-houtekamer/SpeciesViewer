@@ -128,7 +128,7 @@ reads <em>No current work planned</em>.</p>
     so it never becomes a tall empty box), and the layout fills the space between. A 24-day card
     shows all 24 on a big screen and opens unchanged on the laptop.</li>
   <li><strong>A first sidecar write is no longer reported as a failure</strong>
-    <span class="tag-bug">BUG</span> fixed (2026-09-23) — writing the first tag to a picture with
+    <span class="tag-shipped">FIXED</span> (2026-09-23) — writing the first tag to a picture with
     no <code>.xmp</code> yet makes one, and exiftool then says “1 image files created” with no
     “updated” in it. <code>exif_writer</code> accepted only “updated”, so a write that had landed
     was logged as lost and needlessly redone in a fresh subprocess. Rare while only sidecar-bearing
@@ -614,6 +614,13 @@ alongside.</p>
     appears nowhere in the extension table or the code, so such a file is not even offered as a
     card. Adding it to <code>HEIC</code> widens what gets ingested, so it is a deliberate change
     rather than a typo fix.</li>
+  <li><span class="tag-parked">PARKED</span> <strong>A new trip banner reaches only pages written afterwards</strong>
+    (27 Oct) &mdash; Update Trip Settings uploads the new banner and refreshes the trip's listing, but
+    every trip page has the banner's address written in when the page is made, so pages already on the
+    site keep the old one. Found on Madagascar: the empty blog index from Create Trip showed the default
+    terns. Not a problem in practice: the next Write Blog rewrites the blog index, and Reset Trip plus a
+    rebuild gives every page the new banner (each step re-reads <code>trip.ini</code> first). The open
+    edge: a trip with no days yet has no step that rewrites only its blog index.</li>
 </ul>
 <h3>Done</h3>
 <ul>
@@ -674,7 +681,7 @@ alongside.</p>
     would stop a 47-megapixel JPG reaching the website. It changes the output of every future RAW
     bake, so it is his call, not a tidy-up.</li>
   <li><strong>One HEIC of a 322-picture day came up “(no image)”</strong>
-    <span class="tag-bug">BUG</span> fixed (2026-09-24) — the HEIC preview cache was written
+    <span class="tag-shipped">FIXED</span> (2026-09-24) — the HEIC preview cache was written
     with <code>im.save(cache)</code> straight onto the destination. Decoding a 12 MP HEIC takes
     ~0.5 s and several cards decode at once, so a reader arriving mid-write got a TRUNCATED jpg,
     QImage returned null, and the card stayed blank for the session — while the same picture's
@@ -736,8 +743,7 @@ alongside.</p>
     match, so a sidecar always wins), which is what makes it safe where a HEIC sits beside an
     xmp/jpg. Dry-run over all 75,110 pictures before applying: 68 species, 47 colours, 10 ratings
     and 8 captions gained, and <em>no non-empty value overridden anywhere</em>.</li>
-  <li><strong>“0” and “” now mean the same non-rating</strong> <span class="tag-bug">BUG</span>
-    fixed (2026-09-24) — the waarneming.nl default (<em>no rating and no colour ⇒ Green</em>)
+  <li><strong>“0” and “” now mean the same non-rating</strong> <span class="tag-shipped">FIXED</span> (2026-09-24) — the waarneming.nl default (<em>no rating and no colour ⇒ Green</em>)
     tested <code>Rating == ""</code> while <code>computeRating</code> two hundred lines below
     already tested <code>in ['0', '']</code>. So a picture whose sidecar spelled its non-rating as
     <code>0</code> silently missed the Green default: 47 pictures in the master. It had to be
@@ -1114,8 +1120,7 @@ disk-cache</strong>: a species is saved the moment it is learned, so there is no
 to re-look-up.</p>
 <h3>Done</h3>
 <ul>
-  <li><strong>The EXIF cache served a stale HEIC forever</strong> <span class="tag-bug">BUG</span>
-    fixed (2026-09-24) — <code>heic</code> sat in <code>IMMUTABLE_EXTENSIONS</code>, whose key is
+  <li><strong>The EXIF cache served a stale HEIC forever</strong> <span class="tag-shipped">FIXED</span> (2026-09-24) — <code>heic</code> sat in <code>IMMUTABLE_EXTENSIONS</code>, whose key is
     <code>name|size</code> with no mtime, on the premise that the bytes never change. That premise
     is false for a HEIC: its rating, colour, species and caption live INSIDE the file, and
     SpeciesViewer, Lightroom and PhotoLab all write them there. Worse, such an edit is routinely
@@ -1680,7 +1685,8 @@ nothing.</em></p>
     to “where is the log?” — and the first thing wanted when asking somebody to send one.</li>
 
   <li><strong>Rehearse the whole trip once, on the laptop, before leaving</strong>
-    <span class="tag-test">NEEDS TEST</span> — several paths a trip depends on are built but have
+    <span class="tag-shipped">DONE</span> (Oct, before Madagascar) — a card read on the laptop into a
+    trip, exported to BigBoy and published there (the nutcracker). Original note: several paths a trip depends on are built but have
     never been used in anger. <em>Create Trip</em> and <em>Select or Update Trip</em> were split into
     two one-directional dialogs after Create Trip overwrote a live trip's identity, and both have
     been verified to open but not driven end to end. Trip and Album overview parity has not been
@@ -1774,7 +1780,9 @@ quality, not new capability, so that it can serve as a solid fallback release. S
 marked below. In short: the four-panels move, the stylesheet copies and stored-path parsing are
 done; the dead-module list is untouched; <code>trip_process.py</code> grew another thousand lines.
 The Python is now about <strong>102,700 lines</strong> (88,600 when this chapter was written).
-<em>14 Oct: about 106,500; <code>trip_process.py</code> 6,411.</em></p>
+<em>14 Oct: about 106,500; <code>trip_process.py</code> 6,411.</em>
+<strong>27 Oct: everything in this chapter is done except splitting <code>trip_process.py</code>
+(now 6,728 lines) and two small Mac items (see the last section).</strong></p>
 
 <p>A chapter for work that makes the program <em>smaller</em> rather than better. Nothing here adds
 a capability, fixes a defect or speeds anything up; the payoff is fewer lines to read the next time
@@ -1796,7 +1804,7 @@ through this have an easier time?”</em>, never <em>“how many lines does it r
 is naive — something loaded dynamically or named only in a string would not show up — so each needs
 a look before it goes. Together they are roughly 900 lines outside the one-off and future folders.</p>
 
-<p><span class="tag-open">OPEN</span> Re-checked 10 Oct: every file below is still there, and still
+<p><span class="tag-shipped">DONE</span> Re-checked 10 Oct: every file below is still there, and still
 unreferenced by the app. Two are used by a tool, not the app: <code>topics_scan</code> by
 <code>tools/topics_dry_run.py</code> and <code>weburl</code> by
 <code>tools/svr_add_species_url.py</code> &mdash; so those two stay or move with their tool.
@@ -1884,12 +1892,12 @@ are places where bugs have actually been fixed more than once:</p>
 
 <ul>
   <li><code>gui/trip_process.py</code> — <strong>5,416 lines</strong>, now
-    <strong>6,373</strong>. It holds the Read-SD-card
+    <strong>6,728</strong> (27 Oct). It holds the Read-SD-card
     dialog, the blog dialogs, the trip creation and selection dialogs and much else. These are
     unrelated jobs that happen to live together. <span class="tag-open">OPEN</span> &mdash; the
     strongest split candidate; the Read-SD-card dialog is the obvious first piece to move out.</li>
-  <li><code>gui/rating_editor.py</code> (3,504, now 4,727) and <code>gui/map_view.py</code>
-    (2,981, now 3,260) — both
+  <li><code>gui/rating_editor.py</code> (3,504, now 4,756) and <code>gui/map_view.py</code>
+    (2,981, now 3,264) — both
     single subjects, so the case is weaker; note them and leave them unless working in one becomes
     genuinely unpleasant.</li>
 </ul>
@@ -2268,7 +2276,8 @@ the title bar, the taskbar and the Dock.</p>
     The <code>.exe</code> carries the duck too (build recipe, 13 Oct). The Mac Dock waits for the
     Mac port. <em>14 Oct: once in a while the taskbar shows no icon; the next start does. Cause
     unknown &mdash; note when it happens (first start of the day? after a restart into another
-    master? started from VS Code?).</em></li>
+    master? started from VS Code?).</em> <span class="tag-shipped">FIXED</span> the icon is set again
+    a moment after start-up; it now stays, also when SpeciesViewer is pinned to the taskbar.</li>
   <li><strong>Sharpness:</strong> Firefly drew the head only about 420 pixels wide, so the 512 and
     1024 sizes are slightly soft. That is invisible in a taskbar. If a large version is ever
     needed (an installer, a web page), generate the head again in Firefly as a full square image
@@ -2523,7 +2532,7 @@ ExifTool's file type. <code>NEFCompression</code> is the reliable discriminator 
 
 <h3>Two things the corpus found that were not on the list &mdash; both fixed</h3>
 
-<p><span class="tag-bug">BUG</span> <strong>A Canon R5 Mark II can embed an HEVC preview instead
+<p><span class="tag-shipped">FIXED</span> <strong>A Canon R5 Mark II can embed an HEVC preview instead
 of a JPEG, and we then render a blank card.</strong> Two of the four R5 II samples — the two shot
 in Canon's HDR-PQ variant (<code>CompressorVersion: CanonCR3_003</code>,
 <code>ColorSpace: n/a</code>) — contain no JPEG at all; their <code>PreviewImage</code> and
@@ -2571,7 +2580,7 @@ many pictures pass: <em>&ldquo;Canon EOS R5 Mark II pictures in CR3 format have 
 — reading the photo from the RAW itself instead, at 3200&times;2136.&rdquo;</em> Four lines
 became one, and a 400-file folder still logs one.</p>
 
-<p><span class="tag-bug">BUG</span> <strong>The largest-embedded-preview logic quietly stops
+<p><span class="tag-shipped">FIXED</span> <strong>The largest-embedded-preview logic quietly stops
 working on CR3 and RW2.</strong> <code>embed_lengths()</code> asks exiftool for
 <code>&lt;tag&gt;Length</code>, and CR3 and RW2 expose no <code>*Length</code> tags whatsoever —
 so it returns an empty dict and <code>extract_preview_bytes()</code> falls back to plain
@@ -2610,7 +2619,7 @@ the list did not know about it. The answer both times was to derive the list rat
 
 <h3>The extension lists have drifted &mdash; fixed</h3>
 
-<p><span class="tag-bug">BUG</span> <strong>39 separate literal sets</strong> of RAW extensions
+<p><span class="tag-shipped">FIXED</span> <strong>39 separate literal sets</strong> of RAW extensions
 existed in the tree, in 25 files, with <strong>20 distinct values</strong> &mdash; measured
 2026-08-23 with an <code>ast</code> sweep, not estimated. The first count here said 31, and an
 earlier one said five; both were short. They did not agree with each other, and the disagreement
@@ -2638,7 +2647,7 @@ is precisely how the <code>.nrw</code> incident happened. <code>.ori</code> and 
 added; <code>.pef</code> and <code>.srw</code> dropped, because the per-body checklist below must
 not claim support that has never been tested.</p>
 
-<p><span class="tag-bug">BUG</span> <strong>What the consolidation found was worse than untidy.</strong>
+<p><span class="tag-shipped">FIXED</span> <strong>What the consolidation found was worse than untidy.</strong>
 <code>{".nef", ".orf", ".cr2", ".arw", ".rw2"}</code> &mdash; no <code>.cr3</code> &mdash; was the
 live test in <strong>six</strong> places: <code>preview_provider</code>, <code>rating_provider</code>,
 <code>rating_editor</code>, <code>image_viewer</code>, <code>species_editor</code> and
@@ -2815,7 +2824,7 @@ above did not quietly break the oldest body in the library.</p>
 
 <h3>What the CC0 corpus could not see</h3>
 
-<p><span class="tag-bug">BUG</span> <strong>Every photograph shot vertically rendered 90&deg;
+<p><span class="tag-shipped">FIXED</span> <strong>Every photograph shot vertically rendered 90&deg;
 sideways.</strong> Cameras do <em>not</em> rotate the pixels they embed. They write the preview the
 way the sensor read it &mdash; landscape &mdash; and record the turn in the file's
 <code>Orientation</code> tag, which SpeciesViewer read <em>nowhere</em>: every occurrence of the
