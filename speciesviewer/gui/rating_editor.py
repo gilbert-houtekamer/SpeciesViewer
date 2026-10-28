@@ -1838,28 +1838,19 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
         top.addSpacing(12)
 
         self._species_combo = QComboBox()
-        self._species_combo.setMinimumWidth(200)
-        self._species_combo.setToolTip("Species to view")
-        if self._master_only:
-            # ~2000 species is too many to scroll: type to narrow instead. Still
-            # a combo, so every currentData() caller in this dialog is unchanged
-            # — and unlike a bare line edit you can still browse the list.
-            self._species_combo.setMinimumWidth(260)
-            self._species_combo.setEditable(True)
-            self._species_combo.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
-            self._species_combo.lineEdit().setPlaceholderText(
-                "Type a Dutch, English or scientific name…")
-            self._species_combo.setToolTip(
-                "Species to view — type any part of a Dutch, English or "
-                "scientific name")
-            comp = self._species_combo.completer()
-            comp.setCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
-            comp.setFilterMode(Qt.MatchFlag.MatchContains)
-            comp.setCompletionMode(QCompleter.CompletionMode.PopupCompletion)
-        else:
-            # 300+ trip species: a typed letter puts its first name at the top.
-            from gui.widgets import type_ahead_to_top
-            type_ahead_to_top(self._species_combo)
+        self._species_combo.setMinimumWidth(260)
+        # One picker for Trip, Album and Master (gui.widgets.SpeciesPicker):
+        # type 3+ letters of ANY name (Dutch, English, scientific) and pick from
+        # the matches; typing itself never switches species. Still a combo, so
+        # every currentData() caller is unchanged and ▾ browses the full list.
+        from gui.widgets import species_picker, type_ahead_to_top
+        species_picker(self._species_combo)
+        self._species_combo.setToolTip(
+            "Species to view — type at least 3 letters of a Dutch, English or "
+            "scientific name, then pick one (or press Enter for the top match). "
+            "▾ shows the whole list.")
+        # Browsing the open ▾ list: a typed letter puts its first name at the top.
+        type_ahead_to_top(self._species_combo)
         self._species_combo.currentIndexChanged.connect(self._on_species_changed)
         top.addWidget(self._species_combo)
         top.addSpacing(12)
@@ -2848,7 +2839,7 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
             # species —" row at the top of the list is only noise. Master mode
             # starts on NO selection instead (see below): an empty field showing
             # its placeholder, rather than whatever species sorts first.
-            self._species_combo.addItem("— Select a species —", None)
+            self._species_combo.addItem("— Select or type a species —", None)
 
         # Per species: does any TRIP picture have a real JPG on disk yet? A
         # species whose trip pictures are all RAW/HEIC won't appear on the
@@ -2858,6 +2849,9 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
         names: set[str] = set()
         trip_has_jpg: dict[str, bool] = {}   # species name → ≥1 trip JPG on disk
         self._name_to_sci = {}               # display name → scientific name
+        # display name → all its names (NL/EN/sci): what the picker searches
+        self._species_all_names: dict[str, list] = {}
+        from utils.name_profile import all_names_ordered
         col = self._collection
         # An ALBUM's species are the ones its date window holds, resolved with
         # the window itself — no pictures loaded. The "(only RAW)" flag is a
@@ -2870,6 +2864,8 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
                     continue
                 names.add(name)
                 self._name_to_sci.setdefault(name, sci)
+                self._species_all_names.setdefault(
+                    name, [n for n, _s in all_names_ordered(row, self._species_lang)])
             for name in sorted(names, key=str.casefold):
                 self._species_combo.addItem(name, name)
             if self._master_only:
@@ -2881,6 +2877,9 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
             if not name:
                 continue
             names.add(name)
+            if name not in self._species_all_names:
+                self._species_all_names[name] = [
+                    n for n, _s in all_names_ordered(upn_row, self._species_lang)]
             sci = (upn_row.get("WetSoortNaam") or "").strip()
             if sci:
                 self._name_to_sci.setdefault(name, sci)
@@ -2905,6 +2904,8 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
     def _finish_species_combo(self, restore_selection) -> None:
         """Pick the entry to show once the combo is filled: the one that was
         selected before the reload, else a one-shot jump target, else nothing."""
+        self._species_combo._species_picker.set_names(
+            lambda name: self._species_all_names.get(name, []))
         if restore_selection:
             idx = self._species_combo.findData(restore_selection)
             if idx >= 0:
