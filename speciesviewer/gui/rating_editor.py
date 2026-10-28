@@ -1876,16 +1876,30 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
         # Sort order. Rate (best first) is the default; capture time groups
         # near-identical burst frames next to each other so blue-delete culling
         # of duplicates is easy; camera groups by body.
+        #
+        # Only "Rate ↓ (re-sort)" reorders after an edit. Every other order —
+        # plain "Rate ↓" included — is applied when the grid loads and then STAYS
+        # PUT while you rate and colour: cards jumping away mid-cull is what this
+        # is for. A card coloured out of the colour filter stays too, until the
+        # next sort. Picking the current entry again sorts now (activated fires
+        # on a re-pick; currentIndexChanged does not).
         self._sort_combo = QComboBox()
         for label, data in (("Rate ↓", "rate"),
+                            ("Rate ↓ (re-sort)", "rate_live"),
                             ("Time ↑", "time_asc"),
                             ("Time ↓", "time_desc"),
                             ("Camera", "camera")):
             self._sort_combo.addItem(label, data)
         self._sort_combo.setToolTip(
             "Card order — Rate (best first), capture time (old→new / new→old, "
-            "groups duplicate frames), or camera body")
-        self._sort_combo.currentIndexChanged.connect(self._on_sort_changed)
+            "groups duplicate frames), or camera body.\n"
+            "Only \"Rate ↓ (re-sort)\" moves cards while you rate; the others keep "
+            "the order until you pick an entry again.")
+        _saved_sort = _config.get("ratingeditor", f"sort_{self._geo_key}",
+                                  fallback="rate").strip()
+        _i = self._sort_combo.findData(_saved_sort)
+        self._sort_combo.setCurrentIndex(_i if _i >= 0 else 0)
+        self._sort_combo.activated.connect(self._on_sort_changed)
         top.addWidget(self._sort_combo)
         top.addSpacing(8)
 
@@ -3414,7 +3428,16 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
         self._rebuild_cards()
 
     def _on_sort_changed(self, _idx: int):
+        # `activated` — also on a re-pick of the same entry, which is how you ask
+        # a fixed order to sort now. Remembered per viewer (Trip/Album/Master).
+        data = self._sort_combo.currentData()
+        if _config.get("ratingeditor", f"sort_{self._geo_key}", fallback="rate") != data:
+            set_setting("ratingeditor", f"sort_{self._geo_key}", data)
         self._rebuild_cards()
+
+    def _live_resort(self) -> bool:
+        """True only for "Rate ↓ (re-sort)": the one order that follows edits."""
+        return self._sort_combo.currentData() == "rate_live"
 
     def _show_species_distribution_map(self):
         """Every GPS point the master holds for the species in view (Master
@@ -3705,7 +3728,7 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
             return keys
         wanted = set(keys)
         if mode == "sort":
-            self._resort_if_needed()
+            self._resort_if_needed(force=True)   # asked for — not an edit follow-up
             ordered = [k for k in self._order if k in wanted]
             return ordered + [k for k in keys if k not in set(ordered)]
         if mode in ("time_asc", "time_desc"):
@@ -4725,14 +4748,21 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
 
     # ── Re-sort ─────────────────────────────────────────────────────────────
 
-    def _resort_if_needed(self, focus_key: str | None = None):
+    def _resort_if_needed(self, focus_key: str | None = None, *, force: bool = False):
         """Re-query the collection's current sort order and rebind the pool
         to it — under virtualization this is just an _order update + a
         rebind, no widget shuffling needed (the pool rebinds to whatever
         keys now fall in the visible index range). When `focus_key` is
         given, scroll it back into view first so an edited card's new Rate
-        can't move it off-screen unnoticed."""
+        can't move it off-screen unnoticed.
+
+        Every caller is the follow-up to a rating/colour edit, so this does
+        nothing unless the order is "Rate ↓ (re-sort)" — the cards already
+        repainted themselves; only their places wait for the next sort.
+        `force` = an explicit "sort now" request."""
         if self._collection is None:
+            return
+        if not (force or self._live_resort()):
             return
         filter_name = self._species_combo.currentData()
         self._rebuild_collection(filter_name)
