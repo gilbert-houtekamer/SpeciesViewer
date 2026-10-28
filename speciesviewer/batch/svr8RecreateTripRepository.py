@@ -55,27 +55,27 @@ def RecreateProject(args, config, project):
     logger.info(f"Recreate project {project}")      # project format is 2024-12-20
     if project <= '2024-04-xx': return
     try:
-        step = 'bin.sv2ReadDirExif.main'
-        bin.sv2ReadDirExif.main(args, config)
+        step = 'batch.sv2ReadDirExif.main'
+        batch.sv2ReadDirExif.main(args, config)
         logger.info(f'====={project}=====================================================')
-        step = 'bin.sv3WritePictures.main'
-        bin.sv3WritePictures.main(args, config)
+        step = 'batch.sv3WritePictures.main'
+        batch.sv3WritePictures.main(args, config)
         logger.info(f'====={project}=====================================================')
-        step = 'bin.sv4WriteBlog.main'
-        bin.sv4WriteBlog.main(args, config)
+        step = 'batch.sv4WriteBlog.main'
+        batch.sv4WriteBlog.main(args, config)
         logger.info(f'====={project}=====================================================')
-        step = 'bin.sv5BuildWebsite.main'
-        bin.sv5BuildWebsite.main(args, config)
+        step = 'batch.sv5BuildWebsite.main'
+        batch.sv5BuildWebsite.main(args, config)
         logger.info(f'====={project}=====================================================')
-        step = 'bin.sv6Freeze.main'
+        step = 'batch.sv6Freeze.main'
         logger.info(f'====={project}=====================================================')
-        bin.sv6Freeze.main(args, config)
-        step = 'bin.sv7WriteCommit.main'
+        batch.sv6Freeze.main(args, config)
+        step = 'batch.sv7WriteCommit.main'
         logger.info(f'====={project}=====================================================')
-        bin.sv7WriteCommit.main(args, config) 
+        batch.sv7WriteCommit.main(args, config) 
         logger.info(f'====={project}=====================================================') 
     except Exception as e:
-        logger.warning(f"{parser.description} {step} failed: {e}")
+        logger.warning(f"sv8RecreatedTripRepository: {project} {step} failed: {e}")
         exit
     return
 
