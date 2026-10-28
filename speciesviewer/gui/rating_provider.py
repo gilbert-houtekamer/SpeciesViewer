@@ -778,9 +778,14 @@ class RatingEditorCollection(PictureCollection):
         # Pull just this species' master pictures + their files from the DB
         # (vs the old preload-all-85k approach). Routing helpers below see
         # _master_keys before jpg_path() is called, so they pick master rows.
-        self._master_keys = set()
-        self._master_upn = {}
-        self._master_files = {}
+        #
+        # Built into locals and swapped in at the end, never emptied-then-refilled
+        # on self: thumbnails load on worker threads and route by _master_keys.
+        # During the DB query below an emptied set made every in-flight master
+        # card look like a trip picture → "(no image)" until scrolled (a colour
+        # click re-runs this query while the rows below are still loading).
+        master_upn: dict = {}
+        master_files: dict = {}
         # `sci` used to be resolvable only when the master was already attached;
         # with forced_sci a caller can name a species before that (an album
         # rebuilding on the way to attaching), so check the DB, not just the name.
@@ -801,11 +806,14 @@ class RatingEditorCollection(PictureCollection):
             if not self._master_full:
                 trip_keys = self.fpr.upn.UniquePictureName_dict
                 pics = [p for p in pics if p["UniquePictureName"] not in trip_keys]
-            self._master_upn = {p["UniquePictureName"]: p for p in pics}
-            if self._master_upn:
-                self._master_files = self._master_db.files_for_upns(
-                    self._master_upn.keys())
-            self._master_keys = set(self._master_upn.keys())
+            master_upn = {p["UniquePictureName"]: p for p in pics}
+            if master_upn:
+                master_files = self._master_db.files_for_upns(master_upn.keys())
+        # Rows before keys: a worker that already saw a key in the set must find
+        # its row in whichever dicts it reads next.
+        self._master_upn = master_upn
+        self._master_files = master_files
+        self._master_keys = set(master_upn.keys())
 
         rows = []   # (key, row) — the sort key is derived in _sorted_keys
         # In full-master scope the master set already contains the album's own
@@ -886,6 +894,8 @@ class RatingEditorCollection(PictureCollection):
         self._camera_filter = {m for m in (models or set()) if m}
 
     def set_sort(self, key: str) -> None:
+        # "rate_live" is the grid's "Rate ↓ (re-sort)": the same order — whether
+        # it follows edits is the grid's business, not the collection's.
         self._sort_key = (key if key in ("rate", "time_asc", "time_desc", "camera")
                           else "rate")
 
