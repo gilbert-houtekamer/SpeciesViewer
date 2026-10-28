@@ -16,6 +16,8 @@ Madagascar starts 28 Oct: everything here is for **after the trip**.
 | 1.1 | **Two wrong coordinates found by the coarse-GPS scan** (ch. 2) — a South Africa photo tagged Country = Spain; Galapagos 2015 reusing one coordinate on many pictures. The other 789 of the 791: report first, decide later. | S / M | Wrong maps on the site |
 | 1.2 | **Trip dates and the days it holds can disagree** (ch. 17, NEW) — nothing warns; Retire to Album then finds no pictures. A “Review the date range” check. | S | Silent until it bites |
 | 1.3 | Read-Card dialog shrinks after Scan days but isn't re-centred (ch. 1). | S | Cosmetic |
+| 1.4 | **Master sidecars repaired 28 Oct — check the colours** (ch. 3). 24 master `.XMP` files exiftool refused (21 Extremadura 2026, 1 each Braakman, North Greece, Gran Canaria) were repaired. Compare the other 19's colour/rating with the master database: an edit may have been refused before. (The 5 vultures edited that evening: re-set by hand.) | S | Report first |
+| 1.5 | **The XMP repair tool would rewrite the whole master** (ch. 3). `svr_xmp_wrapper_repair.py` treats "no xpacket wrapper" as damage — normal for ~58,000 master sidecars. Make it look for the real damage (a duplicated property) before anyone runs it with `--apply` on the master. | S | Safety |
 
 ## 2. Built, waiting for a live test
 

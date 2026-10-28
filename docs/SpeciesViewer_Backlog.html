@@ -270,6 +270,19 @@ reads <em>No current work planned</em>.</p>
 <h2>3. Master Database, Editing &amp; Viewer</h2>
 <h3>To do</h3>
 <ul>
+  <li><span class="tag-new">NEW</span> <strong>Master sidecars repaired on 28 Oct &mdash; check their colours</strong>
+    &mdash; &ldquo;Master exiftool write failed&rdquo; on some vultures led to a scan of the master: 24
+    <code>.XMP</code> files (21 from 2026 Extremadura, one each from Braakman, North Greece and Gran
+    Canaria) held a value twice, written by the old crop/exposure writer (fixed 25 Sep), so exiftool
+    refused every later colour or rating. All 24 were repaired and checked. Still to do: compare the
+    colour and rating in those files with the master database &mdash; an edit made before 28 Oct may never
+    have reached the file. Report first, then decide which side wins.</li>
+  <li><span class="tag-new">NEW</span> <strong>Make the XMP repair tool safe for the master</strong>
+    &mdash; <code>tools/svr_xmp_wrapper_repair.py</code> treats a sidecar without its
+    <code>&lt;?xpacket?&gt;</code> wrapper as damaged. On the master that is normal for about 58,000
+    files that work fine, so <code>--apply</code> on the master folder would rewrite almost all of them.
+    It should look for the real damage instead: a property stored twice (exiftool&rsquo;s &ldquo;Duplicate
+    XMP property&rdquo;).</li>
   <li><span class="tag-new">NEW</span> <strong>Species picker: show each match&rsquo;s photo count</strong>
     &mdash; finding a species by any part of a Dutch, English or scientific name shipped on 28 Oct (see
     Capabilities ch.3, &ldquo;One species picker&rdquo;). Still missing from the Biota Browser&rsquo;s way of
