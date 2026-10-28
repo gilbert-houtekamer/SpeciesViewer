@@ -515,25 +515,10 @@ class DatabaseSettingsDialog(QDialog):
     def _purge_trash(self):
         if not self._master_root:
             return
-        from db.master_mutate import trash_size, purge_trash, trash_root
-        root = trash_root(self._master_root)
-        if not root.exists() or not any(root.iterdir()):
-            QMessageBox.information(self, "Empty trash", "The master trash is already empty.")
-            return
-        tbytes, tfiles = trash_size(self._master_root)
-        if QMessageBox.question(
-                self, "Empty trash",
-                f"Permanently delete {tfiles} recoverable file(s) "
-                f"({_fmt_size(tbytes)}) and clear the trash manifest/snapshots? "
-                f"This cannot be undone.") != QMessageBox.StandardButton.Yes:
-            return
-        try:
-            n = purge_trash(self._master_root, older_than_days=0)
-        except Exception as e:
-            QMessageBox.warning(self, "Empty trash", f"Purge failed:\n{e}")
-            return
-        QMessageBox.information(self, "Empty trash", f"Removed {n} day-folder(s).")
-        self._refresh()
+        # Same window as Master ▸ Empty Master Trash… — one confirmation, one path.
+        from gui.master_trash import empty_master_trash
+        if empty_master_trash(self):
+            self._refresh()
 
     def _rebuild(self):
         if not self._master_root or not Path(self._master_root).exists():

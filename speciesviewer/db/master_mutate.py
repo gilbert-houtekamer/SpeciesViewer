@@ -114,13 +114,17 @@ def _append_manifest(master_root: Path, rows: list[dict]) -> None:
             w.writerow({k: r.get(k, "") for k in fields})
 
 
+def _safe_upn(upn: str) -> str:
+    """A picture's trash folder name: its UPN, made filename-safe."""
+    return "".join(c if c not in '<>:"/\\|?*' else "_" for c in upn) or "upn"
+
+
 def _move_to_trash(master_root: Path, src: Path, day: str, upn: str) -> Path:
     """Move src into a SHALLOW <master>/.trash/<day>/<upn>/<filename> (grouped by
     deleted picture, not a deep mirror of the biota tree), deduplicating name
     collisions. The manifest keeps the absolute original path for restore.
     shutil.move is cross-device-safe."""
-    safe_upn = "".join(c if c not in '<>:"/\\|?*' else "_" for c in upn) or "upn"
-    dest_dir = trash_root(master_root) / day / safe_upn
+    dest_dir = trash_root(master_root) / day / _safe_upn(upn)
     dest_dir.mkdir(parents=True, exist_ok=True)
     dest = dest_dir / src.name
     if dest.exists():
@@ -895,6 +899,60 @@ def trash_size(master_root) -> tuple[int, int]:
                     total += p.stat().st_size
                     count += 1
     return total, count
+
+
+def trash_has_content(master_root) -> bool:
+    """Cheap: is there any recoverable day-folder? (Menu grey-out runs this
+    every time the Master menu opens — no walking, no manifest read.)"""
+    root = trash_root(Path(master_root))
+    try:
+        return root.exists() and any(
+            d.is_dir() and d.name != "snapshots" for d in root.iterdir())
+    except OSError:
+        return False
+
+
+def trash_summary(master_root) -> dict:
+    """What an Empty-trash would destroy, in the units you think in:
+    {"files", "bytes", "pictures", "species", "first_day", "last_day"}.
+    Pictures = the <day>/<picture>/ folders that still hold files (a restore
+    leaves them empty). Species = distinct species folders those pictures came
+    from, read from the manifest; a picture the manifest does not know (an old
+    or damaged manifest) counts toward pictures, not species."""
+    import csv
+    root = trash_root(Path(master_root))
+    out = {"files": 0, "bytes": 0, "pictures": 0, "species": 0,
+           "first_day": "", "last_day": ""}
+    if not root.exists():
+        return out
+    upns, days = set(), []
+    for day_dir in root.iterdir():
+        if not day_dir.is_dir() or day_dir.name == "snapshots":
+            continue
+        day_has_files = False
+        for upn_dir in day_dir.iterdir():
+            files = [f for f in upn_dir.rglob("*") if f.is_file()] if upn_dir.is_dir() else []
+            if not files:
+                continue
+            day_has_files = True
+            upns.add(upn_dir.name)
+            out["files"] += len(files)
+            out["bytes"] += sum(f.stat().st_size for f in files)
+        if day_has_files:
+            days.append(day_dir.name)
+    out["pictures"] = len(upns)
+    if days:
+        days.sort()
+        out["first_day"], out["last_day"] = days[0], days[-1]
+    species = set()
+    mp = _manifest_path(Path(master_root))
+    if mp.exists():
+        with open(mp, newline="", encoding="utf-8") as fh:
+            for r in csv.DictReader(fh, delimiter=";"):
+                if _safe_upn(r.get("upn", "")) in upns and r.get("rel_path"):
+                    species.add(Path(r["rel_path"]).parent.as_posix().casefold())
+    out["species"] = len(species)
+    return out
 
 
 def purge_trash(master_root, older_than_days: int = 0) -> int:

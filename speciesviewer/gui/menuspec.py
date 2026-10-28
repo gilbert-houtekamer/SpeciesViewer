@@ -1975,6 +1975,19 @@ def build_menu_spec(main_window):
             "Species Without a Website Picture…": no_display_item,
             f"{MenuSpec.separator()}_master_maint": None,
             "Maintain Master Database": maintain_master_menu,
+            # A master delete only moves files to <master>/.trash (restorable);
+            # this is the step that makes it final. Grey when there is nothing.
+            "Empty Master Trash…": MenuSpec(
+                callback=lambda: __import__(
+                    "gui.master_trash", fromlist=["empty_master_trash"]
+                ).empty_master_trash(main_window),
+                title="Empty Master Trash…",
+                enabled=lambda: __import__(
+                    "gui.master_trash", fromlist=["master_trash_has_content"]
+                ).master_trash_has_content(),
+                tooltip="Permanently delete the master pictures you deleted — "
+                        "until then they can still be restored",
+                showsubdirectory=False),
         },
         "Albums": {
             "Find Trips in the Master…": find_trips,
