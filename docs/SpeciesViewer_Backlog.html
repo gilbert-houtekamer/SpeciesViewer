@@ -37,7 +37,7 @@
 <body>
 
 <h1>SpeciesViewer — Project Backlog</h1>
-<div class="meta">Updated: 1 October 2026 &nbsp;·&nbsp; Branch: SpeciesViewer03 &nbsp;·&nbsp; Author: Gilbert Houtekamer</div>
+<div class="meta">Updated: 28 October 2026 &nbsp;·&nbsp; Branch: SpeciesViewer03 &nbsp;·&nbsp; Author: Gilbert Houtekamer</div>
 
 <p>Open work for the SpeciesViewer nature-photo pipeline and GUI. This document holds
 only what is <strong>still to do</strong> — everything that has shipped now lives in the companion
@@ -620,6 +620,23 @@ alongside.</p>
     terns. Not a problem in practice: the next Write Blog rewrites the blog index, and Reset Trip plus a
     rebuild gives every page the new banner (each step re-reads <code>trip.ini</code> first). The open
     edge: a trip with no days yet has no step that rewrites only its blog index.</li>
+  <li><span class="tag-new">NEW</span> <strong>One re-publish should translate everything</strong>
+    (28 Oct) &mdash; a big run (a website rebuild, a re-published trip, a trip merge into the master) asks
+    for thousands of new translations in a row. The translation services start refusing, and every refused
+    text goes onto the page untranslated, until the next run tries again. Two fixes, best together:
+    <ul>
+      <li><strong>Pacing</strong> &mdash; a short pause between new translations, and when a service
+        refuses, wait and try again instead of giving up. Slower, and that is accepted. Texts already
+        translated stay instant; the &ldquo;⚠ Translation incomplete&rdquo; report stays for whatever still
+        fails.</li>
+      <li><strong>One shared translation memory</strong> &mdash; today every trip and the master each keep
+        their own (<code>admin/TransCache.csv</code>), so a merge asks again for texts the master already
+        has, and the local and the real website each pay for the same text. One memory in this computer's
+        app-data, shared by trip and master and by the local and the real website, asks each text only
+        once. To settle: how the existing memories are folded in (hand-checked translations win), what a
+        trip export carries now that it takes its translations along, and that it stays per computer
+        (app-data, never Dropbox).</li>
+    </ul></li>
 </ul>
 <h3>Done</h3>
 <ul>
