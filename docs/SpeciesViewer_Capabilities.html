@@ -947,6 +947,37 @@ now with scope-aware colour-delete (incl. master), a delete-preview, and a colou
     dead</strong>. Surfaced via a daily startup prune + <em>Manage Caches ▸ Prune stale</em>. Guardrail:
     an unplugged drive looks like a deleted trip, so the sweep concludes nothing when the volume isn't
     mounted.</li>
+  <li><strong>One species picker for the Trip, Album and Master Species Viewers</strong>
+    <span class="tag-shipped">SHIPPED</span> (28 Oct 2026, <code>68c7450</code>) &mdash; type at least
+    <strong>3 letters of any name</strong> &mdash; Dutch, English or scientific &mdash; and a list of the
+    matching species drops down, the way the Biota Browser finds them. Each line shows all the names
+    (&ldquo;great cormorant &middot; aalscholver &middot; Phalacrocorax carbo&rdquo;), so you can see why it
+    matched; names that <em>start</em> with what you typed come first, so &ldquo;aals&rdquo; puts aalscholver
+    above bengaalse stern. Pick one, or press Enter for the top match. <strong>Typing never switches species
+    by itself</strong> &mdash; the old Trip viewer jumped to a new species on every letter while the list was
+    closed. The &#9662; arrow still shows the whole list, and the trip&rsquo;s &ldquo;(only RAW)&rdquo; labels
+    stay. Before this, the Master viewer promised &ldquo;Dutch, English or scientific&rdquo; but only found
+    English names. The empty field now reads &ldquo;&mdash; Select or type a species &mdash;&rdquo;.</li>
+  <li><strong>Cards keep their place while you cull: &ldquo;Rate &darr;&rdquo; and &ldquo;Rate &darr;
+    (re-sort)&rdquo;</strong> <span class="tag-shipped">SHIPPED</span> (28 Oct 2026, <code>20e4f3f</code>)
+    &mdash; rating or colouring a picture used to re-sort the grid at once, so cards jumped away under the
+    mouse. Now plain <strong>Rate &darr;</strong> (the default) sorts when the species loads and then
+    <strong>stays put</strong>: the card&rsquo;s stars, colour and Rate change, its place does not. Pick
+    Rate &darr; again to sort now. <strong>Rate &darr; (re-sort)</strong> keeps the old behaviour. Time and
+    Camera never moved cards on an edit anyway. A card coloured out of the colour filter also stays until
+    the next sort, so a mis-click can be undone. The choice is remembered per viewer (Trip / Album /
+    Master). Fixed at the same time (<code>81943ef</code>): after a colour or star click, the rows just
+    below the screen could show <em>(no image)</em> until you scrolled &mdash; the pictures were never
+    lost; a thumbnail still loading looked for its picture while the species list was being re-read.</li>
+  <li><strong>Master &#9656; Empty Master Trash&hellip;</strong> <span class="tag-shipped">SHIPPED</span>
+    (28 Oct 2026, <code>5cc2b22</code>) &mdash; deleting master pictures (blue/purple delete, or the card
+    menu) only moves their files to the master&rsquo;s <code>.trash</code> folder, where <em>Settings &#9656;
+    Database &#9656; Restore images&hellip;</em> can bring them back. This menu entry makes it final. It
+    says what will go in the units you think in &mdash; &ldquo;Permanently delete 1,256 pictures of 11
+    species?&rdquo;, with the number of files, the size and the delete dates &mdash; next to the elephant,
+    and <strong>Cancel is the default</strong>, so Enter never deletes. Greyed out when the trash is empty.
+    <em>Settings &#9656; Database &#9656; Empty trash&hellip;</em> opens the same window: one confirmation,
+    one way to delete.</li>
 </ul>
 
 
