@@ -6126,6 +6126,9 @@ class ImportTripDialog(QDialog):
         self.import_btn.clicked.connect(self._on_import)
         self.close_btn.clicked.connect(self.close)
         self.zip_field.textChanged.connect(self._inspect)
+        # The remembered ZIP was filled in before textChanged was connected, and
+        # Browse to the same file changes no text — so read it once now.
+        self._inspect()
 
     def _browse_zip(self):
         from utils.start_folder import start_folder
