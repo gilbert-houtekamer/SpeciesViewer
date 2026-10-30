@@ -1432,7 +1432,15 @@ class PreviewCollection(PictureCollection):
             elif ext in _RAW_EXTS:
                 crop = crop_for(src, self._xmp_for(upn_key))
             elif ext in (".jpg", ".jpeg"):
-                crop = crop_for(src)   # <jpg>.dop, written by suggest_crop
+                # Only a JPG that IS the crop source (a phone JPG, no RAW) carries
+                # its own crop. A <stem>.jpg beside a RAW (Make JPG, camera JPEG)
+                # would read the RAW's <stem>.xmp here and crop a Make JPG a
+                # second time (2026-10-30, Madagascar na300015) — so it is judged
+                # like a render: shown as-is unless its pixels are the full frame.
+                if self._crop_source(upn_key) == src:
+                    crop = crop_for(src)   # <jpg>.dop, written by suggest_crop
+                else:
+                    is_render = True
             elif ext in SELF_DESCRIBING:
                 crop = crop_for(src)   # the crop inside the HEIC/PNG itself
         disk_dir = preview_cache_dir_for(src.parent) if src is not None else None
