@@ -9,8 +9,35 @@ species picker every species viewer shares.
 """
 
 from PyQt6.QtCore import QModelIndex, QObject, QEvent, QTimer, Qt
-from PyQt6.QtGui import QStandardItem, QStandardItemModel
-from PyQt6.QtWidgets import QAbstractItemView, QComboBox, QCompleter, QLabel
+from PyQt6.QtGui import QPainter, QPalette, QStandardItem, QStandardItemModel
+from PyQt6.QtWidgets import (QAbstractItemView, QComboBox, QCompleter, QLabel,
+                             QProgressBar)
+
+
+class BusyBar(QProgressBar):
+    """A progress bar that can say what it waits for while busy.
+
+    Fusion (the app style) draws NO text on a busy bar (range 0..0) — format()
+    is ignored there. This paints the busy text itself, on top. `busy(text)`
+    shows it as a moving busy bar; a normal 0..N bar behaves as usual."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._busy_text = ""
+
+    def busy(self, text: str = ""):
+        self._busy_text = text
+        self.setRange(0, 0)
+        self.setVisible(True)
+        self.update()
+
+    def paintEvent(self, event):
+        super().paintEvent(event)
+        if self._busy_text and self.minimum() == self.maximum() == 0:
+            p = QPainter(self)
+            p.setPen(self.palette().color(QPalette.ColorRole.HighlightedText))
+            p.drawText(self.rect(), Qt.AlignmentFlag.AlignCenter, self._busy_text)
+            p.end()
 
 
 def wrapped(text: str, parent=None) -> QLabel:

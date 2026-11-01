@@ -23,9 +23,9 @@ import os
 from PyQt6.QtCore import Qt, QThread, pyqtSignal
 from PyQt6.QtWidgets import (
     QAbstractItemView, QDialog, QFileDialog, QHBoxLayout, QHeaderView, QLabel,
-    QLineEdit, QMessageBox, QProgressBar, QPushButton, QTableWidget,
+    QLineEdit, QMessageBox, QPushButton, QTableWidget,
     QTableWidgetItem, QVBoxLayout)
-from gui.widgets import wrapped
+from gui.widgets import BusyBar, wrapped
 
 logger = logging.getLogger("speciesviewer")
 
@@ -69,9 +69,34 @@ class _WriteThread(QThread):
         self.done.emit(res)
 
 
+class _PrepareThread(QThread):
+    """Runs the dialog's `prepare` callable (the day-folder scan + one batch
+    exiftool read) off the GUI thread, so the dialog appears at once."""
+    done = pyqtSignal(object)
+    failed = pyqtSignal(str)
+
+    def __init__(self, prepare, parent=None):
+        super().__init__(parent)
+        self._prepare = prepare
+
+    def run(self):
+        try:
+            res = self._prepare()
+        except Exception as e:
+            logger.exception("tracklog geotag prepare failed")
+            self.failed.emit(str(e))
+            return
+        self.done.emit(res)
+
+
 class TracklogGeotagDialog(QDialog):
+    """`source` is ready to use, OR None with `prepare` given: a callable run
+    in a background thread that returns (source, default_tracklog_paths) — or
+    a str to show instead when there is nothing to geotag."""
+
     def __init__(self, parent, source, *, initial_dir: str = "",
-                default_tracklog_paths: list[str] | None = None):
+                default_tracklog_paths: list[str] | None = None,
+                prepare=None):
         super().__init__(parent)
         self.setWindowTitle("Geotag from Tracklog")
         self.resize(880, 560)
@@ -95,9 +120,9 @@ class TracklogGeotagDialog(QDialog):
         browse_row = QHBoxLayout()
         self._file_label = QLabel("No tracklog file chosen.")
         browse_row.addWidget(self._file_label, 1)
-        browse_btn = QPushButton("Browse for tracklog file(s)…")
-        browse_btn.clicked.connect(self._on_browse)
-        browse_row.addWidget(browse_btn)
+        self._browse_btn = QPushButton("Browse for tracklog file(s)…")
+        self._browse_btn.clicked.connect(self._on_browse)
+        browse_row.addWidget(self._browse_btn)
         lay.addLayout(browse_row)
 
         offset_row = QHBoxLayout()
@@ -112,7 +137,7 @@ class TracklogGeotagDialog(QDialog):
         offset_row.addStretch()
         lay.addLayout(offset_row)
 
-        self._bar = QProgressBar()
+        self._bar = BusyBar()
         self._bar.setVisible(False)
         lay.addWidget(self._bar)
 
@@ -139,12 +164,45 @@ class TracklogGeotagDialog(QDialog):
         row.addWidget(close)
         lay.addLayout(row)
 
-        if default_tracklog_paths:
+        if prepare is not None:
+            self._browse_btn.setEnabled(False)
+            self._file_label.setText("")
+            self._bar.busy("Analyzing time zone information…")
+            self._thread = _PrepareThread(prepare, self)
+            self._thread.done.connect(self._on_prepared)
+            self._thread.failed.connect(self._on_prepare_failed)
+            self._thread.start()
+        elif default_tracklog_paths:
             # Programmatic pre-load (the Unfiled/Days row action's
             # auto-detected log) — same UI update _on_browse does after an
             # interactive pick, minus the folder-remembering (that only makes
             # sense for a Browse click). User still presses Plan then Write.
             self._load_paths(default_tracklog_paths)
+
+    def _on_prepared(self, res):
+        self._thread = None
+        self._bar.setVisible(False)
+        if isinstance(res, str):
+            self._file_label.setText("")
+            self._head_note(res)
+            return
+        self._source, paths = res
+        self._browse_btn.setEnabled(True)
+        self._file_label.setText("No tracklog file chosen.")
+        if paths:
+            self._load_paths(paths)
+
+    def _on_prepare_failed(self, msg: str):
+        self._thread = None
+        self._bar.setVisible(False)
+        self._file_label.setText("")
+        self._head_note(f"Couldn't read this day's pictures:\n{msg}")
+
+    def reject(self):
+        # Never destroy a running QThread (Qt crashes) — wait the scan out.
+        if self._thread is not None and self._thread.isRunning():
+            self._thread.wait()
+        super().reject()
 
     # ── browse ────────────────────────────────────────────────────────────
     def _on_browse(self):
@@ -217,8 +275,7 @@ class TracklogGeotagDialog(QDialog):
                 "Enter the camera's time zone offset first (e.g. +02:00) — "
                 "without it, photo times can't be lined up with the tracklog.")
             return
-        self._bar.setVisible(True)
-        self._bar.setRange(0, 0)   # busy indicator — plan() is a fast in-memory join
+        self._bar.busy("Matching pictures to the tracklog…")   # a fast in-memory join
         self._plan_btn.setEnabled(False)
         self._write_btn.setEnabled(False)
         self._thread = _PlanThread(self._source, self._points, offset, 15 * 60, self)
@@ -327,8 +384,7 @@ class TracklogGeotagDialog(QDialog):
             return
         self._write_btn.setEnabled(False)
         self._plan_btn.setEnabled(False)
-        self._bar.setVisible(True)
-        self._bar.setRange(0, 0)
+        self._bar.busy("Writing GPS/altitude into the pictures…")
         self._thread = _WriteThread(self._source, rows, self)
         self._thread.done.connect(self._on_written)
         self._thread.failed.connect(self._on_write_failed)
@@ -376,7 +432,17 @@ def open_tracklog_geotag_for_folder(parent, folder: str):
     YYYY-MM-DD folder (both lanes use that as the folder name). Scans it for
     RAW+XMP pairs the same way ReadSDCardDialog._build_tracklog_entries does
     for a just-read card, then opens the same review dialog, pre-loaded with
-    that day's auto-detected log file when one exists."""
+    that day's auto-detected log file when one exists.
+
+    The dialog opens at once; the scan runs in its background thread."""
+    TracklogGeotagDialog(
+        parent, None, initial_dir=folder,
+        prepare=lambda: _scan_day_folder(folder)).exec()
+
+
+def _scan_day_folder(folder: str):
+    """(FilesSource, auto-detected log paths) for one day folder, or a str
+    saying why there is nothing to geotag. No Qt — runs off the GUI thread."""
     from pathlib import Path
     from gui.trip_process import _PL_RAW_EXTS
     from utils.raw_extensions import SELF_DESCRIBING
@@ -399,10 +465,8 @@ def open_tracklog_geotag_for_folder(parent, folder: str):
         elif ext in SELF_DESCRIBING:
             xmps.append((p.stem, str(p)))
     if not xmps:
-        QMessageBox.information(parent, "Geotag from Tracklog",
-                                "No pictures in this day can be geotagged — a RAW "
-                                "needs its .xmp sidecar first.")
-        return
+        return ("No pictures in this day can be geotagged — a RAW needs its "
+                ".xmp sidecar first.")
     meta = batch_datetime_gps([x[1] for x in xmps])
     entries, files_by_key = [], {}
     for stem, xmp in xmps:
@@ -415,7 +479,4 @@ def open_tracklog_geotag_for_folder(parent, folder: str):
 
     day = folder_path.name
     log_paths = find_day_tracklogs(day, get_gpslogs_root())
-    source = FilesSource(entries, files_by_key, day)
-    TracklogGeotagDialog(
-        parent, source, initial_dir=folder,
-        default_tracklog_paths=log_paths or None).exec()
+    return FilesSource(entries, files_by_key, day), log_paths or None
