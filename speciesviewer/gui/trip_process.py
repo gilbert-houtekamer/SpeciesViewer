@@ -2472,6 +2472,18 @@ class ReadSDCardDialog(QDialog):
         # "N sidecars" number would hide exactly the thing worth confirming.
         self._last_per_day = summary.get("per_day") or {}
         self._fill_copied_column(self._last_per_day)
+        # Show every day folder the copy created. The trip overview only
+        # re-reads its days when SV regains focus — mid-read that caught the
+        # first new day and never the rest (only a restart showed them). The
+        # unfiled inbox was built when this dialog OPENED, before any copy.
+        if copied and self.unfiled_mode:
+            from gui.unfiled_overview import populate_unfiled_overview
+            panel = getattr(self.passed_parent, "unfiled_panel", None)
+            if panel is not None:
+                panel.rebuild()
+            populate_unfiled_overview(self.passed_parent)
+        elif copied and not self.days_mode:
+            populate_trip_overview(self.passed_parent)
         carried = summary.get("sidecars_copied", 0)
         carried_txt = (f" {carried} sidecar(s) came along with their pictures "
                        f"(species, ratings, colours)." if carried else "")
