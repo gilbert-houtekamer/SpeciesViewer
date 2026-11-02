@@ -446,12 +446,19 @@ def _corner_badge(text: str, *, bold: bool = False, rate: bool = False,
     """A mono over-image corner pill: dark for scan-data, olive for Rate, red for
     an attention flag (missing GPS / unset or uncertain species)."""
     lbl = QLabel(text)
-    bg = "#b4530b" if attn else ("rgba(60,74,52,.88)" if rate else "rgba(0,0,0,.5)")
-    lbl.setStyleSheet(
-        f"color:#fff; background:{bg}; font-family:Consolas,monospace;"
-        f" font-size:9px; font-weight:{'700' if (bold or rate or attn) else '400'};"
-        f" padding:1px 6px; border-radius:9px;")
+    bg = _ATTN_BG if attn else ("rgba(60,74,52,.88)" if rate else "rgba(0,0,0,.5)")
+    lbl.setStyleSheet(_corner_badge_style(bg, bold or rate or attn))
     return lbl
+
+
+_ATTN_BG = "#b4530b"        # something is missing (species, GPS)
+_LANDSCAPE_BG = "#2e7d32"   # a landscape waiting for its headline — not a fault
+
+
+def _corner_badge_style(bg: str, bold: bool) -> str:
+    return (f"color:#fff; background:{bg}; font-family:Consolas,monospace;"
+            f" font-size:9px; font-weight:{'700' if bold else '400'};"
+            f" padding:1px 6px; border-radius:9px;")
 
 
 class _ControlStrip(QWidget):
@@ -895,8 +902,7 @@ class PictureCard(QFrame):
             if pos == "tr" and self._show_status:
                 self._attn_badge = _corner_badge("", attn=True)
                 self._attn_badge.setCursor(Qt.CursorShape.PointingHandCursor)
-                self._attn_badge.mousePressEvent = \
-                    lambda e: self.status_clicked.emit(self.upn_key)
+                self._attn_badge.mousePressEvent = lambda e: self._on_attn_clicked()
                 self._thumb.add_badge(self._attn_badge, "tr")
                 continue
             if datum == "none":
@@ -1181,6 +1187,12 @@ class PictureCard(QFrame):
         it = self._item
         if getattr(it, "frozen", False):
             return ("", False)
+        # A landscape has no species on purpose — its Headline is its title. Ask
+        # for the headline until there is one, then nothing is missing.
+        if getattr(it, "is_blog_extra", False):
+            if (it.headline or "").strip():
+                return ("", False)
+            return ("landscape", True)
         if not it.species:
             return ("❔ species", True)
         if it.error_msg:
@@ -1188,6 +1200,14 @@ class PictureCard(QFrame):
         if not it.has_gps:
             return ("❓ GPS", True)
         return ("", False)
+
+    def _on_attn_clicked(self):
+        """'landscape' → the Headline editor (what it is missing); every other
+        badge → the species editor."""
+        if getattr(self._item, "is_blog_extra", False) and self._notes_editable():
+            self.notes_clicked.emit(self.upn_key)
+        else:
+            self.status_clicked.emit(self.upn_key)
 
     def _refresh_crop_mark(self):
         """The right-aligned '⌗ Crop' mark on the filename line (plus a 📝 when a
@@ -1248,7 +1268,14 @@ class PictureCard(QFrame):
         self._refresh_location_line()
         text, _clickable = self._attn_badge_spec()
         if self._attn_badge is not None:
+            landscape = text == "landscape"
             self._attn_badge.setText(text)
+            self._attn_badge.setStyleSheet(_corner_badge_style(
+                _LANDSCAPE_BG if landscape else _ATTN_BG, True))
+            self._attn_badge.setToolTip(
+                "Landscape / context photo without a headline — click to add one. "
+                "It is only shown in the blog once it has a headline (its title)."
+                if landscape else "")
             self._attn_badge.setVisible(bool(text))
             self._thumb.reposition()
 

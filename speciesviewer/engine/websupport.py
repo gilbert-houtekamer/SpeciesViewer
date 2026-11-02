@@ -1840,21 +1840,40 @@ def collectBestJPGs(MyProject, species_scientific_name, selected_species):
         logger.warning(f"collectBestJPGs('{species_scientific_name}') failed: {e}")
     return
 
+def isBlogReadyExtra(upn_item) -> bool:
+    """True for a landscape/context photo the blog can show: it has a JPG AND a
+    Headline. The Headline is its title on the blog card — without one the card
+    had an empty title — so a landscape stays out until it has been given one."""
+    # Local import avoids a module-load cycle (projectlib <-> websupport).
+    from engine.speciesclassification import SpeciesClassification
+    return (bool(upn_item.get('BestJPG'))
+            and SpeciesClassification.isBlogExtra(upn_item.get('subject', ''))
+            and bool((upn_item.get('Headline') or '').strip()))
+
+
 def collectBlogExtras(MyProject, selected_species):
     """Add non-species "blog extras" (landscape/context photos) to the day's
     summary post. They carry no taxon, so addSpeciesToSummaryPost's tree walk
     never reaches them. Key each by capture time (like collectBestJPGs) so they
     interleave chronologically with the species cards."""
-    # Local import avoids a module-load cycle (projectlib <-> websupport).
     from engine.speciesclassification import SpeciesClassification
     try:
         for upn_item in MyProject.UniquePictureName_dict.values():
-            if upn_item['BestJPG'] == "":
-                continue
             if not SpeciesClassification.isBlogExtra(upn_item['subject']):
                 continue
-            if MyProject.Blog.from_time <= upn_item['DateTimeOriginal'] <= MyProject.Blog.last_time:
-                selected_species[upn_item['BestJPG']] = upn_item['DateTimeOriginal']
+            if not (MyProject.Blog.from_time <= upn_item['DateTimeOriginal'] <= MyProject.Blog.last_time):
+                continue
+            # Say why a landscape stays out — it is skipped on purpose, and a
+            # silent skip looked like the blog had lost it.
+            if not isBlogReadyExtra(upn_item):
+                name = upn_item.get('UniquePictureName', '')
+                missing = [what for what, ok in (
+                    ("JPG", upn_item.get('BestJPG')),
+                    ("headline", (upn_item.get('Headline') or '').strip())) if not ok]
+                logger.warning(f"Landscape {name} has no {' and no '.join(missing)} — "
+                               f"not in the blog.")
+                continue
+            selected_species[upn_item['BestJPG']] = upn_item['DateTimeOriginal']
     except Exception as e:
         logger.warning(f"collectBlogExtras failed: {e}")
     return

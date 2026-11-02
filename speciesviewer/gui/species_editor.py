@@ -19,6 +19,11 @@ from utils.config import _config, get_setting, set_setting
 from gui import theme
 from utils.raw_extensions import RAW_OR_HEIC
 
+# Shared by both species windows (this one and culling_species).
+LANDSCAPE_TIP = ("Mark as a landscape / context photo — a 'blog extra' titled by its "
+                 "Headline, not a species. It appears in the day blog but is kept out "
+                 "of the species website and the master collection.")
+
 logger = logging.getLogger("speciesviewer")
 
 # Biota vocabulary — mono utility face for the small uppercase micro-labels, so
@@ -164,11 +169,13 @@ class SpeciesInfoPanel(QWidget):
 
     def __init__(self, fpr, file_paths: list, species_names: list, error_msgs: list, *,
                  parent=None, collapsible_error: bool = False,
-                 scope_correction: bool = False):
+                 scope_correction: bool = False, offer_landscape: bool = True):
         """
         collapsible_error  When True the error-message text is hidden behind a
                            ⚠ toggle button — useful when the panel is embedded
                            in a narrow sidebar rather than a standalone dialog.
+        offer_landscape    Show the "🌄 Landscape" button. Off in the Edit window,
+                           which has its own "Mark as landscape" button.
         scope_correction   When True a single-file commit fans out to every file
                            in the configured correction scope that shares the same
                            (erroneous) species name — the legacy "fix this typo
@@ -371,6 +378,12 @@ class SpeciesInfoPanel(QWidget):
         commit_btn = QPushButton("Commit")
         commit_btn.clicked.connect(self._on_commit_clicked)
         button_row.addWidget(commit_btn)
+
+        if offer_landscape:
+            landscape_btn = QPushButton("🌄  Landscape / context photo")
+            landscape_btn.setToolTip(LANDSCAPE_TIP)
+            landscape_btn.clicked.connect(self._apply_landscape)
+            button_row.addWidget(landscape_btn)
 
         layout.addLayout(button_row)
 
@@ -699,7 +712,10 @@ class SpeciesInfoPanel(QWidget):
                     return
 
         # Build the list of files to update
-        if self._scope_correction and len(self._file_paths) == 1 and not clearing:
+        # Never fan "landscape" out: it is a fact about THIS photo, not a fix for
+        # a misspelled name that other pictures share.
+        if (self._scope_correction and len(self._file_paths) == 1 and not clearing
+                and not is_landscape):
             # Legacy scope-based batch — ONLY the ⚠ error-correction popup opts in.
             # Fixes all files in the configured scope that share the same erroneous
             # name. NB: an explicit one-picture selection does NOT reach this branch,
@@ -838,6 +854,15 @@ class SpeciesInfoPanel(QWidget):
         """Left-click a recent button → set it as the species and commit in one go
         (applies to exactly the selected picture(s), like a typed Commit)."""
         self.subject_field.set_text(f"['{name}']")
+        self._on_commit_clicked()
+
+    def _apply_landscape(self):
+        """Mark the picture(s) as a landscape / context photo — the 'landscape'
+        subject, no sex/age/plumage — and commit in one go."""
+        for btns in self._qual_buttons.values():
+            for b, _canon in btns:
+                b.setChecked(False)
+        self.subject_field.set_text("['landscape']")
         self._on_commit_clicked()
 
 

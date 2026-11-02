@@ -241,7 +241,7 @@ class Blog:
     def dayHasContent(self):
         """True when THIS day's post would actually show something: at least one
         picture IN THE DAY'S TIME WINDOW that carries a recognized species, or a
-        landscape 'blog extra' that has a JPG.
+        landscape 'blog extra' that has a JPG and a headline.
 
         Deliberately checks the day's own pictures, NOT 'biota' in the species
         tree — the tree also holds the master's committed species from other days,
@@ -251,15 +251,20 @@ class Blog:
         judged empty and dropped by the caller (removeEmptyDay)."""
         MyProject = self.mp
         from engine.speciesclassification import SpeciesClassification
+        from engine.websupport import isBlogReadyExtra
         try:
             for upn in MyProject.UniquePictureName_dict.values():
                 dto = upn.get('DateTimeOriginal', '')
                 if not (self.from_time <= dto <= self.last_time):
                     continue
+                # A landscape first, by the same rule as collectBlogExtras: it
+                # counts only with a JPG and a headline. Checked before
+                # WetSoortNaam, which a landscape also has (its topic year leaf).
+                if SpeciesClassification.isBlogExtra(upn.get('subject', '')):
+                    if isBlogReadyExtra(upn):
+                        return True
+                    continue
                 if (upn.get('WetSoortNaam') or '').strip():
-                    return True
-                if upn.get('BestJPG') and SpeciesClassification.isBlogExtra(
-                        upn.get('subject', '')):
                     return True
         except Exception as e:
             logger.warning(f"dayHasContent check failed: {e}")

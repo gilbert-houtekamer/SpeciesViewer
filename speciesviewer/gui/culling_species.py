@@ -1039,6 +1039,14 @@ class CullingSpeciesWidget(QWidget):
         self.gbif_btn.setToolTip("Look the typed name up in GBIF (needs internet)")
         gbif_row.addWidget(self.gbif_btn)
         gbif_row.addStretch()
+        # Embedded in the Edit window, which has its own "Mark as landscape".
+        if not embedded:
+            from gui.species_editor import LANDSCAPE_TIP
+            landscape_btn = QPushButton("🌄  Landscape / context photo")
+            landscape_btn.setToolTip(LANDSCAPE_TIP)
+            # The marker alone: no qualifiers, and not added to the recents.
+            landscape_btn.clicked.connect(lambda: self.committed.emit("landscape"))
+            gbif_row.addWidget(landscape_btn)
         layout.addLayout(gbif_row)
 
         # Optional qualifiers — sex / age / plumage. Stored in the keyword as

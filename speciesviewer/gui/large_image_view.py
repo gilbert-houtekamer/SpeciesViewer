@@ -2937,6 +2937,7 @@ class LargeImageView(QDialog):
                 error_msgs=[item.error_msg or ""],
                 parent=self._species_container,
                 collapsible_error=True,
+                offer_landscape=False,   # _add_mark_landscape_button below
             )
             panel.committed.connect(self._on_species_committed)
             self._species_cl.addWidget(panel)
