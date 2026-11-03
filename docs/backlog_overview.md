@@ -48,6 +48,7 @@ Madagascar starts 28 Oct: everything here is for **after the trip**.
 | 4.4 | **Wikipedia beside the species** — a link (or summary) on the species page and in the app, EN and NL. Link free; quoting needs attribution (CC BY-SA). | 6 |
 | 4.5 | **Aliases elsewhere** — reading a tour operator's list, the waarneming.nl import, search by a remembered name. | 6 |
 | 4.6 | **Another language *instead of* Dutch** — English stays; the second language becomes the user's own (French, German, …), so the program suits every user. Design together with the species list (ch. 6). | 24 |
+| 4.7 | **Identified to genus or family only** (“? oplurus”) — file the placeholder under its family so it gets a place in the species order and a page, but **never counts** as a species. Parked 3 Nov (Madagascar); decide at home. | 6 |
 
 ## 5. Refactors
 

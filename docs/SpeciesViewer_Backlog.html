@@ -566,6 +566,17 @@ and <code>docs/plans/taxonomy_order_design.md</code>.</p>
     the GBIF family, no extra API call.</li>
   <li><span class="tag-parked">PARKED</span> <strong>Placeholder-species cleanup</strong> — the
     “? &lt;name&gt;” placeholders, coordinated cleanup.</li>
+  <li><span class="tag-parked">PARKED</span> <strong>Identified to genus or family only</strong>
+    (Madagascar, 3 Nov 2026: a swift lizard that is <em>Oplurus</em>, but which one?). Today
+    &ldquo;? oplurus&rdquo; is stored on the photo and joins nothing: no family, no place in the
+    species order, no species page, and the Sex/Age/Plumage buttons offer everything.
+    <em>Option:</em> when the part after the &ldquo;?&rdquo; is a genus (or family) SV knows &mdash;
+    from a species already in the list, so it works offline &mdash; file the placeholder under
+    that family, sorted after its named relatives. The real work: such an entry must
+    <strong>never count</strong> as a species (totals, lifers, frozen counts, website), and some
+    40 places count species. Alternative rejected: a separate &ldquo;Oplurus sp.&rdquo; spelling
+    (two ways to say &ldquo;unsure&rdquo;) or a genus level in the tree (touches everything).
+    Size: about 2 sessions. Decide at home, not during a trip.</li>
   <li><span class="tag-parked">PARKED</span> <strong>Regional most-likely-birds</strong> (eBird).</li>
       <li><strong>A genuinely different name</strong> for the same bird —
         <em>Bank Swallow</em> against <em>Sand Martin</em>, <em>Mealy Amazon</em> against
