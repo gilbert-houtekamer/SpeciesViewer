@@ -1200,7 +1200,7 @@ class MapView(QDialog):
     def __init__(self, parent, master_db, initial_sci: str = "",
                  initial_display: str = "", initial_points: list[dict] | None = None,
                  highlight_upns: set | None = None, highlight_label: str = "",
-                 trip_db=None):
+                 trip_db=None, focus_coords: list | None = None):
         super().__init__(parent)
         self._db = master_db
         # A TRIP map runs on the real master (so master bubbles resolve pictures),
@@ -1306,7 +1306,12 @@ class MapView(QDialog):
 
         if initial_sci and initial_points:
             self._add_initial_layer(initial_sci, initial_display, initial_points)
-        QTimer.singleShot(0, self._map.fit_to_points)   # after first layout pass
+        # focus_coords [(lat, lon), …]: the whole range is drawn, but the view opens
+        # on these (a country chip in the Biota Browser zooms to that country).
+        if focus_coords:
+            QTimer.singleShot(0, lambda: self._map.focus_area(focus_coords, max_z=11))
+        else:
+            QTimer.singleShot(0, self._map.fit_to_points)   # after first layout pass
 
     def _add_initial_layer(self, sci: str, display: str, points: list[dict]):
         """The opening species layer. For an album (highlight_upns set) the points
@@ -2814,8 +2819,10 @@ class TripMapView(QDialog):
         loc = (fields.get("Location") or "").strip()
         if loc:
             return loc
+        from engine.countries import country_name, gui_language
         admin = " · ".join(p for p in (fields.get("City"), fields.get("Municipality"),
-                                       fields.get("State"), fields.get("Country"))
+                                       fields.get("State"),
+                                       country_name(fields.get("Country"), gui_language()))
                            if p and str(p).strip())
         return admin or f"{lat:.5f}, {lon:.5f}"
 

@@ -5,6 +5,7 @@ import posixpath
 import shutil
 import subprocess
 from utils import no_window
+from engine.countries import country_name
 import time
 import tempfile
 import math
@@ -135,7 +136,7 @@ def getTemplateOutputString(MyProject, species, file, picture, TemplateLine):
         outputLine = TemplateLine
     return tokens
 
-def getFormattedCityStateCountry(picture):
+def getFormattedCityStateCountry(picture, lang="en"):
 	# Join only the non-empty fields so missing components don't leave
 	# stray separators — e.g. ('', 'Arusha', 'Tanzania') used to render
 	# as ", Arusha, Tanzania" with a leading comma.
@@ -148,7 +149,9 @@ def getFormattedCityStateCountry(picture):
 	parts = [city]
 	if muni and muni != city:
 		parts.append(muni)
-	parts += [picture.get('State', '') or '', picture.get('Country', '') or '']
+	# Country as the page's language names it, whatever spelling is stored
+	# ('Zuid-Afrika' on an EN page reads 'South Africa'); see engine/countries.
+	parts += [picture.get('State', '') or '', country_name(picture.get('Country', '') or '', lang)]
 	return ", ".join(p for p in parts if p)
 
 def isUnnamedRoad(locationname):
@@ -171,33 +174,33 @@ def isObscure(MyProject, species):
     family = getFamilyForSpecies(MyProject, species)
     return family.get('ScientificName', '').lower() in OBSCURE_FAMILIES
 
-def _locationParts(picture, obscure=False):
+def _locationParts(picture, obscure=False, lang="en"):
     """(place, bracketed) — the text before the brackets and the text inside them
     ('' = no brackets), so getFormattedLocation can add the altitude INSIDE an
     existing bracket instead of opening a second one."""
     if obscure:
-        return getFormattedCityStateCountry(picture), ""
+        return getFormattedCityStateCountry(picture, lang), ""
     if picture['Location'] == "" or isUnnamedRoad(picture['Location']):
-        return getFormattedCityStateCountry(picture), ""
+        return getFormattedCityStateCountry(picture, lang), ""
     else:
         if picture['Location'] != "" and len(picture['Location']) > 15:
             return picture['Location'], ""
         if picture['Country'] == "": return picture['Location'], ""
         if picture['Location'] == picture['City'] or picture['Location'] == picture['Country'] or isUnnamedRoad(picture['Location']):
-            return getFormattedCityStateCountry(picture), ""
+            return getFormattedCityStateCountry(picture, lang), ""
         if picture['City'] == '':
             picture['City'] = picture['Location']
-            return getFormattedCityStateCountry(picture), ""
-        return picture['Location'], getFormattedCityStateCountry(picture)
+            return getFormattedCityStateCountry(picture, lang), ""
+        return picture['Location'], getFormattedCityStateCountry(picture, lang)
 
-def getFormattedLocation(picture, obscure=False, altitude=False):
+def getFormattedLocation(picture, obscure=False, altitude=False, lang="en"):
     """The place as the website writes it: 'Jardim Meudon (Teresópolis, Rio de
     Janeiro, Brazil)'. With altitude=True the height joins it — inside the bracket
     when there is one ('…, Brazil, 1014 m)'), else as its own '(1014 m)'. Never for
     an obscure species: a height narrows a hidden location down again. No place
     text → no altitude either (a bare height says nothing on its own)."""
     from engine.geo import altitude_text
-    place, inner = _locationParts(picture, obscure)
+    place, inner = _locationParts(picture, obscure, lang)
     alt = altitude_text(picture.get('GPSAltitude', '')) if (altitude and not obscure and place) else ""
     if alt:
         inner = f"{inner}, {alt}" if inner else alt
@@ -800,7 +803,8 @@ def formatToken(tokenno, MyProject, species_param, file, picture):
         elif tokenno == 39:                                 # one level lower (enkelvoud)
             return ClassificationGroupNameNL[species_param['Level'].value-2].lower()
         elif tokenno == 40:
-            return getFormattedLocation(picture, _obscure, altitude=True) if picture else ""
+            return getFormattedLocation(picture, _obscure, altitude=True,
+                                        lang=MyProject.getLanguage()) if picture else ""
         elif tokenno == 41:
             # Same '#'-strip + description-anchored translation as the slider.
             return getDescriptionText(MyProject, picture)
@@ -1088,7 +1092,7 @@ def formatToken(tokenno, MyProject, species_param, file, picture):
                 parsed_date = getJPGtime(file, MyProject)
                 workstr += " De foto is genomen"
                 if getFormattedLocation(picture, _obscure) != "":
-                    workstr += " bij " + getFormattedLocation(picture, _obscure, altitude=True)
+                    workstr += " bij " + getFormattedLocation(picture, _obscure, altitude=True, lang="nl")
                 if not _obscure and parsed_date.strftime('%H:%M') not in ["","00:00"]:
                     workstr += " om " + parsed_date.strftime('%H:%M')
                 if parsed_date.strftime('%d %b, %Y') != "":
@@ -1140,7 +1144,7 @@ def formatToken(tokenno, MyProject, species_param, file, picture):
                 parsed_date = getJPGtime(file, MyProject)
                 workstr += " The photo was taken"
                 if getFormattedLocation(picture, _obscure) != "":
-                    workstr += " at " + getFormattedLocation(picture, _obscure, altitude=True)
+                    workstr += " at " + getFormattedLocation(picture, _obscure, altitude=True, lang="en")
                 if not _obscure and parsed_date.strftime('%H:%M') not in ["","00:00"]:
                     workstr += " at " + parsed_date.strftime('%H:%M')
                 if parsed_date.strftime('%A %B %d, %Y') != "":

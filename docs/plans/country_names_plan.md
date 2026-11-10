@@ -5,6 +5,9 @@ note. Former names go in as aliases (Eswatini ← Swaziland). Country is never a
 display only. New names arrive from the place lookup (Nominatim), so its EN/NL spellings must
 resolve too; the inventory report catches any that don't.
 
+Progress: steps 1+2 committed 414cb1e. Steps 3+4 built 2026-11-10, awaiting a GUI check. The map
+opens on the whole range and zooms to the country (`MapView(focus_coords=…)`).
+
 ## Problem
 
 The `Country` field in pictures holds whatever was typed or geocoded over the years:

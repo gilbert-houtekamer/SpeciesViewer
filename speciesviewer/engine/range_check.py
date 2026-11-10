@@ -61,11 +61,13 @@ def _place_of(pics) -> str:
     """The most-seen City / State, Country of a day. The place fields are far
     better populated than GPS (85% vs 56%), and they are what a human recognises
     a day by."""
+    from engine.countries import country_name, gui_language
+    lang = gui_language()
     counts = {}
     for p in pics:
         key = ((p.get("City") or "").strip(),
                (p.get("State") or "").strip(),
-               (p.get("Country") or "").strip())
+               country_name((p.get("Country") or "").strip(), lang))
         if any(key):
             counts[key] = counts.get(key, 0) + 1
     if not counts:

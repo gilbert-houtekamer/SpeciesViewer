@@ -874,7 +874,9 @@ class BiotaBrowserDialog(MasterCardMenuMixin, QDialog):
             logger.error(f"Biota Browser: real-master open failed: {e}", exc_info=True)
             return None
 
-    def _panel_show_map(self, sci):
+    def _panel_show_map(self, sci, country_iso: str = ""):
+        """The species' map. With `country_iso` (a country chip) the whole range is
+        still drawn, but the map opens zoomed to that country's points."""
         from PyQt6.QtWidgets import QMessageBox
         if self._master_db is None:
             return
@@ -918,9 +920,14 @@ class BiotaBrowserDialog(MasterCardMenuMixin, QDialog):
                 # The trip's own points may be un-committed (not in the master), so
                 # hand the map the trip repo to resolve their pictures on click.
                 trip_db = self._master_db
+        focus = None
+        if country_iso:
+            from engine.countries import iso_of
+            focus = [(p["lat"], p["lon"]) for p in points
+                     if iso_of(p.get("country", "")) == country_iso] or None
         dlg = MapView(self, db_for_map, sci, display, points,
                       highlight_upns=highlight, highlight_label=highlight_label or "",
-                      trip_db=trip_db)
+                      trip_db=trip_db, focus_coords=focus)
         dlg.show()
 
     # ── flat: all species ────────────────────────────────────────────────────

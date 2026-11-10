@@ -61,11 +61,12 @@ def country_name(text: str, lang: str = "en") -> str:
     return names.get(lang) or names["en"]
 
 
-def gui_language() -> str:
-    """'en' or 'nl' for the app's own windows: the first of the two in the
-    Preferred names profile (sci_en → en, nl_sci → nl)."""
+def gui_language(profile: str = "") -> str:
+    """'en' or 'nl' for the app's own windows: the first of the two in a names
+    profile (sci_en → en, nl_sci → nl). A window with its own Names: combo passes
+    that profile; otherwise the global Preferred names setting is used."""
     from utils.name_profile import effective_profile, _chain
-    return next((c for c in _chain(effective_profile()) if c in LANGS), "en")
+    return next((c for c in _chain(profile or effective_profile()) if c in LANGS), "en")
 
 
 def inventory(counts: dict) -> list:

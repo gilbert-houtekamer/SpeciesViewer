@@ -702,16 +702,19 @@ class MasterDB:
 
     def gps_points_for_species(self, sci: str) -> list[dict]:
         """Signed-decimal GPS points for a species' master pictures, for the map
-        distribution view. Returns [{"lat","lon","upn","place"}] — one per picture
-        that has a parseable GPSPosition (DMS strings decoded via engine.geo).
-        Pictures without GPS are simply absent (~40% of the master has none)."""
+        distribution view. Returns [{"lat","lon","upn","place","country"}] — one per
+        picture that has a parseable GPSPosition (DMS strings decoded via engine.geo).
+        Pictures without GPS are simply absent (~40% of the master has none).
+        "country" is the stored text; "place" falls back to it in the GUI language."""
         from engine.geo import parse_gps_dms
+        from engine.countries import country_name, gui_language
+        lang = gui_language()
         con = self._connect()
         rows = con.execute(
             'SELECT "UniquePictureName" AS upn, "GPSPosition" AS gps, '
             '       COALESCE(NULLIF(TRIM("Location"),""), '
-            '                NULLIF(TRIM("City"),""), '
-            '                NULLIF(TRIM("Country"),"")) AS place '
+            '                NULLIF(TRIM("City"),"")) AS place, '
+            '       TRIM(COALESCE("Country","")) AS country '
             'FROM pictures '
             'WHERE LOWER(TRIM("WetSoortNaam")) = ? '
             '  AND TRIM(COALESCE("GPSPosition","")) <> ""',
@@ -720,8 +723,9 @@ class MasterDB:
         for r in rows:
             ll = parse_gps_dms(r["gps"])
             if ll:
-                out.append({"lat": ll[0], "lon": ll[1],
-                            "upn": r["upn"], "place": r["place"] or ""})
+                out.append({"lat": ll[0], "lon": ll[1], "upn": r["upn"],
+                            "place": r["place"] or country_name(r["country"], lang),
+                            "country": r["country"]})
         return out
 
     def species_row(self, sci: str) -> dict | None:

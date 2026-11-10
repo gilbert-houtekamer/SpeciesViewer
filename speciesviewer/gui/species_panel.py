@@ -18,7 +18,7 @@ import re
 
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QLabel, QPushButton, QFrame,
-    QScrollArea, QSizePolicy,
+    QScrollArea, QSizePolicy, QMenu,
 )
 from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtGui import QPixmap
@@ -368,7 +368,17 @@ class SpeciesPanel(QWidget):
 
         n_pics = len(pics)
         n_gps = sum(1 for p in pics if (p.get("GPSPosition") or "").strip())
-        countries = [c for c in {(p.get("Country") or "").strip() for p in pics} if c]
+        # One chip per COUNTRY, not per stored spelling ("South Africa" and
+        # "Zuid-Afrika" are one), named in the Preferred-names language.
+        from engine.countries import country_name, gui_language, iso_of
+        lang = gui_language(host._lang)   # this window's Names: combo
+        countries = {}   # iso (stored text if unknown) -> [name, iso, has GPS]
+        for p in pics:
+            stored = (p.get("Country") or "").strip()
+            if stored:
+                iso = iso_of(stored)
+                c = countries.setdefault(iso or stored, [country_name(stored, lang), iso, False])
+                c[2] = c[2] or bool((p.get("GPSPosition") or "").strip())
         chips = QHBoxLayout(); chips.setSpacing(8); chips.setContentsMargins(0, 12, 0, 0)
         from gui.biota_source import RANK_LABEL
         chips.addWidget(self._chip(f"Species · {node.get('rank','').title()}"
@@ -376,8 +386,8 @@ class SpeciesPanel(QWidget):
         chips.addWidget(self._chip(f"{n_pics} photos", strong=str(n_pics)))
         if n_gps:
             chips.addWidget(self._chip(f"{n_gps} GPS points", strong=str(n_gps)))
-        if countries:
-            chips.addWidget(self._chip(" · ".join(sorted(countries)[:3])))
+        for name, iso, has_gps in sorted(countries.values())[:3]:
+            chips.addWidget(self._country_chip(name, iso if has_gps else ""))
         chips.addStretch(1)
         wrapchips = QWidget(); wrapchips.setLayout(chips)
         il.addWidget(wrapchips)
@@ -525,6 +535,32 @@ class SpeciesPanel(QWidget):
                 f"color:{_INK_SOFT}; background:{_SURFACE2}; border:1px solid {_LINE};"
                 f" border-radius:12px; padding:3px 11px; font-family:Consolas,monospace; font-size:11px;")
         return c
+
+    def _country_chip(self, name, iso):
+        """A country chip. With `iso` (the country has GPS points) a click opens
+        the species map zoomed to that country; without, it is a plain chip — it
+        never looks clickable when it would do nothing. Right-click: map / copy."""
+        if not iso:
+            return _make_copyable(self._chip(name), name)
+        from gui.name_copy import copy_plain
+        b = QPushButton(name)
+        b.setCursor(Qt.CursorShape.PointingHandCursor)
+        b.setToolTip(f"Show on the map, zoomed to {name}")
+        b.setStyleSheet(
+            f"QPushButton {{ color:{_INK_SOFT}; background:{_SURFACE2}; border:1px solid {_LINE};"
+            f" border-radius:12px; padding:3px 11px; font-family:Consolas,monospace; font-size:11px; }}"
+            f"QPushButton:hover {{ color:{_DONE}; border-color:{_DONE}; }}")
+        show = lambda: self._host._panel_show_map(self._sci, iso)
+        b.clicked.connect(show)
+        b.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+
+        def _menu(pos):
+            m = QMenu(b)
+            m.addAction(f"Show on map ({name})", show)
+            m.addAction(f'Copy "{name}"', lambda: copy_plain(name))
+            m.exec(b.mapToGlobal(pos))
+        b.customContextMenuRequested.connect(_menu)
+        return b
 
     # action row: Map + Tech panel
     def _build_actions(self):

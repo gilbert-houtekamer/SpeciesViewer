@@ -100,6 +100,8 @@ def _load_days(db) -> dict:
     fields; reading it once and aggregating in Python is ~0.3 s and does not get
     slower as more candidates appear.
     """
+    from engine.countries import country_name, gui_language
+    lang = gui_language()
     con = db._connect()
     days: dict = {}
     for r in con.execute(
@@ -114,7 +116,9 @@ def _load_days(db) -> dict:
         if day is None:
             day = days[d] = {"n": 0, "places": {}, "cities": {}, "prefixes": {}}
         day["n"] += 1
-        country = (r["c"] or "").strip()
+        # One name per country, whatever spelling is stored, so a trip under
+        # "Nederland" and one under "Netherlands" count as the same place.
+        country = country_name((r["c"] or "").strip(), lang)
         if country:
             key = (country, (r["s"] or "").strip())
             day["places"][key] = day["places"].get(key, 0) + 1

@@ -45,3 +45,22 @@ def test_inventory_lists_unknown_first():
     assert [r[0] for r in rows] == ["Atlantis", "Nederland", "Texas"]
     assert [r[3] for r in rows] == ["unknown", "name", "alias"]
     assert rows[2][5]          # Texas carries its "not a country" note
+
+
+def test_website_place_uses_page_language():
+    import engine.projectlib  # noqa: F401  (the app imports it first; websupport cycles back)
+    from engine.websupport import getFormattedLocation
+    pic = {"Location": "", "City": "Kruger", "State": "Mpumalanga",
+           "Country": "Zuid-Afrika", "GPSAltitude": ""}
+    assert getFormattedLocation(dict(pic), lang="en") == "Kruger, Mpumalanga, South Africa"
+    assert getFormattedLocation(dict(pic), lang="nl") == "Kruger, Mpumalanga, Zuid-Afrika"
+    pic["Country"] = "Atlantis"                    # unknown: shown as stored
+    assert getFormattedLocation(dict(pic), lang="nl").endswith("Atlantis")
+
+
+def test_check_range_counts_spellings_as_one_country():
+    from engine.range_check import _place_of
+    pics = [{"City": "Leiden", "Country": "Nederland"}] * 2 + \
+           [{"City": "Leiden", "Country": "Netherlands"}] * 2 + \
+           [{"City": "Paris", "Country": "France"}] * 3
+    assert _place_of(pics).startswith("Leiden, ")   # 4 Leiden beat 3 Paris

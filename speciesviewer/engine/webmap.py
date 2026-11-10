@@ -212,7 +212,7 @@ def _spots(MyProject, species, language: str) -> list[dict]:
         for p in c["pics"]:
             # With the height, same text as the species-page heading. Obscure
             # species never get here (no map at all), so no obscure guard needed.
-            place = place or (getFormattedLocation(p, altitude=True) or "")
+            place = place or (getFormattedLocation(p, altitude=True, lang=language) or "")
             thumb = thumb or _published_thumb(MyProject, p, web_root, target_path)
         spots.append({
             "lat": round(c["lat"], 6), "lon": round(c["lon"], 6), "n": c["n"],
