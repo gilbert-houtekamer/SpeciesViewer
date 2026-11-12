@@ -644,8 +644,16 @@ alongside.</p>
     terns. Not a problem in practice: the next Write Blog rewrites the blog index, and Reset Trip plus a
     rebuild gives every page the new banner (each step re-reads <code>trip.ini</code> first). The open
     edge: a trip with no days yet has no step that rewrites only its blog index.</li>
-  <li><span class="tag-new">NEW</span> <strong>One re-publish should translate everything</strong>
-    (28 Oct) &mdash; a big run (a website rebuild, a re-published trip, a trip merge into the master) asks
+  <li><span class="tag-new">BUILT &mdash; to test</span> <strong>One re-publish should translate everything</strong>
+    (28 Oct; built 12 Nov) &mdash; found while building it: the website builds (Build Website, Rebuild
+    All Websites, the album build, Redo Blog) translated every picture description and headline but
+    never kept the result, so each rebuild asked for all of them again. The master had kept only 70
+    translations. Now every step keeps what it translated, also when it fails or is cancelled (kept
+    every 50 along the way). A refused text is asked again after 15 s, 1 and 3 minutes; when MyMemory's
+    free daily limit is used up its warning is no longer taken for the translation. The shared memory
+    lives in this computer's app-data (<code>translations/TransCache.csv</code>); every trip and the
+    master keep their own file too, so Export Trip and the verified count work as before.
+    Original request &mdash; a big run (a website rebuild, a re-published trip, a trip merge into the master) asks
     for thousands of new translations in a row. The translation services start refusing, and every refused
     text goes onto the page untranslated, until the next run tries again. Two fixes, best together:
     <ul>

@@ -107,11 +107,16 @@ class _BatchWorker(QObject):
         self._module_config = module_config
 
     def run(self):
+        error, result = "", ""
         try:
-            result = self._module_called(self._args, self._module_config)
-            self.finished.emit("", result or "")
+            result = self._module_called(self._args, self._module_config) or ""
         except Exception as e:
-            self.finished.emit(str(e), "")
+            error = str(e)
+        # Keep every translation the step made, however it ended: the website
+        # builds never saved theirs, so each rebuild asked for them all again.
+        from engine.translatelib import save_translators
+        save_translators()
+        self.finished.emit(error, result)
 
 
 class BatchModuleRunner:

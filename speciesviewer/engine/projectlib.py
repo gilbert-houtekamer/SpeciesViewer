@@ -116,7 +116,9 @@ class Project:
     	# global flag
         self.online = self.internet_connection()
         if self.online:
-            self.ct = engine.translatelib.CachedTranslate(self.Repository)
+            # patient: a pipeline step may ask thousands of texts — wait and retry
+            # when the services refuse instead of publishing them untranslated.
+            self.ct = engine.translatelib.CachedTranslate(self.Repository, patient=True)
         # build site
         self.addTemplate("vogelordepage-nl.html")    
         self.addTemplate("vogelordepage-en.html")
