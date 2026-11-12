@@ -3535,6 +3535,8 @@ class SpeciesCollectionDialog(QDialog):
         with open(csv_path, "r", encoding="utf-8") as f:
             reader = csv.DictReader(f, delimiter=";")
             self.all_rows = list(reader)
+            # on_save writes back exactly these columns (Sequence, SubspeciesOf, …)
+            self._fieldnames = list(reader.fieldnames or [])
 
         # Diff against the pre-merge snapshot so backfilled vernacular
         # names can be highlighted in the table. Only relevant for the
@@ -3716,12 +3718,34 @@ class SpeciesCollectionDialog(QDialog):
         self.cell_colors[(row, col)] = self.COLOR_MANUAL
 
     def on_save(self):
+        """Write the list back with every column it was read with, via a temp
+        file swapped in only when complete. A hard-coded 6-column header used to
+        crash on Sequence/SubspeciesOf AFTER open("w") had emptied the file —
+        that wiped the master list (2026-11-12). Any failure now leaves the
+        file as it was."""
         import csv
-        headers = ['Level', 'ScientificName', 'DutchName', 'EnglishName', 'Up', 'Leaves']
-        with open(self.csv_path, "w", newline="", encoding="utf-8") as f:
-            writer = csv.DictWriter(f, fieldnames=headers, quoting=csv.QUOTE_MINIMAL, delimiter=";")
-            writer.writeheader()
-            writer.writerows(self.all_rows)
+        if not self.all_rows:
+            QMessageBox.warning(self, "Save species list",
+                                "The list is empty — nothing was saved.")
+            return
+        headers = list(getattr(self, "_fieldnames", []) or [])
+        for row in self.all_rows:                 # never drop a column a row has
+            headers += [k for k in row if k is not None and k not in headers]
+        tmp = self.csv_path + ".tmp"
+        try:
+            with open(tmp, "w", newline="", encoding="utf-8") as f:
+                writer = csv.DictWriter(f, fieldnames=headers, quoting=csv.QUOTE_MINIMAL,
+                                        delimiter=";")
+                writer.writeheader()
+                writer.writerows(self.all_rows)
+            from utils.atomic_replace import replace_with_retry
+            replace_with_retry(tmp, self.csv_path)
+        except Exception as e:
+            logging.getLogger("speciesviewer").error(
+                f"Saving the species list failed, file left unchanged: {e}", exc_info=True)
+            QMessageBox.warning(self, "Save species list",
+                                f"Could not save — the species list was left unchanged.\n\n{e}")
+            return
         self.dirty = False
         self._saved_changes = True
         self.save_btn.setEnabled(False)
