@@ -499,6 +499,10 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
         self.findfile_edit.setEnabled(hasattr(self._collection, "file_keys"))
         self.findfile_edit.textChanged.connect(self._on_findfile_changed)
         controls_layout.addWidget(self.findfile_edit, 1)   # share free space with Find species
+        # Enter = "search now": skip the typing pause. (It used to fall through
+        # to the dialog's default button — Browse — and open a folder picker.)
+        self.find_edit.returnPressed.connect(self._find_now)
+        self.findfile_edit.returnPressed.connect(self._find_now)
 
         # JPG-only toggle — when on, restrict to pictures that have a JPG,
         # combined with the active radio, colour and find filters. Disabled when
@@ -1029,6 +1033,10 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
     def _on_findfile_changed(self, text):
         self._pending_find = ("findfile", text)
         self._find_timer.start(250)
+
+    def _find_now(self):
+        self._find_timer.stop()
+        self._fire_pending_find()
 
     def _fire_pending_find(self):
         if self._pending_find is not None:
@@ -3408,6 +3416,13 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
         if getattr(self, "_taskbar_fix_scheduled", False):
             return
         self._taskbar_fix_scheduled = True
+        # No button of this window answers Enter: a QDialog presses its first
+        # auto-default button (Browse) on an Enter nobody else took, so Enter
+        # in a search box opened a folder picker. Done here, once, so buttons
+        # added anywhere in __init__ are covered.
+        for btn in self.findChildren(QPushButton):
+            btn.setAutoDefault(False)
+            btn.setDefault(False)
         from gui.window_state import give_independent_taskbar_entry
         QTimer.singleShot(0, lambda: give_independent_taskbar_entry(self))
 
