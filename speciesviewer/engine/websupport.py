@@ -1867,15 +1867,21 @@ def collectBlogExtras(MyProject, selected_species):
                 continue
             if not (MyProject.Blog.from_time <= upn_item['DateTimeOriginal'] <= MyProject.Blog.last_time):
                 continue
-            # Say why a landscape stays out — it is skipped on purpose, and a
-            # silent skip looked like the blog had lost it.
+            # Say why a landscape stays out — a silent skip looked like the blog
+            # had lost it. A yellow warning only when half the work is done (a
+            # headline or a JPG): with neither, the user chose not to use it.
             if not isBlogReadyExtra(upn_item):
                 name = upn_item.get('UniquePictureName', '')
-                missing = [what for what, ok in (
-                    ("JPG", upn_item.get('BestJPG')),
-                    ("headline", (upn_item.get('Headline') or '').strip())) if not ok]
-                logger.warning(f"Landscape {name} has no {' and no '.join(missing)} — "
-                               f"not in the blog.")
+                has_jpg = bool(upn_item.get('BestJPG'))
+                has_headline = bool((upn_item.get('Headline') or '').strip())
+                if has_headline:
+                    logger.warning(f"Landscape {name} has a headline but no JPG — not in the "
+                                   f"blog. Make a JPG (Create JPG, or in PhotoLab) to add it.")
+                elif has_jpg:
+                    logger.warning(f"Landscape {name} has a JPG but no headline — not in the "
+                                   f"blog. Give it a headline to add it.")
+                else:
+                    logger.info(f"Landscape {name} has no headline and no JPG — not in the blog.")
                 continue
             selected_species[upn_item['BestJPG']] = upn_item['DateTimeOriginal']
     except Exception as e:
