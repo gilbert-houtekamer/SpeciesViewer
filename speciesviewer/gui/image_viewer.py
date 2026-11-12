@@ -1440,6 +1440,8 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
         came up twice, and a resize behind it could raise another."""
         self.cancel_button.setEnabled(False)
         self.wait_dialog.close()
+        if getattr(self, "_quiet_empty_notice", False):
+            return  # emptied by a delete — no popup (see _reapply_filter)
         if self._color_filter or self._find_query or self._findfile_query or self._jpg_only:
             return  # an overlay narrowed it to nothing — empty grid, no popup
         if self.warnings_only:
@@ -3355,8 +3357,16 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
     def _reapply_filter(self):
         """Rebuild the grid for the current combined filter (after a delete the
         displayed set must reflect the same radio + colour + find, minus the
-        removed pictures). _set_grid_keys keeps the scroll position."""
-        self._apply_filters()
+        removed pictures). _set_grid_keys keeps the scroll position.
+
+        An empty grid stays silent here: the user just deleted those pictures,
+        and the "No Missing GPS"-style popup would open under the still-visible
+        delete progress dialog, which then looked stuck at 100%."""
+        self._quiet_empty_notice = True
+        try:
+            self._apply_filters()
+        finally:
+            self._quiet_empty_notice = False
 
     def has_unsaved_edits(self) -> bool:
         """True when this culling window holds edits not yet folded into the day's
