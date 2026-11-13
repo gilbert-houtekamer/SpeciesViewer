@@ -16,7 +16,7 @@ organised in five blocks, separated by dividers:
 | Create Trip | | |
 | Export Trip | | An active trip |
 | Import Trip | | |
-| Restore Work from Card | | An active trip |
+| Read Metadata from SV INDEX Card | | An active trip |
 | Read SD-card or Folder | | |
 | Empty a Card | | An active trip |
 | Sync Lightroom & PhotoLab Metadata | | An active trip |
@@ -98,60 +98,69 @@ machine, export, import on the laptop.
 
 ### Import Trip
 
-Unpacks a trip export on this machine. The pictures are not in the export — if
-you are moving a trip between machines on a fast network, copy the picture day
-folders across yourself and use Import Trip for the trip's identity.
+Brings a trip home from another computer, in one window with three numbered
+steps. The top of the window shows all three steps with their status, so you
+can see at any moment what is done and what is left.
 
-### Restore Work from Card
+| Step | Brings back | From |
+|---|---|---|
+| **1 Trip** | The trip's settings, banner and trip picture, species list, local names, lifer status and translations | The trip ZIP on the SV INDEX card, or any trip ZIP (Export Trip) |
+| **2 Metadata** | Per day: culling colours, species names, locations, crops, blog text and the rendered JPGs; the GPS tracklogs | The day backups on the SV INDEX card |
+| **3 Pictures** | The RAW pictures | The trip's SD-cards, or a folder they were dumped into |
+
+Steps 2 and 3 work in either order, and can be repeated as often as you like.
+
+**Step 1.** Choose the SV INDEX card. The trips on it are listed, newest first,
+with whether each one is already on this computer. Pick one and press *Import*.
+Importing a trip that is already here is safe: the species list and translations
+are merged, and the files replaced go to the trip's `.trash` folder.
+
+**Step 2 — newer wins.** The day list fills itself as soon as the card matches
+the open trip. For each day it shows:
+
+| Column | Means | What happens |
+|---|---|---|
+| New | Not on this computer yet | Added |
+| Newer on the card | Differs, and the card's copy is later | Taken; the copy here is kept in the trip's `.trash/replaced` folder |
+| Newer here | Differs, and the copy here is later | **Never overwritten** — only counted |
+| Same | Identical | Skipped |
+
+Files of pictures you have deleted on this computer are not brought back. The
+tick on a day is the confirmation; there is no question per file. *Details of a
+day…* lists the files behind the numbers, read-only. Days that are on this
+computer but not on the card are shown greyed: their pictures can only come
+from a card or dump.
+
+**Step 3.** *Read from* shows the SD-card or dump folder the pictures come
+from, and what it was last read into; *Choose…* changes it. Each day shows how
+many of the pictures kept on the trip are here ("520 of 751"), and which card or
+dump it was last read from. *Read SD-card or Folder…* opens the card read with
+that source, and the trip's folder, name prefix and date folders filled in and
+locked, and scans the days at once; you choose which days to read. Pictures
+culled on the trip are left out.
+
+Newer wins here too: a sidecar or a rendered JPG (PhotoLab's `_DxO` files) on the
+card or dump that is newer than the one here replaces it, and the older one is
+kept in `.trash/replaced`. An older one is left alone. A camera's own JPG is
+never replaced: a different picture under the same name is a new shot, and is
+saved beside it with a letter added (`… B.JPG`).
+
+> 💡 **Tip.** If the pictures are already on a disk (copied off the laptop, say),
+> point *Read SD-card or Folder…* at that folder instead of a card — the same
+> rules apply.
+
+### Read Metadata from SV INDEX Card
 
 *Needs: an active trip.*
 
-Import Trip's larger sibling. The trip's *identity* is only the first part of
-coming home — the **culling work** is the rest, and that lives on the SV INDEX
-card rather than in the trip export.
+Opens the Import Trip window at step 2, for reading the SV INDEX card on its
+own — after a trip, or on the same computer.
 
-It puts back everything **except the pictures themselves**: culling colours,
-species names, locations, crops, blog text, the rendered JPGs, the trip's
-species list and its GPS tracklogs. The RAW pictures come from the trip's own
-SD-cards, read from inside this same dialog.
-
-The card is the SV INDEX card you wrote while travelling (click the *Metadata backup* cell of a day
-in the Trip Overview). Open the trip you want to restore into **first** — the dialog checks
-that the card belongs to it and refuses to write anything if it does not.
-
-**Two kinds of card.** Coming home on another machine involves two different
-cards, one after the other:
-
-| Card | Holds | Read with |
-|---|---|---|
-| **SV INDEX card** | The work: colours, names, crops, blogs, JPGs, and which pictures survived the culling | *Restore selected* |
-| **Data SD-card(s)** | The RAW pictures as the camera wrote them — culled ones included | *Read SD-card or Folder…* |
-
-**Step by step:**
-
-1. Open the trip (Trips ▸ Select or Update Trip…).
-2. Insert the **SV INDEX card**. Trips ▸ Restore Work from Card ▸ *Choose…* and
-   point at the trip's folder on the card. The banner turns green: *Card matches
-   the open trip*.
-3. Press **Restore selected**. Days that still need something are ticked; when
-   the restore is done every day shows *Already here* = *In backup* and nothing
-   is ticked any more — that is the finished state, not a refusal.
-4. Take the SV INDEX card out and insert a **data SD-card**. It may get the same
-   drive letter, so the banner now says the card *is not there* — expected, and
-   harmless: the survivor list is already remembered on this machine.
-5. Press **Read SD-card or Folder…**, keep *Skip pictures deleted during the
-   trip* ticked, tick the days, and read. Only the pictures that survived the
-   culling come back. Repeat for each data card.
-6. The *Pictures* column counts up as cards are read ("317 of 317").
-   **Check pictures…** compares each day against the backup's record —
-   read-only.
-
-> 💡 **Tip.** Steps 2–3 and 4–5 can be done in either order. Reading the data
-> cards first and restoring afterwards works too.
-
-> ⚠ **If the pictures are already on a disk** (copied off the laptop, say),
-> point *Read SD-card or Folder…* at that folder instead of a card — the same
-> skip-the-culled rule applies.
+The SV INDEX card is the card you write while travelling (click the *Metadata
+backup* cell of a day in the Trip Overview). You choose the card itself, never
+a trip folder on it: the backup adds the trip's folder by itself. If you do
+pick a trip folder, SpeciesViewer says so and offers the card instead. The RAW
+backup follows the same rule, so both can share one card.
 
 ---
 

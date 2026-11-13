@@ -999,16 +999,48 @@ def target_name(src_name, prefix=""):
     under its own naming, and re-importing one is easy to do by accident —
     comes back as "2026 Kreta - 2026 Kreta - IMG_1.jpg", and no later pass can
     tell that apart from a deliberate name. Cheap to prevent, awkward to undo.
+
+    The check ignores upper and lower case: a dump of "2026 madagascar - X.JPG"
+    read with the prefix "2026 Madagascar" is already prefixed, and treating it
+    as new gave "2026 Madagascar - 2026 madagascar - X.JPG" (2026-11-12).
     """
     prefix = (prefix or "").strip().rstrip(" -")
     if not prefix:
         return src_name
-    if src_name.startswith(prefix) and src_name[len(prefix):len(prefix) + 1] in (" ", "-"):
+    if src_name[:len(prefix)].lower() == prefix.lower() \
+            and src_name[len(prefix):len(prefix) + 1] in (" ", "-"):
         return src_name
     return f"{prefix}{PREFIX_JOIN}{src_name}"
 
 
 SIDECAR_SUFFIXES = {".xmp", ".dop"}
+
+
+def _is_render(name: str) -> bool:
+    """A JPG made FROM a picture (PhotoLab "_DxO", "-ORF", …), not by the
+    camera: its picture name is shorter than its file name."""
+    stem, ext = os.path.splitext(name)
+    if ext.lower() not in (".jpg", ".jpeg"):
+        return False
+    from engine.handling import deriveUniquePictureName
+    return deriveUniquePictureName(name) != stem.lower()
+
+
+def _clearly_newer(src: Path, target: Path) -> bool:
+    """The source sidecar is later than the one here by more than the card's
+    2-second time resolution, and its content differs. Unknown = no."""
+    try:
+        a, b = src.stat(), target.stat()
+    except OSError:
+        return False
+    if a.st_mtime_ns - b.st_mtime_ns <= 2_000_000_000:
+        return False
+    if a.st_size != b.st_size:
+        return True
+    try:
+        return src.read_bytes() != target.read_bytes()
+    except OSError:
+        return False
 
 
 class _SidecarIndex:
@@ -1244,6 +1276,7 @@ def card_history(source) -> list[dict]:
 def copy_card(source, dest, prefix="", bucket_by_date=False, tz_offset_hours=0.0,
               skip_if_on_disk=True, write_sidecars=True, use_card_cache=True,
               include_dates=None, include_names=None, trip_stamp=None,
+              newer_wins=False,
               logger=None, progress=None, should_cancel=None):
     """Copy picture files from `source` (recursively) into `dest`.
 
@@ -1267,6 +1300,18 @@ def copy_card(source, dest, prefix="", bucket_by_date=False, tz_offset_hours=0.0
                         it copies everything. That asymmetry is the point: it
                         lets a restore re-apply the culling for days the backup
                         knows, without silently dropping a day it has never seen.
+    newer_wins        - when True, a sidecar (.xmp/.dop) or a RENDERED JPG
+                        (named with a derivative marker such as _DxO) already at
+                        the destination is REPLACED by the source's copy when
+                        that one is clearly newer (more than 2 s, the card's time
+                        resolution) and differs; the copy here is first moved to
+                        the trip's .trash/replaced/. An older or equal rendered
+                        JPG is left alone instead of being saved as "…_1".
+                        Off by default: only the trip import, where a dump can
+                        carry later work than the SV INDEX backup, asks for it.
+                        A camera's own JPG is never replaced: it does not change
+                        once shot, so a different one with the same name is a
+                        different picture (a counter that wrapped).
     trip_stamp        - optional {"trip_id":…, "trip":…} recorded ON THE CARD
                         with this read, so the card can later say which trip it
                         was read into and when. See _CardCache.record_read.
@@ -1330,6 +1375,9 @@ def copy_card(source, dest, prefix="", bucket_by_date=False, tz_offset_hours=0.0
     # pictures but none of the culling, and a re-run should complete it.
     sidecar_index = _SidecarIndex()
     sidecar_plan: list[tuple[Path, Path]] = []          # (src_sidecar, target)
+    sidecar_replace: set[Path] = set()      # targets that exist and are older
+    replace_pictures: set[Path] = set()     # rendered JPGs here that are older
+    replaced_dirs: dict[Path, Path] = {}    # day folder -> where its older copies go
 
     # Per-day tally for the dialog's day table. The run summary counts the whole
     # run, which cannot answer the per-day question actually being asked — "is
@@ -1348,7 +1396,12 @@ def copy_card(source, dest, prefix="", bucket_by_date=False, tz_offset_hours=0.0
             # NEVER overwrite a sidecar already at the destination. It may hold
             # work done there since — the derived-file rule this project learned
             # the hard way — and skipping instead makes a re-run idempotent.
+            # The one exception is opt-in and needs the source to be clearly
+            # NEWER: then the work on the source is the later work.
             if target_sc.exists():
+                if newer_wins and _clearly_newer(sc, target_sc):
+                    sidecar_replace.add(target_sc)
+                    sidecar_plan.append((sc, target_sc))
                 continue
             sidecar_plan.append((sc, target_sc))
 
@@ -1402,6 +1455,18 @@ def copy_card(source, dest, prefix="", bucket_by_date=False, tz_offset_hours=0.0
                     targets.append(str(target))
                     _plan_sidecars(src, target)
                     continue
+                # Newer wins for a rendered JPG (trip import only): the later
+                # render replaces the one here, an older one is left alone.
+                if newer_wins and target.exists() and _is_render(target.name):
+                    if _clearly_newer(src, target):
+                        replace_pictures.add(target)
+                        reserved.add(target)
+                        to_copy.append((src, target, cached_sha))
+                        _plan_sidecars(src, target)
+                    else:
+                        summary["older_kept"] = summary.get("older_kept", 0) + 1
+                        _tally(src, "skipped")
+                    continue
                 # Same name, different content (dual-slot cameras that restart frame
                 # numbers, or two new files with the same target name queued in this
                 # run). Auto-rename; a re-read recognises both by content, idempotent.
@@ -1449,6 +1514,28 @@ def copy_card(source, dest, prefix="", bucket_by_date=False, tz_offset_hours=0.0
     # Submit all copies at once so the OS can pipeline card reads with SSD
     # writes — the same async-I/O advantage Explorer's CopyFileEx has.
     n_to_copy = len(to_copy)
+    moved_aside: dict[Path, Path] = {}      # target -> where its older copy went
+    if n_to_copy and replace_pictures and not (should_cancel and should_cancel()):
+        # Only now, after the space check: an older render is moved aside just
+        # before its replacement is copied, never earlier.
+        from engine.work_restore import replaced_dir
+        for target in sorted(replace_pictures):
+            if not target.exists():
+                continue
+            keep = replaced_dirs.get(target.parent)
+            if keep is None:
+                keep = replaced_dirs[target.parent] = replaced_dir(target.parent)
+                keep.mkdir(parents=True, exist_ok=True)
+            try:
+                os.replace(target, keep / target.name)
+                moved_aside[target] = keep / target.name
+            except OSError as e:
+                log.warning(f"Could not move the older {target.name} aside: {e}")
+        summary["newer_replaced"] = len(moved_aside)
+        # A render that could not be moved aside is not overwritten either.
+        to_copy = [t for t in to_copy
+                   if t[1] not in replace_pictures or t[1] in moved_aside]
+        n_to_copy = len(to_copy)
     if n_to_copy and not (should_cancel and should_cancel()):
         done_copying = 0
         with ThreadPoolExecutor(max_workers=_COPY_WORKERS) as pool:
@@ -1478,6 +1565,11 @@ def copy_card(source, dest, prefix="", bucket_by_date=False, tz_offset_hours=0.0
                     summary["failed"] += 1
                     _tally(src, "failed")
                     summary["failed_names"].append(src.name)
+                    if target in moved_aside:      # put the older render back
+                        try:
+                            os.replace(moved_aside.pop(target), target)
+                        except OSError:
+                            pass
 
                 if should_cancel and should_cancel():
                     for f in future_map:
@@ -1525,6 +1617,14 @@ def copy_card(source, dest, prefix="", bucket_by_date=False, tz_offset_hours=0.0
                 # went missing, which is worse than no sidecar at all.
                 if not sc_target.parent.is_dir():
                     continue
+                if sc_target in sidecar_replace and sc_target.exists():
+                    from engine.work_restore import replaced_dir
+                    keep = replaced_dirs.get(sc_target.parent)
+                    if keep is None:
+                        keep = replaced_dirs[sc_target.parent] = replaced_dir(sc_target.parent)
+                        keep.mkdir(parents=True, exist_ok=True)
+                    shutil.move(str(sc_target), str(keep / sc_target.name))
+                    summary["sidecars_newer"] = summary.get("sidecars_newer", 0) + 1
                 shutil.copy2(sc_src, sc_target)
                 summary["sidecars_copied"] += 1
             except OSError as e:

@@ -786,8 +786,9 @@ class _SDCardCopyWorker(QObject):
 
     def __init__(self, source, dest, prefix="", bucket_by_date=False, tz_offset_hours=0.0,
                  write_sidecars=True, include_dates=None, trip_stamp=None,
-                 include_names=None):
+                 include_names=None, newer_wins=False):
         super().__init__()
+        self._newer_wins = newer_wins
         self._source = source
         self._dest = dest
         self._prefix = prefix
@@ -811,6 +812,7 @@ class _SDCardCopyWorker(QObject):
                 write_sidecars=self._write_sidecars, include_dates=self._include_dates,
                 trip_stamp=self._trip_stamp,
                 include_names=self._include_names,
+                newer_wins=self._newer_wins,
                 progress=lambda done, total, name: self.progress.emit(done, total, name),
                 should_cancel=lambda: self._cancel,
             )
@@ -888,9 +890,16 @@ class ReadSDCardDialog(QDialog):
     SD-card) into the project pictures directory. No rename, no date-bucketing,
     no deletion from the card — pictures already copied are skipped so re-runs
     are safe."""
-    def __init__(self, parent, menu_spec, days_mode=False, unfiled_mode=False):
+    def __init__(self, parent, menu_spec, days_mode=False, unfiled_mode=False,
+                 trip_mode=False):
         super().__init__(parent)
         self.menu_spec = menu_spec
+        # Trip mode: opened from Import Trip's pictures step. Everything that
+        # decides what a picture is called and where it lands comes from the
+        # trip and its SV INDEX backup, and is locked; the days are scanned as
+        # soon as the window opens; the day choice stays yours.
+        self.trip_mode = trip_mode and not (days_mode or unfiled_mode)
+        self._auto_scanned = False
         self.passed_parent = parent
         self.days_mode = days_mode   # Days lane: copy into a YYYY-MM-DD folder + register
         # Unfiled lane: copy into <CurrentPictures>/<year>/<year> unfiled/ and claim
@@ -1327,6 +1336,8 @@ class ReadSDCardDialog(QDialog):
         self.geotag_btn.clicked.connect(self.on_geotag_from_tracklog)
         self.close_btn.clicked.connect(self.reject)
         self._close_connected = True   # True = Close, False = Cancel
+        if self.trip_mode:
+            self._lock_for_trip()
 
         # Without this the dialog opens at the hardcoded resize(700, 320)
         # above and stays there until something else (Scan, a tab switch)
@@ -1495,6 +1506,13 @@ class ReadSDCardDialog(QDialog):
         from PyQt6.QtCore import QTimer
         from gui.window_state import give_independent_taskbar_entry
         QTimer.singleShot(0, lambda: give_independent_taskbar_entry(self))
+        # Trip mode scans at once: which days a card or dump holds is the first
+        # thing you need to see, and the choice is yours to make from there.
+        if self.trip_mode and not self._auto_scanned:
+            self._auto_scanned = True
+            src = self.source_field.get_path()
+            if src and os.path.isdir(src):
+                QTimer.singleShot(0, self.on_scan)
 
     def closeEvent(self, event):
         self._stop_worker()
@@ -1651,7 +1669,10 @@ class ReadSDCardDialog(QDialog):
             return
         note = f"Files will be named:  {example}"
         known = (self._trip_recorded_prefix or "").strip()
-        if known and raw.strip().rstrip(" -") and raw.strip().rstrip(" -") != known:
+        # Upper/lower case does not make a different prefix: target_name treats
+        # "2026 madagascar" and "2026 Madagascar" as the same one.
+        if known and raw.strip().rstrip(" -") \
+                and raw.strip().rstrip(" -").lower() != known.lower():
             note += (f"    ·  this trip's other days use “{known}” — fine for a "
                      f"sub-trip, just checking it is deliberate.")
         self.prefix_note.setText(note)
@@ -1817,6 +1838,30 @@ class ReadSDCardDialog(QDialog):
             self.logger.info(text)
         except Exception:
             pass
+
+    def _lock_for_trip(self):
+        """Trip mode: the destination, the name prefix and the date folders come
+        from the trip, and cannot be changed here. The prefix is the one the SV
+        INDEX backup recorded off the files themselves — the restored sidecars
+        carry it, so the pictures must too, letter for letter."""
+        from engine import work_restore as wr
+        trip_root = _config.get("trip", "tripbiotadatabase", fallback="").strip()
+        backup_prefix = wr.load_backup_prefix(trip_root) if trip_root else ""
+        if backup_prefix:
+            self.prefix_field.field.setText(backup_prefix)
+        if self.trip_picture_root:
+            self.dest_field.field.setText(self.trip_picture_root)
+        self.dest_field.field.setReadOnly(True)
+        self.dest_field.browse_btn.setEnabled(False)
+        self.prefix_field.field.setReadOnly(True)
+        self.bucket_checkbox.setChecked(True)
+        self.bucket_checkbox.setEnabled(False)
+        tip = "Set by the trip — opened from Import Trip."
+        for w in (self.dest_field.field, self.prefix_field.field, self.bucket_checkbox):
+            w.setToolTip(tip)
+        name = Path(self.trip_picture_root).name if self.trip_picture_root else ""
+        if name:
+            self.setWindowTitle(f"Read SD-card or Folder — for {name}")
 
     def on_scan(self):
         """Group the card by capture-day and fill the day table — no copying."""
@@ -2380,7 +2425,8 @@ class ReadSDCardDialog(QDialog):
         self._worker = _SDCardCopyWorker(source, dest, prefix, bucket_by_date, tz_offset,
                                          write_sidecars, include_dates=include_dates,
                                          trip_stamp=self._trip_stamp(),
-                                         include_names=use_filter)
+                                         include_names=use_filter,
+                                         newer_wins=self.trip_mode)
         self._worker.moveToThread(self._thread)
         self._thread.started.connect(self._worker.run)
         self._worker.progress.connect(self.on_progress)

@@ -948,28 +948,22 @@ def build_menu_spec(main_window):
     )
     export_trip.callback = lambda: ExportTripDialog(main_window, export_trip).exec()
 
+    def _import_trip(step=0):
+        """Import Trip: the trip, then its metadata from the SV INDEX card, then
+        its pictures from the cards and dumps — one window, three steps."""
+        from gui.trip_import_window import TripImportWindow
+        TripImportWindow(main_window, step=step).exec()
+
     import_trip = MenuSpec(
-        callback=lambda: ImportTripDialog(main_window).exec(),
+        callback=_import_trip,
         title="Import Trip",
     )
 
-    def _restore_work():
-        """Import Trip's larger sibling: the trip identity is only the first
-        part of coming home — the days' culling is the rest, and it lives on the
-        SV INDEX card rather than in the trip export."""
-        from gui.work_restore_dialog import RestoreWorkDialog
-        from utils.trip_identity import resolve_trip_picture_root
-        trip_root = _config.get("trip", "tripbiotadatabase", fallback="").strip()
-        if not trip_root:
-            QMessageBox.warning(main_window, "Restore work from a card",
-                                "Open the trip you want to restore into first.")
-            return
-        pic = resolve_trip_picture_root(trip_root, kind="trip")
-        RestoreWorkDialog(main_window, trip_root, pic).exec()
-
+    # The same window, opened at its metadata step: reading the SV INDEX card
+    # is also done on its own — after a trip, or on the same computer.
     restore_work = MenuSpec(
-        callback=_restore_work,
-        title="Restore Work from Card",
+        callback=lambda: _import_trip(step=1),
+        title="Read Metadata from SV INDEX Card",
         enabled=has_active_trip,
     )
 
@@ -1885,7 +1879,7 @@ def build_menu_spec(main_window):
             # back when you come home.
             "Export Trip…": export_trip,
             "Import Trip…": import_trip,
-            "Restore Work from Card…": restore_work,
+            "Read Metadata from SV INDEX Card…": restore_work,
             f"{MenuSpec.separator()}_setup0": None,
             "Read SD-card or Folder…": read_sdcard,
             "Empty a Card": empty_card,

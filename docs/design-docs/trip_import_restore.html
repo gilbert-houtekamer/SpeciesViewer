@@ -1,0 +1,309 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bring a Trip Home</title>
+<style>
+  :root {
+    --bg: #f5f7f3; --surface: #ffffff; --surface-2: #eef1ea;
+    --ink: #1c211b; --ink-soft: #59634f; --line: #d7ddce;
+    --done: #2f7d43; --done-bg: #e6f1e8;
+    --ready: #2563a8; --ready-bg: #e4eef8;
+    --locked: #97a08c;
+    --warn: #b45309; --warn-bg: #f8ecdc;
+    /* the app window itself is always the dark Qt theme */
+    --win: #2b2f29; --win-2: #343932; --win-line: #4a5045; --win-ink: #e6e9e1;
+    --win-soft: #a9b0a0; --win-accent: #8fbf8f; --win-blue: #8fd3ff; --win-warn: #e0a458;
+    --font: "Segoe UI", system-ui, -apple-system, sans-serif;
+    --mono: ui-monospace, "Cascadia Mono", Consolas, monospace;
+    --radius: 9px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #141711; --surface: #1d211a; --surface-2: #252a20;
+      --ink: #e8ece2; --ink-soft: #a3ac99; --line: #333a2c;
+      --done: #5bb271; --done-bg: #1d2c20; --ready: #64a2db; --ready-bg: #1a2632;
+      --locked: #6b7362; --warn: #d98a3d; --warn-bg: #2c2213;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #141711; --surface: #1d211a; --surface-2: #252a20;
+    --ink: #e8ece2; --ink-soft: #a3ac99; --line: #333a2c;
+    --done: #5bb271; --done-bg: #1d2c20; --ready: #64a2db; --ready-bg: #1a2632;
+    --locked: #6b7362; --warn: #d98a3d; --warn-bg: #2c2213;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font-family: var(--font); line-height: 1.5; }
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 32px 16px 64px; }
+  .eyebrow { font-family: var(--mono); font-size: 11.5px; letter-spacing: .14em; text-transform: uppercase; color: var(--ink-soft); margin: 0 0 6px; }
+  h1 { font-size: clamp(22px, 3.4vw, 30px); margin: 0 0 8px; }
+  h2 { font-size: 19px; margin: 40px 0 6px; }
+  h3 { font-size: 15px; margin: 18px 0 4px; }
+  p, li { max-width: 78ch; }
+  .lede { color: var(--ink-soft); font-size: 15px; margin: 0; }
+  .tag { display: inline-block; font-family: var(--mono); font-size: 10.5px; letter-spacing: .1em; text-transform: uppercase;
+    color: var(--warn); background: var(--warn-bg); padding: 2px 8px; border-radius: 20px; margin-left: 8px; vertical-align: 3px; }
+  .note { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 12px 16px; margin: 12px 0; }
+  .note b { color: var(--ink); }
+  .q { border-left: 3px solid var(--warn); }
+  code { font-family: var(--mono); font-size: 12.5px; background: var(--surface-2); padding: 1px 5px; border-radius: 4px; }
+
+  /* ── mock app window ── */
+  .scroller { overflow-x: auto; margin: 14px 0 6px; border-radius: 8px; }
+  .win { min-width: 960px; background: var(--win); color: var(--win-ink); border: 1px solid #111; border-radius: 8px;
+    box-shadow: 0 8px 28px rgba(0,0,0,.25); font-size: 13px; }
+  .titlebar { background: #f3f3f3; color: #222; padding: 6px 12px; border-radius: 8px 8px 0 0; display: flex; justify-content: space-between; font-size: 13px; }
+  .body { display: grid; grid-template-columns: 170px 1fr; gap: 18px; padding: 18px; }
+  .art { background: linear-gradient(160deg, #a9c9a0, #7ea777); border-radius: 4px; height: 170px; align-self: center;
+    display: grid; place-items: center; color: #33452f; font-size: 11px; }
+  .intro { color: var(--win-ink); margin: 0 0 10px; }
+  .soft { color: var(--win-soft); }
+  .ok { color: var(--win-accent); }
+  .blue { color: var(--win-blue); }
+  .wn { color: var(--win-warn); }
+  .row { display: flex; align-items: center; gap: 10px; margin: 6px 0; flex-wrap: wrap; }
+  .btn { display: inline-block; border: 1px solid var(--win-line); background: var(--win-2); color: var(--win-ink);
+    padding: 5px 14px; border-radius: 4px; white-space: nowrap; }
+  .btn.primary { border-color: var(--win-accent); }
+  .btn.off { color: #777; border-color: #3d413a; }
+  .spacer { flex: 1; }
+  .field { background: #23261f; border: 1px solid var(--win-line); padding: 3px 8px; border-radius: 3px; min-width: 180px; display: inline-block; }
+  .field.locked { color: var(--win-soft); }
+  table.qt { width: 100%; border-collapse: collapse; margin: 6px 0; background: #262a23; }
+  table.qt th { background: var(--win-2); font-weight: 400; text-align: left; padding: 4px 8px; border: 1px solid var(--win-line); }
+  table.qt td { padding: 4px 8px; border: 1px solid #3a3f37; white-space: nowrap; }
+  table.qt td.wrap { white-space: normal; }
+  table.qt tr.dim td { color: #8a9183; }
+  .ck::before { content: "☑"; color: var(--win-accent); }
+  .nk::before { content: "☐"; color: var(--win-soft); }
+
+  /* stepper inside the window */
+  .steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 12px; }
+  .step { border: 1px solid var(--win-line); border-radius: 6px; padding: 8px 10px; background: #30352d; }
+  .step.cur { border-color: var(--win-blue); background: #2c3a44; }
+  .step .n { font-family: var(--mono); font-size: 11px; color: var(--win-soft); }
+  .step .t { font-weight: 600; }
+  .step .s { font-size: 12px; }
+  .section { border-top: 1px solid var(--win-line); padding-top: 10px; margin-top: 10px; }
+
+  /* card layout diagram */
+  .tree { font-family: var(--mono); font-size: 12.5px; background: var(--surface); border: 1px solid var(--line);
+    border-radius: var(--radius); padding: 12px 16px; white-space: pre; overflow-x: auto; }
+  .tree .m { color: var(--done); } .tree .r { color: var(--ready); } .tree .x { color: var(--warn); }
+  ul.compact li { margin: 3px 0; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<p class="eyebrow">Design study · data from the Madagascar round trip, numbers illustrative</p>
+<h1>Bring a trip home <span class="tag">mockup</span></h1>
+<p class="lede">Moving a trip from one computer to another: the trip itself, its metadata from the SV INDEX card,
+and its pictures from the SD-cards and dumps. One window, three numbered steps, each with its own status.
+Steps 2 and 3 work in either order and can be repeated.</p>
+
+<div class="note">
+<b>What was agreed (13 Nov 2026)</b>
+<ul class="compact">
+  <li>Import Trip is the entry point, and the other two steps grow out of it.</li>
+  <li>"Restore work from a card" becomes <b>Read metadata from SV INDEX card</b>.</li>
+  <li>The newer copy wins. When this computer's copy is newer it is kept and only counted, never offered for overwriting.
+      When the card's copy is newer it is taken by default, and you confirm once per day.</li>
+  <li>Reading cards and dumps keeps your own choice of days, and scanning starts when the window opens.</li>
+  <li>Sources can differ: the SV INDEX card can hold 6 days while a dump holds 7. Nothing assumes they agree.</li>
+  <li>The metadata backup and the RAW backup follow the same folder rule, so the default always works.</li>
+</ul>
+</div>
+
+<!-- ───────────────────────────── 1 ───────────────────────────── -->
+<h2>Screen 1 — Import Trip, step 1: the trip</h2>
+<p>Opened from <b>Trip ▸ Import Trip…</b>. You point at the SV INDEX card (or a trip ZIP anywhere), and SV finds the
+trips on it. The numbered steps at the top stay visible in all three steps.</p>
+
+<div class="scroller"><div class="win">
+  <div class="titlebar"><span>Import Trip — 2026 Madagascar</span><span>✕</span></div>
+  <div class="body">
+    <div class="art">illustration</div>
+    <div>
+      <div class="steps">
+        <div class="step cur"><div class="n">STEP 1</div><div class="t">Trip</div><div class="s ok">✅ imported 13 Nov 10:12</div></div>
+        <div class="step"><div class="n">STEP 2</div><div class="t">Metadata — SV INDEX card</div><div class="s wn">12 days on the card, 9 to read</div></div>
+        <div class="step"><div class="n">STEP 3</div><div class="t">Pictures — cards and dumps</div><div class="s soft">1,104 of 3,132 pictures here</div></div>
+      </div>
+
+      <div class="row"><span>From:</span><span class="field">H:\ &nbsp;(SV INDEX card)</span><span class="btn">Choose…</span></div>
+      <table class="qt">
+        <tr><th></th><th>Trip on the card</th><th>Days</th><th>Made</th><th>On this computer</th></tr>
+        <tr><td>◉</td><td>2026 Madagascar</td><td>12</td><td>11 Nov 12:02 · SmallBoy</td><td class="ok">yes — this trip is up to date with the card</td></tr>
+        <tr class="dim"><td>○</td><td>2026 Brazilie</td><td>23</td><td>21 Sep 17:41</td><td>yes, already in the master</td></tr>
+        <tr class="dim"><td>○</td><td>2026 Goeree</td><td>3</td><td>20 Aug 18:23</td><td>yes, already in the master</td></tr>
+      </table>
+      <p class="soft" style="margin:6px 0">Brings back the trip's settings, banner and trip picture, species list, local names, lifer status and translations.
+      The species list and translations are merged; anything replaced is kept in the trip's .trash folder.</p>
+      <div class="row"><span class="spacer"></span><span class="btn off">Import again</span><span class="btn primary">Next: metadata ›</span><span class="btn">Close</span></div>
+    </div>
+  </div>
+</div></div>
+<ul class="compact">
+  <li>The card is listed by <b>trip</b>, the same way it is laid out on disk. The trip of the most recent backup is picked first.</li>
+  <li>A trip that is already here is described in words ("up to date with the card", or "the card is newer — import again"),
+      so that step 1 can be skipped without a second thought.</li>
+  <li>A plain trip ZIP elsewhere (from Export Trip) still works through Choose…. In that case steps 2 and 3 simply ask for their source.</li>
+</ul>
+
+<!-- ───────────────────────────── 2 ───────────────────────────── -->
+<h2>Screen 2 — step 2: Read metadata from SV INDEX card</h2>
+<p>The day list fills itself as soon as the card matches the trip. Every file is compared by content and date, and each day
+shows which side is newer. <b>This screen asks no per-file questions.</b> The tick on a day is the confirmation.</p>
+
+<div class="scroller"><div class="win">
+  <div class="titlebar"><span>Import Trip — 2026 Madagascar</span><span>✕</span></div>
+  <div class="body">
+    <div class="art">illustration</div>
+    <div>
+      <div class="steps">
+        <div class="step"><div class="n">STEP 1</div><div class="t">Trip</div><div class="s ok">✅ imported 13 Nov 10:12</div></div>
+        <div class="step cur"><div class="n">STEP 2</div><div class="t">Metadata — SV INDEX card</div><div class="s wn">12 days on the card, 9 to read</div></div>
+        <div class="step"><div class="n">STEP 3</div><div class="t">Pictures — cards and dumps</div><div class="s soft">1,104 of 3,132 pictures here</div></div>
+      </div>
+
+      <p class="intro">Culling colours, species names, locations, crops, blog text and the rendered JPGs.
+      Pictures are never written or deleted here.</p>
+      <div class="row"><span>SV INDEX card:</span><span class="field">H:\2026 Madagascar</span><span class="ok">✅ matches this trip · backup made 11 Nov 12:02 on SmallBoy</span><span class="spacer"></span><span class="btn">Choose…</span></div>
+
+      <table class="qt">
+        <tr><th></th><th>Day</th><th>New</th><th>Newer on the card</th><th>Newer here</th><th>Same</th><th>Pictures here</th><th>What happens</th></tr>
+        <tr><td class="ck"></td><td>2026-10-28</td><td>1</td><td>0</td><td>0</td><td>0</td><td>0 of 1</td><td class="wrap">1 file added</td></tr>
+        <tr><td class="ck"></td><td>2026-10-30</td><td>291</td><td>88</td><td>2</td><td>79</td><td>87 of 346</td><td class="wrap">379 files from the card · 2 newer here are kept</td></tr>
+        <tr><td class="ck"></td><td>2026-10-31</td><td>244</td><td>128</td><td>0</td><td>147</td><td>155 of 282</td><td class="wrap">372 files from the card</td></tr>
+        <tr><td class="nk"></td><td>2026-11-02</td><td>3</td><td>0</td><td class="blue">270</td><td>266</td><td>282 of 282</td><td class="wrap blue">this computer is newer — 3 new files only, if ticked</td></tr>
+        <tr><td class="ck"></td><td>2026-11-04</td><td>972</td><td>261</td><td>9</td><td>74</td><td>191 of 751</td><td class="wrap">1,233 files from the card · 9 newer here are kept</td></tr>
+        <tr class="dim"><td class="nk"></td><td>2026-11-06</td><td>0</td><td>0</td><td>0</td><td>3</td><td>1 of 1</td><td class="wrap">nothing to do — the same as here</td></tr>
+        <tr class="dim"><td></td><td>2026-11-10</td><td colspan="5">not on the card</td><td>214</td><td class="wrap">read from a card or dump only — see step 3</td></tr>
+      </table>
+      <p class="soft" style="margin:4px 0">8 of 12 days ticked — 3,312 files from the card · 281 newer here are kept · 1,086 the same, skipped.
+      Culled pictures are remembered on this computer, so the card read in step 3 will leave them out.</p>
+      <div class="row"><span class="btn">Select all</span><span class="btn">Select none</span><span class="spacer"></span>
+        <span class="btn">Details of a day…</span><span class="btn primary">Read ticked days</span><span class="btn">Next: pictures ›</span></div>
+    </div>
+  </div>
+</div></div>
+
+<h3>Rules behind the columns</h3>
+<ul class="compact">
+  <li><b>New</b>: the file is not here. It is always written.</li>
+  <li><b>Newer on the card</b>: the content differs and the card's date is later. It is written; the copy here goes to the day's .trash first.</li>
+  <li><b>Newer here</b>: the content differs and this computer's date is later. It is <b>never</b> overwritten, only counted.
+      A day where every difference is "newer here" starts <b>unticked</b> (2026-11-02 above).</li>
+  <li><b>Same</b>: same size and content. It is skipped. Dates are compared with 2 seconds of slack, because the card's file system stores time in 2-second steps.</li>
+  <li><b>Details of a day…</b> lists the files behind the numbers, read-only, for the one day you want to inspect. That is where you look before ticking, instead of answering a question per file.</li>
+  <li>A day that exists here but not on the card (2026-11-10) is shown dimmed, so it is clear the card is incomplete rather than that the day was lost.</li>
+</ul>
+
+<!-- ───────────────────────────── 3 ───────────────────────────── -->
+<h2>Screen 3 — step 3: pictures from cards and dumps</h2>
+<p>A list of the sources read so far, and one button to read the next one. The per-day picture count is what tells you when the trip is complete.</p>
+
+<div class="scroller"><div class="win">
+  <div class="titlebar"><span>Import Trip — 2026 Madagascar</span><span>✕</span></div>
+  <div class="body">
+    <div class="art">illustration</div>
+    <div>
+      <div class="steps">
+        <div class="step"><div class="n">STEP 1</div><div class="t">Trip</div><div class="s ok">✅ imported 13 Nov 10:12</div></div>
+        <div class="step"><div class="n">STEP 2</div><div class="t">Metadata — SV INDEX card</div><div class="s ok">✅ 8 days read 13 Nov 10:20</div></div>
+        <div class="step cur"><div class="n">STEP 3</div><div class="t">Pictures — cards and dumps</div><div class="s wn">2,610 of 3,132 pictures here</div></div>
+      </div>
+
+      <table class="qt">
+        <tr><th>Day</th><th>Pictures here</th><th>Kept on the trip</th><th>Read from</th></tr>
+        <tr><td>2026-10-30</td><td class="ok">346 of 346 ✅</td><td>346</td><td>K:\ (OM-1 card 1) · 13 Nov 10:31</td></tr>
+        <tr><td>2026-10-31</td><td class="ok">282 of 282 ✅</td><td>282</td><td>K:\ (OM-1 card 1) · 13 Nov 10:31</td></tr>
+        <tr><td>2026-11-04</td><td class="wn">520 of 751</td><td>751</td><td>K:\ (OM-1 card 2) · 13 Nov 10:44</td></tr>
+        <tr><td>2026-11-07</td><td class="wn">0 of 592</td><td>592</td><td class="soft">not read yet</td></tr>
+        <tr><td>2026-11-10</td><td>214</td><td class="soft">no backup</td><td>C:\transfer\madagascar (dump) · 13 Nov 10:52</td></tr>
+      </table>
+      <p class="soft" style="margin:4px 0">"Kept on the trip" comes from the SV INDEX backup: pictures culled on the trip are not counted and will not be copied back.
+      A day the backup does not know (2026-11-10) has no number here, and is copied in full.</p>
+      <div class="row"><span class="spacer"></span><span class="btn primary">Read SD-card or Folder…</span><span class="btn">Close</span></div>
+    </div>
+  </div>
+</div></div>
+
+<h3>Screen 3a — Read SD-card or Folder, opened from step 3</h3>
+<p>This is the same read window as today, with its trip settings filled in and locked, and <b>the days scanned as soon as it opens</b>. The day choice stays yours.</p>
+
+<div class="scroller"><div class="win">
+  <div class="titlebar"><span>Read SD-card or Folder — for 2026 Madagascar</span><span>✕</span></div>
+  <div class="body">
+    <div class="art">illustration</div>
+    <div>
+      <div class="row"><span style="width:110px">Read from:</span><span class="field">C:\transfer\madagascar</span><span class="btn">Choose…</span><span class="soft">dump folder · 9 days found</span></div>
+      <div class="row"><span style="width:110px">Into:</span><span class="field locked">D:\CurrentPictures\2026\2026 Madagascar\&lt;day&gt;</span><span class="soft">🔒 the trip's day folders</span></div>
+      <div class="row"><span style="width:110px">Name prefix:</span><span class="field locked">2026 madagascar</span><span class="soft">🔒 from the SV INDEX backup · files that already carry it are left as they are</span></div>
+      <div class="row"><span style="width:110px">Clock:</span><span class="field locked">UTC+3, camera on home time −2 h</span><span class="soft">🔒 from the trip</span></div>
+      <div class="row"><span class="ck"></span><span>Skip pictures culled on the trip (from the SV INDEX backup)</span></div>
+
+      <table class="qt">
+        <tr><th></th><th>Day</th><th>On this source</th><th>Already here</th><th>To copy</th><th>Metadata on this source</th></tr>
+        <tr><td class="nk"></td><td>2026-10-30</td><td>1,212</td><td>346</td><td>0</td><td class="soft">same as here</td></tr>
+        <tr><td class="ck"></td><td>2026-11-04</td><td>2,940</td><td>520</td><td>231</td><td class="wrap">12 XMP newer than here — taken; 40 older — left alone</td></tr>
+        <tr><td class="ck"></td><td>2026-11-07</td><td>1,804</td><td>0</td><td>592</td><td class="soft">none here yet — all taken</td></tr>
+        <tr><td class="ck"></td><td>2026-11-10</td><td>214</td><td>214</td><td>0</td><td class="soft">same as here</td></tr>
+      </table>
+      <p class="soft" style="margin:4px 0">Days already complete start unticked. "On this source" counts every frame; "To copy" is after leaving out the culled ones and those already here.</p>
+      <div class="row"><span class="btn">Scan again</span><span class="spacer"></span><span class="btn">View pictures</span><span class="btn primary">Read 3 days</span><span class="btn">Close</span></div>
+    </div>
+  </div>
+</div></div>
+<ul class="compact">
+  <li><b>Prefix</b>: the check is not case-sensitive, so <code>2026 madagascar - HOQM5401.JPG</code> is recognised as already prefixed
+      with "2026 Madagascar". A double prefix becomes impossible from this window.</li>
+  <li><b>Metadata on a card or dump</b> follows the same newer-wins rule as step 2. A dump made later than the SV INDEX backup brings its newer XMPs; an older one changes nothing.</li>
+  <li>Opened from the menu outside a trip import, the window behaves as it does today: the fields are unlocked and nothing is filled in from a backup.</li>
+  <li>After a read, step 2's counts are recalculated against the card's last plan, so you can see whether reading the SV INDEX card again would still change anything. The answer is visible, not guessed.</li>
+</ul>
+
+<!-- ───────────────────────────── 4 ───────────────────────────── -->
+<h2>Screen 4 — the folder rule for both backups</h2>
+<p>Both backups lay the card out the same way. You choose the <b>card or drive</b>, and SV adds the trip folder itself.</p>
+<div class="tree">H:\                                   <span class="soft">← what you choose (SV INDEX card)</span>
+  2026 Madagascar\                    <span class="soft">← SV adds the trip folder</span>
+    madagascardb.zip                  <span class="m">metadata · the trip</span>
+    2026 Madagascar - 2026-10-28.zip  <span class="m">metadata · one per day</span>
+    …
+    tracklogs\  settings\             <span class="m">metadata</span>
+    2026-10-28\                       <span class="r">RAW backup · one folder per day</span>
+    …
+  <span class="x">2026 Madagascar\2026 Madagascar\    ← what happened: the trip folder was chosen as the card</span></div>
+
+<div class="scroller"><div class="win" style="min-width:640px; max-width:720px">
+  <div class="titlebar"><span>Back up the day's work</span><span>✕</span></div>
+  <div style="padding:16px 18px">
+    <p class="intro"><b>H:\2026 Madagascar</b> is a trip folder on the SV INDEX card, not the card itself.</p>
+    <p class="soft">The backup always adds the trip's own folder, so choosing a trip folder would put a second
+    "2026 Madagascar" inside it. SV will use <b>H:\</b> instead, the same place as the other trips on this card.</p>
+    <div class="row"><span class="spacer"></span><span class="btn primary">Use H:\</span><span class="btn">Choose another folder…</span></div>
+  </div>
+</div></div>
+<ul class="compact">
+  <li>A trip folder is recognised by its contents (a trip ZIP, day ZIPs or day folders), not by its name.</li>
+  <li>The same check applies to the RAW backup's folder and to the SV INDEX folder in step 2. Reading also finds backups that are already one level too deep (Goeree, North Greece, Madagascar), so those cards work without moving anything.</li>
+  <li>The two backups keep <b>separate</b> folder settings. The RAW backup may go to a bigger disk, but when both point at the same card the layout above is what you get.
+      Before a RAW backup onto the SV INDEX card, SV checks the free space and keeps enough room for the next metadata backup.</li>
+</ul>
+
+<!-- ───────────────────────────── Q ───────────────────────────── -->
+<h2>Open questions</h2>
+<div class="note q"><b>1. The menu item.</b> Should <b>Read metadata from SV INDEX card…</b> stay as its own menu item, opening this window at step 2?
+I recommend yes: after a trip, during it, or on the same computer, you would otherwise have to go through Import.</div>
+<div class="note q"><b>2. Step 2 without the card inserted.</b> With several card readers the SV INDEX card can stay in, but if it is taken out, step 2 would show
+"the card is not inserted" with the last counts greyed out. Do you agree, or should step 2 keep a copy of the day list on this computer?
+I recommend the first: no extra copies, and the message says what to do.</div>
+<div class="note q"><b>3. The window's name.</b> "Import Trip" now does three things. Keep the name "Import Trip" (familiar, and it is the menu item),
+or call the window "Bring a trip home"? I recommend keeping "Import Trip", with the trip's name after it in the title.</div>
+
+</div>
+</body>
+</html>

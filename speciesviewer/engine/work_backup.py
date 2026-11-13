@@ -248,6 +248,51 @@ def trip_dir(dest_dir, scan: dict) -> Path:
     return Path(dest_dir) / trip if trip else Path(dest_dir)
 
 
+def _day_folder_name(name: str) -> bool:
+    return len(name) == 10 and name[4] == "-" and name[7] == "-" \
+        and name.replace("-", "").isdigit()
+
+
+def is_trip_folder(folder) -> bool:
+    """Does this folder look like ONE TRIP's folder on a backup card, rather
+    than the card itself? Read-only, judged by contents, never by name.
+
+    A trip folder holds what the two backups write into it: ZIPs (the trip ZIP
+    and the day ZIPs), a tracklogs/ folder, or RAW-backup day folders named
+    YYYY-MM-DD. A card root holds trip folders only (and perhaps a settings/
+    folder from an old layout, which is why settings/ does not count).
+    """
+    try:
+        for entry in os.scandir(folder):
+            name = entry.name
+            if entry.is_file() and name.lower().endswith(".zip"):
+                return True
+            if entry.is_dir() and (name == TRACKLOG_SUBDIR or _day_folder_name(name)):
+                return True
+    except OSError:
+        return False
+    return False
+
+
+def card_root(folder) -> str:
+    """The backup card (or drive) a chosen folder belongs to.
+
+    Both backups add the trip's own folder themselves, so a trip folder chosen
+    as the destination gets a second one inside it: H:/2026 Madagascar/2026
+    Madagascar/ (found on three trips, 2026-11-13). Climbs out of trip folders —
+    at most three levels, never above the drive — and returns the folder
+    unchanged when it is not one. "" stays "".
+    """
+    if not folder:
+        return folder
+    p = Path(folder)
+    for _ in range(3):
+        if p.parent == p or not is_trip_folder(p):
+            break
+        p = p.parent
+    return str(p).replace("\\", "/") if p != Path(folder) else folder
+
+
 def migrate_flat_zip(dest_dir, scan: dict) -> Path | None:
     """Move a pre-existing root-level ZIP into its trip folder, once.
 

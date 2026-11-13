@@ -340,8 +340,8 @@ class RawBackupDialog(QDialog):
     # ── actions ───────────────────────────────────────────────────────────
 
     def _choose_dest(self):
-        start = raw_backup_location() or str(Path.home())
-        chosen = QFileDialog.getExistingDirectory(self, "RAW backup location", start)
+        from gui.backup_folder import choose_card_folder
+        chosen = choose_card_folder(self, "RAW backup location", raw_backup_location())
         if not chosen:
             return
         set_raw_backup_location(chosen)
@@ -350,9 +350,12 @@ class RawBackupDialog(QDialog):
 
     def _run(self):
         picked = self._checked()
-        dest = raw_backup_location()
+        from gui.backup_folder import checked_location
+        dest = checked_location(self, "RAW backup", raw_backup_location(),
+                                set_raw_backup_location)
         if not picked or not dest:
             return
+        self._dest_label.setText(dest)
         days = [self._rows[i]["dir"] for i in picked]
 
         self._run_btn.setEnabled(False)

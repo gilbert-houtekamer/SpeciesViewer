@@ -41,13 +41,19 @@ from datetime import datetime
 from pathlib import Path
 
 from engine import work_backup as wb
+from engine.handling import deriveUniquePictureName
 
 logger = logging.getLogger("speciesviewer")
 
 # Per-file outcomes of a plan.
-NEW = "new"              # not on disk — written without asking
-SAME = "identical"       # same size and CRC — skipped, never queried
-DIFFERS = "differs"      # real conflict; the only kind worth a question
+NEW = "new"              # not on disk — always written
+SAME = "identical"       # same size and CRC — skipped
+CARD_NEWER = "card newer"  # differs, and the card's copy is later — taken
+HERE_NEWER = "here newer"  # differs, and this computer's copy is later (or
+                           # not clearly older) — NEVER overwritten, only counted
+DELETED_HERE = "deleted here"  # not on disk because its picture was deleted on
+                               # this computer (it is in the day's trash) — never
+                               # brought back, or it would be an orphan sidecar
 
 
 def _crc32(path: Path, chunk=1 << 20) -> int | None:
@@ -91,13 +97,21 @@ def find_backups(dest_dir, trip_name="") -> dict:
 
     out = {"root": str(dest), "trips": []}
     for r in roots:
-        days, identity = [], None
-        for z in sorted(r.glob("*.zip")):
+        by_day, identity = {}, None
+        # One folder deeper too: backups written while the destination setting
+        # pointed at a trip folder sit in <trip>/<trip>/ (Goeree, North Greece,
+        # Madagascar). Where a day is at both levels, the newer backup counts.
+        zips = sorted(r.glob("*.zip")) + sorted(r.glob("*/*.zip"))
+        for z in zips:
             man = wb.read_manifest(z)
             if man:
-                days.append({"zip": z, "manifest": man, "day": man.get("day", z.stem)})
-            else:
+                day = man.get("day", z.stem)
+                old = by_day.get(day)
+                if old is None or (man.get("created") or "") > (old["manifest"].get("created") or ""):
+                    by_day[day] = {"zip": z, "manifest": man, "day": day}
+            elif identity is None or z.parent == r:
                 identity = z            # no day manifest → the trip ZIP
+        days = [by_day[d] for d in sorted(by_day)]
         if days or identity:
             out["trips"].append({
                 "folder": r.name if r != dest else "",
@@ -269,34 +283,80 @@ def restore_tracklogs(card_trip_dir, gpslogs_root, logger_=None) -> dict:
 
 # ── planning a day ────────────────────────────────────────────────────────────
 
+def _card_mtime_ns(man: dict, info: zipfile.ZipInfo) -> int | None:
+    """When the card's copy was last changed, as an absolute time.
+
+    The manifest's mtime_ns comes first: it is a true timestamp. The ZIP's own
+    date is local clock time on the computer that wrote it — a laptop set to
+    Madagascar time would look two hours off at home — so it is only the
+    fallback for a file the manifest does not list.
+    """
+    meta = (man.get("files") or {}).get(info.filename) or {}
+    if meta.get("mtime_ns"):
+        return int(meta["mtime_ns"])
+    dt = _zip_dt(info)
+    return int(dt.timestamp() * 1e9) if dt else None
+
+
+def newer_side(card_ns, disk_ns) -> str:
+    """CARD_NEWER only when the card's copy is clearly later. Anything else —
+    the same time within the card's 2-second resolution, or a time unknown —
+    keeps the copy here. Overwriting newer work with older work is the one
+    mistake a restore cannot undo, so doubt always keeps."""
+    if card_ns is None or disk_ns is None:
+        return HERE_NEWER
+    if card_ns - disk_ns > wb.FS_TIME_SLOP * 1_000_000_000:
+        return CARD_NEWER
+    return HERE_NEWER
+
+
+def _trashed_pictures(day_dir) -> set:
+    """The pictures deleted from this day on this computer: one folder per
+    picture in the day's trash, named by its unique picture name."""
+    from engine.trip_trash import day_trash_dir
+    try:
+        return {p.name.lower() for p in day_trash_dir(day_dir).iterdir() if p.is_dir()}
+    except OSError:
+        return set()
+
+
 def plan_day(zip_path, day_dir) -> dict:
     """What restoring this ZIP into this folder would do. Writes nothing.
 
-    Every archived file is classified NEW / SAME / DIFFERS by size then CRC32,
-    both of which the ZIP already carries — so no entry is extracted to find out.
+    Every archived file is classified by size then CRC32, both of which the ZIP
+    already carries — so no entry is extracted to find out: NEW, SAME, or, when
+    the content differs, CARD_NEWER / HERE_NEWER by which copy is later.
     """
     zip_path, day_dir = Path(zip_path), Path(day_dir)
     man = wb.read_manifest(zip_path) or {}
     files = []
+    trashed = _trashed_pictures(day_dir)
     try:
         with zipfile.ZipFile(zip_path) as zf:
             for info in zf.infolist():
                 if info.is_dir() or info.filename == wb.MANIFEST_NAME:
                     continue
                 target = day_dir / info.filename
+                card_ns = _card_mtime_ns(man, info)
                 row = {"name": info.filename, "target": target,
-                       "zip_bytes": info.file_size, "zip_when": _zip_dt(info),
+                       "zip_bytes": info.file_size, "card_ns": card_ns,
+                       "zip_when": (datetime.fromtimestamp(card_ns / 1e9)
+                                    if card_ns else None),
                        "disk_bytes": None, "disk_when": None, "state": NEW}
                 if target.exists():
+                    disk_ns = None
                     try:
                         st = target.stat()
+                        disk_ns = st.st_mtime_ns
                         row["disk_bytes"] = st.st_size
                         row["disk_when"] = datetime.fromtimestamp(st.st_mtime)
                     except OSError:
                         pass
                     same = (row["disk_bytes"] == info.file_size
                             and _crc32(target) == info.CRC)
-                    row["state"] = SAME if same else DIFFERS
+                    row["state"] = SAME if same else newer_side(card_ns, disk_ns)
+                elif trashed and deriveUniquePictureName(info.filename) in trashed:
+                    row["state"] = DELETED_HERE
                 files.append(row)
     except (OSError, zipfile.BadZipFile) as e:
         return {"error": str(e), "files": [], "manifest": man}
@@ -304,42 +364,77 @@ def plan_day(zip_path, day_dir) -> dict:
     return {"error": "", "manifest": man, "files": files,
             "day": man.get("day", zip_path.stem),
             "prefix": man.get("prefix", ""),
-            "counts": {NEW: sum(1 for f in files if f["state"] == NEW),
-                       SAME: sum(1 for f in files if f["state"] == SAME),
-                       DIFFERS: sum(1 for f in files if f["state"] == DIFFERS)}}
+            "counts": {k: sum(1 for f in files if f["state"] == k)
+                       for k in (NEW, SAME, CARD_NEWER, HERE_NEWER, DELETED_HERE)}}
 
 
-def restore_day(zip_path, day_dir, overwrite=None, logger_=None) -> dict:
-    """Extract the plan. `overwrite` is a set of names the caller agreed to
-    replace; anything DIFFERS and not named is left exactly as it is.
+REPLACED_SUBDIR = "replaced"
 
-    Identical files are skipped rather than rewritten — not to save time but so
-    that a restore which changes nothing leaves every mtime untouched, and the
-    day does not then look freshly modified to the next backup.
+
+def replaced_dir(day_dir) -> Path:
+    """Where a file replaced by a restore is kept: in the trip's trash folder,
+    <pictures>/.trash/replaced/<day> <time>/. Not a YYYY-MM-DD folder, so the
+    trash screens (which list deleted PICTURES) leave it alone."""
+    day_dir = Path(day_dir)
+    stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    return day_dir.parent / ".trash" / REPLACED_SUBDIR / f"{day_dir.name} {stamp}"
+
+
+def restore_day(zip_path, day_dir, take_newer=True, logger_=None) -> dict:
+    """Carry out the plan. NEW files are written; CARD_NEWER ones too when
+    `take_newer`, after the copy here is moved to `replaced_dir`. HERE_NEWER
+    and SAME files are never touched.
+
+    Every written file gets the card's own modification time back. Written
+    with the current time it would look newer than the card from then on, and
+    the next comparison — or the next backup — would get the direction wrong.
     """
+    import os
+    import shutil
     log = logger_ or logger
-    overwrite = set(overwrite or ())
     plan = plan_day(zip_path, day_dir)
     if plan["error"]:
         raise OSError(plan["error"])
     day_dir = Path(day_dir)
     day_dir.mkdir(parents=True, exist_ok=True)
-    written = skipped = kept = 0
+    out = {"day": plan["day"], "written": 0, "replaced": 0, "identical": 0,
+           "kept": 0, "deleted_here": 0, "manifest": plan["manifest"],
+           "replaced_to": ""}
+    keep_dir = None
     with zipfile.ZipFile(zip_path) as zf:
         for row in plan["files"]:
-            if row["state"] == SAME:
-                skipped += 1
+            state = row["state"]
+            if state == SAME:
+                out["identical"] += 1
                 continue
-            if row["state"] == DIFFERS and row["name"] not in overwrite:
-                kept += 1
+            if state == DELETED_HERE:
+                out["deleted_here"] += 1
                 continue
-            with zf.open(row["name"]) as src, open(row["target"], "wb") as dst:
-                dst.write(src.read())
-            written += 1
-    log.info(f"Restored {plan['day']}: {written} file(s) written, "
-             f"{skipped} already identical, {kept} left as they were.")
-    return {"day": plan["day"], "written": written, "identical": skipped,
-            "kept": kept, "manifest": plan["manifest"]}
+            if state == HERE_NEWER or (state == CARD_NEWER and not take_newer):
+                out["kept"] += 1
+                continue
+            target = row["target"]
+            if state == CARD_NEWER:
+                if keep_dir is None:
+                    keep_dir = replaced_dir(day_dir)
+                    keep_dir.mkdir(parents=True, exist_ok=True)
+                    out["replaced_to"] = str(keep_dir)
+                shutil.move(str(target), str(keep_dir / target.name))
+                out["replaced"] += 1
+            with zf.open(row["name"]) as src, open(target, "wb") as dst:
+                shutil.copyfileobj(src, dst)
+            if row["card_ns"]:
+                try:
+                    os.utime(target, ns=(row["card_ns"], row["card_ns"]))
+                except OSError:
+                    pass
+            out["written"] += 1
+    log.info(f"Restored {plan['day']}: {out['written']} file(s) written "
+             f"({out['replaced']} replacing an older copy"
+             + (f", kept in {out['replaced_to']}" if out["replaced_to"] else "")
+             + f"), {out['identical']} already identical, "
+             f"{out['kept']} newer here and kept.")
+    return out
 
 
 # ── what the culling removed ──────────────────────────────────────────────────
@@ -421,7 +516,7 @@ def survivor_cache_path(trip_root) -> Path:
     return Path(trip_root) / SURVIVOR_CACHE_REL
 
 
-def save_survivor_cache(trip_root, per_day: dict, logger_=None) -> int:
+def save_survivor_cache(trip_root, per_day: dict, logger_=None, prefix="") -> int:
     """Remember which pictures each day still held, per the SV INDEX card.
 
     Written when the card IS readable — opening the restore screen is enough.
@@ -432,10 +527,11 @@ def save_survivor_cache(trip_root, per_day: dict, logger_=None) -> int:
     if not trip_root or not per_day:
         return 0
     path = survivor_cache_path(trip_root)
-    data = {}
+    data, old_prefix = {}, ""
     try:
         if path.exists():
-            data = json.loads(path.read_text(encoding="utf-8")).get("days", {})
+            raw = json.loads(path.read_text(encoding="utf-8"))
+            data, old_prefix = raw.get("days", {}), raw.get("prefix", "")
     except (OSError, ValueError):
         data = {}
     for day, names in per_day.items():
@@ -444,6 +540,10 @@ def save_survivor_cache(trip_root, per_day: dict, logger_=None) -> int:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps(
             {"version": 1, "saved": datetime.now().isoformat(timespec="seconds"),
+             # The name prefix read off the backed-up files: what the card
+             # read must use, letter for letter, for the restored sidecars to
+             # sit beside their pictures.
+             "prefix": prefix or old_prefix,
              "days": data}, ensure_ascii=False, indent=1), encoding="utf-8")
     except OSError as e:
         log.warning(f"Could not save the surviving-picture list: {e}")
@@ -467,6 +567,15 @@ def load_survivor_cache(trip_root) -> dict:
     return out
 
 
+def load_backup_prefix(trip_root) -> str:
+    """The name prefix the SV INDEX backup recorded for this trip, or ""."""
+    try:
+        raw = json.loads(survivor_cache_path(trip_root).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return ""
+    return (raw.get("prefix") or "").strip()
+
+
 def prefix_matches(day_dir, manifest) -> tuple[bool, str]:
     """Guard against a re-read done with the wrong filename prefix.
 
@@ -487,3 +596,36 @@ def prefix_matches(day_dir, manifest) -> tuple[bool, str]:
                        f"was made from “{want} - …”. Re-read the cards with the "
                        f"prefix “{want}”, or these will all look deleted.")
     return True, ""
+
+
+# ── where each day's pictures came from ───────────────────────────────────────
+# Import Trip's pictures step lists, per day, the card or dump its pictures were
+# last read from — with a dozen cards going in, "which one did I do?" is the
+# question. Kept with the trip, like the survivor list.
+PICTURE_READS_REL = "admin/picture_reads.json"
+
+
+def load_picture_reads(trip_root) -> dict:
+    """{day: {"source": …, "when": …}}, or {}."""
+    try:
+        raw = json.loads((Path(trip_root) / PICTURE_READS_REL).read_text(encoding="utf-8"))
+        return raw.get("days") or {}
+    except (OSError, ValueError, AttributeError):
+        return {}
+
+
+def record_picture_reads(trip_root, days, source, logger_=None) -> None:
+    """Note that `days` were (partly) read from `source` just now. Merged."""
+    if not trip_root or not days:
+        return
+    data = load_picture_reads(trip_root)
+    when = datetime.now().strftime("%d %b %H:%M")
+    for d in days:
+        data[d] = {"source": str(source), "when": when}
+    path = Path(trip_root) / PICTURE_READS_REL
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps({"version": 1, "days": data}, ensure_ascii=False,
+                                   indent=1), encoding="utf-8")
+    except OSError as e:
+        (logger_ or logger).warning(f"Could not note where the pictures came from: {e}")

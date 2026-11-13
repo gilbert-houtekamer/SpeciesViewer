@@ -268,8 +268,8 @@ class BackupWorkDialog(QDialog):
     # ── actions ───────────────────────────────────────────────────────────
 
     def _choose_dest(self):
-        start = backup_location() or str(Path.home())
-        chosen = QFileDialog.getExistingDirectory(self, "SV INDEX card or folder", start)
+        from gui.backup_folder import choose_card_folder
+        chosen = choose_card_folder(self, "SV INDEX card or folder", backup_location())
         if not chosen:
             return
         set_backup_location(chosen)
@@ -278,9 +278,12 @@ class BackupWorkDialog(QDialog):
 
     def _run(self):
         picked = self._checked()
-        dest = backup_location()
+        from gui.backup_folder import checked_location
+        dest = checked_location(self, "Back up the day's work", backup_location(),
+                                set_backup_location)
         if not picked or not dest:
             return
+        self._dest_label.setText(dest)
         days = [self._rows[i]["dir"] for i in picked]
         need = self._selected_bytes(picked)
         # Same pre-flight the card read gets: a card that cannot hold the backup

@@ -108,7 +108,7 @@ module — listing and un-listing are separate operations, not one toggle.
 These are implemented directly in the GUI layer and will not appear in the batch
 log at all: the browsers and viewers, the delete and retire scans, all of
 *Maintain Master Database* except the website rebuild, the Days lane, the
-unfiled lane, card reading, Empty a Card, and Restore Work from Card.
+unfiled lane, card reading, Empty a Card, and Import Trip.
 
 > `sv0ReadSDCard` exists in `batch/` but the card ingest is driven from the GUI
 > dialog, not through the batch runner.
