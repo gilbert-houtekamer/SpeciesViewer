@@ -137,7 +137,11 @@ many of the pictures kept on the trip are here ("520 of 751"), and which card or
 dump it was last read from. *Read SD-card or Folder…* opens the card read with
 that source, and the trip's folder, name prefix and date folders filled in and
 locked, and scans the days at once; you choose which days to read. Pictures
-culled on the trip are left out.
+culled on the trip are left out, and so are pictures you deleted on this
+computer since (they are in the trip's trash). Per day, *To copy* says how many
+pictures a Read would add, and *Metadata on this source* how the sidecars and
+rendered JPGs there compare with the ones here. Only days with something to
+copy, or with newer metadata, start ticked.
 
 Newer wins here too: a sidecar or a rendered JPG (PhotoLab's `_DxO` files) on the
 card or dump that is newer than the one here replaces it, and the older one is

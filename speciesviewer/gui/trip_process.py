@@ -829,16 +829,27 @@ class _SDCardScanWorker(QObject):
     the dialog stays responsive while the card is walked / dates are read."""
     finished = pyqtSignal(list, int, dict, str)   # days [(date, count)], total, ignored, error
 
-    def __init__(self, source, tz_offset_hours=0.0):
+    def __init__(self, source, tz_offset_hours=0.0, preview=None):
         super().__init__()
         self._source = source
         self._tz_offset_hours = tz_offset_hours
+        # Trip mode: {"dest", "prefix", "include_names"} — also work out what a
+        # read would copy and which metadata is newer, here, off the GUI thread.
+        self._preview = preview
+        self.preview = {}
 
     def run(self):
         try:
-            from batch.sv0ReadSDCard import scan_days
+            from batch.sv0ReadSDCard import scan_days, preview_read
+            by_day = {} if self._preview else None
             days, total, ignored = scan_days(self._source,
-                                             tz_offset_hours=self._tz_offset_hours)
+                                             tz_offset_hours=self._tz_offset_hours,
+                                             files_by_day=by_day)
+            if self._preview:
+                try:
+                    self.preview = preview_read(by_day, **self._preview)
+                except Exception:
+                    self.preview = {}      # an indicator, never a reason to fail
             self.finished.emit(days, total, ignored, "")
         except Exception as e:
             self.finished.emit([], 0, {}, str(e))
@@ -882,7 +893,8 @@ _PL_RAW_EXTS = DXO_RAW  # canonical table — see utils/raw_extensions.py
 
 # Day-table columns. Named because a sixth column shifted every index below it,
 # and the old magic numbers were spread across six methods.
-(DAY_COL, FILES_COL, COPIED_COL, DELETED_COL, KEPT_COL, TRACK_COL) = range(6)
+(DAY_COL, FILES_COL, COPIED_COL, DELETED_COL, KEPT_COL, TO_COPY_COL, META_COL,
+ TRACK_COL) = range(8)
 
 
 class ReadSDCardDialog(QDialog):
@@ -1209,9 +1221,21 @@ class ReadSDCardDialog(QDialog):
         self.all_days_checkbox.setChecked(True)
         self.all_days_checkbox.clicked.connect(self._on_all_days_clicked)
         days_layout.addWidget(self.all_days_checkbox)
-        self.days_table = QTableWidget(0, 6)
+        self.days_table = QTableWidget(0, 8)
         self.days_table.setHorizontalHeaderLabels(
-            ["Day", "Files", "Copied", "Deleted", "Kept", "Tracklog"])
+            ["Day", "Files", "Copied", "Deleted", "Kept", "To copy",
+             "Metadata on this source", "Tracklog"])
+        for _col, _tip in ((TO_COPY_COL, "Pictures a Read would add to this day: not "
+                                         "here yet, not culled on the trip, and not "
+                                         "deleted on this computer"),
+                           (META_COL, "Sidecars and rendered JPGs on this source "
+                                      "compared with the ones here: newer ones are "
+                                      "taken (the older copy is kept in "
+                                      ".trash/replaced), older ones are left alone")):
+            self.days_table.horizontalHeaderItem(_col).setToolTip(_tip)
+        # Shown only in trip mode, where the read compares with the trip.
+        self.days_table.setColumnHidden(TO_COPY_COL, not self.trip_mode)
+        self.days_table.setColumnHidden(META_COL, not self.trip_mode)
         for _col, _tip in ((FILES_COL, "Pictures on the card for this day — every "
                                        "frame shot, including the ones culled since"),
                            (COPIED_COL, "What is on disk for this day — filled "
@@ -1876,7 +1900,14 @@ class ReadSDCardDialog(QDialog):
                         "date, exact dates are read when you Read…")
         self._scanned_source = os.path.normpath(source)
         self._scan_thread = QThread()
-        self._scan_worker = _SDCardScanWorker(source, self._tz_offset())
+        preview = None
+        if self.trip_mode:
+            preview = {"dest": self.dest_field.get_path(),
+                       "prefix": self.prefix_field.get_text() or "",
+                       "include_names": (self._survivors or None)
+                       if getattr(self, "recull_checkbox", None) is None
+                       or self.recull_checkbox.isChecked() else None}
+        self._scan_worker = _SDCardScanWorker(source, self._tz_offset(), preview)
         self._scan_worker.moveToThread(self._scan_thread)
         self._scan_thread.started.connect(self._scan_worker.run)
         self._scan_worker.finished.connect(self.on_scan_finished)
@@ -1892,6 +1923,7 @@ class ReadSDCardDialog(QDialog):
             self.logger.warning(f"❌ Day scan failed: {error}")
             self.status_label.setText(f"❌ {error}")
             return
+        self._read_preview = getattr(self._scan_worker, "preview", {}) or {}
         self._populate_days(days)
         self._check_camera_clock(days)
         self._fit_to_content()
@@ -1979,6 +2011,8 @@ class ReadSDCardDialog(QDialog):
             # targets what is actually missing. Still tickable by hand.
             if have >= count:
                 day_item.setCheckState(Qt.CheckState.Unchecked)
+            if self.trip_mode:
+                self._set_preview_cells(r, date_str, day_item)
         self.days_table.setColumnHidden(COPIED_COL, not on_disk)
         self._show_cull_columns()
         self.days_table.blockSignals(False)
@@ -2024,6 +2058,19 @@ class ReadSDCardDialog(QDialog):
             cap = int(screen.availableGeometry().height() * 0.8)
             want_h = min(want_h, max(cap, chrome_h + 150))
         want_w = max(self.width(), self.minimumSizeHint().width())
+        # Width: the day table's columns, all of them readable. minimumSizeHint
+        # does not include them (a table is happy to scroll sideways), so the
+        # window opened at 700 px with "To copy" and "Metadata" cut off and a
+        # horizontal scroll bar (2026-11-13). _resize_within_screen caps it.
+        table = getattr(self, "days_table", None)
+        if self.tabs.currentIndex() == 1 and table is not None and table.rowCount():
+            hh = table.horizontalHeader()
+            need = sum(max(hh.sectionSizeHint(c), table.sizeHintForColumn(c))
+                       for c in range(table.columnCount()) if not table.isColumnHidden(c))
+            need += table.verticalScrollBar().sizeHint().width() + 2 * table.frameWidth() + 4
+            extra = need - table.width()
+            if extra > 0:
+                want_w = max(want_w, self.width() + extra)
         self._resize_within_screen(want_w, want_h)
 
     def _resize_within_screen(self, want_w, want_h):
@@ -2067,6 +2114,32 @@ class ReadSDCardDialog(QDialog):
         the backup has never seen the day (which is not the same as "none left")."""
         names = self._survivors.get(date_str)
         return len(names) if names else None
+
+    def _set_preview_cells(self, row, date_str, day_item):
+        """Trip mode: what a Read would copy, and how the metadata on this
+        source compares with the trip's. A day with nothing to copy and nothing
+        newer starts unticked — whatever the raw counts say."""
+        p = (getattr(self, "_read_preview", {}) or {}).get(date_str)
+        if p is None:
+            texts = ("", "")
+        else:
+            bits = []
+            if p["meta_newer"]:
+                bits.append(f"{p['meta_newer']} newer than here — taken")
+            if p["meta_older"]:
+                bits.append(f"{p['meta_older']} older — left alone")
+            to_copy = str(p["to_copy"])
+            if p.get("deleted_here"):
+                to_copy += f"  ({p['deleted_here']} deleted here stay deleted)"
+            texts = (to_copy, " · ".join(bits) or "same as here")
+            day_item.setCheckState(Qt.CheckState.Checked if (p["to_copy"] or p["meta_newer"])
+                                   else Qt.CheckState.Unchecked)
+        for col, text in ((TO_COPY_COL, texts[0]), (META_COL, texts[1])):
+            item = QTableWidgetItem(text)
+            item.setFlags(Qt.ItemFlag.ItemIsEnabled)
+            if col == TO_COPY_COL:
+                item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+            self.days_table.setItem(row, col, item)
 
     def _set_cull_cells(self, row, date_str, count):
         """Fill the Deleted/Kept pair for one day.

@@ -119,3 +119,31 @@ def test_newer_render_wins_camera_jpg_never(tmp_path):
     assert not (dest / f"{P}C003_DxO B.jpg").exists()
     kept = [p.name for p in (tmp_path / ".trash" / "replaced").rglob("*.jpg")]
     assert kept == [f"{P}C001_DxO.jpg"]
+
+
+def test_trip_read_keeps_deleted_pictures_deleted_and_previews(tmp_path):
+    from batch.sv0ReadSDCard import copy_card, preview_read
+    src = tmp_path / "dump"
+    day = tmp_path / "pics" / "2026-11-04"
+    src.mkdir(); day.mkdir(parents=True)
+    for stem in ("D001", "D002", "D003"):
+        (src / f"{P}{stem}.ORF").write_bytes(stem.encode())
+    (src / f"{P}D003.xmp").write_text("newer on dump")
+    (day / f"{P}D003.ORF").write_bytes(b"D003")
+    (day / f"{P}D003.xmp").write_text("older here")
+    _age(day / f"{P}D003.xmp", 7200)
+    trash = day.parent / ".trash" / day.name / f"{P}d002"
+    trash.mkdir(parents=True)                       # D002 was deleted here
+    t = time.mktime((2026, 11, 4, 12, 0, 0, 0, 0, -1))
+    for f in src.glob("*.ORF"):
+        os.utime(f, (t, t))
+
+    pv = preview_read({"2026-11-04": sorted(src.glob("*.ORF"))}, tmp_path / "pics",
+                      prefix="2026 madagascar")["2026-11-04"]
+    assert (pv["to_copy"], pv["deleted_here"], pv["here"], pv["meta_newer"]) == (1, 1, 1, 1)
+
+    copy_card(src, tmp_path / "pics", prefix="2026 madagascar", bucket_by_date=True,
+              write_sidecars=False, use_card_cache=False, newer_wins=True)
+    assert (day / f"{P}D001.ORF").exists()
+    assert not (day / f"{P}D002.ORF").exists()      # stays deleted
+    assert (day / f"{P}D003.xmp").read_text() == "newer on dump"

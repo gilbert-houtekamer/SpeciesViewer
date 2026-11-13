@@ -52,6 +52,7 @@ from pathlib import Path
 from utils.disk_space import check_free_space
 from utils.raw_extensions import RAW, SELF_DESCRIBING, is_raw, is_video
 from utils.exiftool_path import exe as exiftool_exe
+from engine.handling import deriveUniquePictureName
 
 UNKNOWN_DATE_DIR = "unknown-date"
 
@@ -828,7 +829,8 @@ def pictures_on_disk_by_day(dest):
     return out
 
 
-def scan_days(source, tz_offset_hours=0.0, use_card_cache=True, logger=None):
+def scan_days(source, tz_offset_hours=0.0, use_card_cache=True, logger=None,
+              files_by_day=None):
     """Group the card's pictures by capture day WITHOUT copying anything — a
     preview for the day-picker. For a camera original (RAW, video) the file
     system mtime stands in for the capture date: cheap, already known from the
@@ -844,7 +846,11 @@ def scan_days(source, tz_offset_hours=0.0, use_card_cache=True, logger=None):
 
     Returns (days, total, ignored) where `days` is a sorted list of
     (date_str, count), `total` is the picture count, and `ignored` is
-    {extension: count} for what this ingest will not take."""
+    {extension: count} for what this ingest will not take.
+
+    `files_by_day`, when a dict is passed, is filled with {date_str: [Path, …]}
+    — the same grouping, for a caller that wants to look at the files
+    themselves (preview_read)."""
     from collections import Counter
     log = logger or logging.getLogger("speciesviewer")
     source = Path(source)
@@ -902,6 +908,9 @@ def scan_days(source, tz_offset_hours=0.0, use_card_cache=True, logger=None):
 
     counts = Counter(buckets.values())
     days = sorted(counts.items())
+    if files_by_day is not None:
+        for f in files:
+            files_by_day.setdefault(buckets.get(_norm(f), UNKNOWN_DATE_DIR), []).append(f)
     log.info(f"Scanned {total} picture(s) across {len(days)} day(s) on the card "
              f"(RAW and video by file date, other pictures by capture date).")
     return days, total, ignored
@@ -1022,7 +1031,6 @@ def _is_render(name: str) -> bool:
     stem, ext = os.path.splitext(name)
     if ext.lower() not in (".jpg", ".jpeg"):
         return False
-    from engine.handling import deriveUniquePictureName
     return deriveUniquePictureName(name) != stem.lower()
 
 
@@ -1092,6 +1100,64 @@ class _SidecarIndex:
         found = [names.get(f"{src.stem}.xmp".lower()),
                  names.get(f"{src.name}.dop".lower())]
         return [p for p in found if p is not None]
+
+
+def preview_read(files_by_day, dest, prefix="", include_names=None) -> dict:
+    """What a date-sorted read into `dest` would do, per day — read-only.
+
+    {day: {"here": n, "to_copy": n, "culled": n, "deleted_here": n,
+           "meta_newer": n, "meta_older": n}}
+
+    A picture counts as here when its target name is already in the day folder
+    (an indicator: the read itself still matches by content). `include_names`
+    is the survivor list, as for copy_card: pictures culled on the trip are not
+    to copy. Metadata compares the source's sidecars — and its rendered JPGs —
+    with the ones here: newer ones are what a newer-wins read takes, older ones
+    are left alone.
+    """
+    dest = Path(dest)
+    index = _SidecarIndex()
+    out = {}
+    for day, files in files_by_day.items():
+        row = {"here": 0, "to_copy": 0, "culled": 0, "deleted_here": 0,
+               "meta_newer": 0, "meta_older": 0}
+        day_dir = dest / day
+        allowed = (include_names or {}).get(day)
+        trashed = _deleted_here(day_dir)
+        for src in files:
+            target = day_dir / target_name(src.name, prefix)
+            here = target.exists()
+            if here:
+                row["here"] += 1
+                if _is_render(target.name):
+                    _count_meta(row, src, target)
+            elif allowed is not None and target.name.lower() not in allowed:
+                row["culled"] += 1
+                continue
+            elif trashed and deriveUniquePictureName(target.name) in trashed:
+                row["deleted_here"] += 1
+                continue
+            else:
+                row["to_copy"] += 1
+            for sc in index.for_picture(src):
+                sc_target = sidecar_target(target, sc)
+                if sc_target.exists():
+                    _count_meta(row, sc, sc_target)
+        out[day] = row
+    return out
+
+
+def _deleted_here(day_dir: Path) -> set:
+    """Pictures deleted from this day folder on this computer (its trash)."""
+    from engine.work_restore import _trashed_pictures
+    return _trashed_pictures(day_dir)
+
+
+def _count_meta(row, src: Path, target: Path) -> None:
+    if _clearly_newer(src, target):
+        row["meta_newer"] += 1
+    elif _clearly_newer(target, src):
+        row["meta_older"] += 1
 
 
 def sidecar_target(picture_target: Path, sidecar: Path) -> Path:
@@ -1300,7 +1366,9 @@ def copy_card(source, dest, prefix="", bucket_by_date=False, tz_offset_hours=0.0
                         it copies everything. That asymmetry is the point: it
                         lets a restore re-apply the culling for days the backup
                         knows, without silently dropping a day it has never seen.
-    newer_wins        - when True, a sidecar (.xmp/.dop) or a RENDERED JPG
+    newer_wins        - (trip import) pictures deleted from a day folder on
+                        this computer — in its trash — are not copied back.
+                        And a sidecar (.xmp/.dop) or a RENDERED JPG
                         (named with a derivative marker such as _DxO) already at
                         the destination is REPLACED by the source's copy when
                         that one is clearly newer (more than 2 s, the card's time
@@ -1377,6 +1445,7 @@ def copy_card(source, dest, prefix="", bucket_by_date=False, tz_offset_hours=0.0
     sidecar_plan: list[tuple[Path, Path]] = []          # (src_sidecar, target)
     sidecar_replace: set[Path] = set()      # targets that exist and are older
     replace_pictures: set[Path] = set()     # rendered JPGs here that are older
+    trashed_by_day: dict[str, set] = {}     # day -> pictures deleted here
     replaced_dirs: dict[Path, Path] = {}    # day folder -> where its older copies go
 
     # Per-day tally for the dialog's day table. The run summary counts the whole
@@ -1429,6 +1498,16 @@ def copy_card(source, dest, prefix="", bucket_by_date=False, tz_offset_hours=0.0
             if allowed is not None and \
                     target_name(src.name, prefix).lower() not in allowed:
                 summary["culled"] += 1
+                continue
+
+        # Trip import: a picture deleted HERE (it is in the day's trash) stays
+        # deleted. The card still holds it, and so would bring it back.
+        if newer_wins and bucket_by_date:
+            trashed = trashed_by_day.get(src_day)
+            if trashed is None:
+                trashed = trashed_by_day[src_day] = _deleted_here(dest / src_day)
+            if trashed and deriveUniquePictureName(target_name(src.name, prefix)) in trashed:
+                summary["deleted_here"] = summary.get("deleted_here", 0) + 1
                 continue
 
         try:
