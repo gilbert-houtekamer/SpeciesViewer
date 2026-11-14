@@ -37,6 +37,7 @@ PLACE_FIELDS = ("Location", "City", "State", "Country", "CountryCode", "Municipa
 
 _species: str = ""          # the stored subject, qualifiers included
 _gps: dict | None = None    # {"lat": float, "lon": float, "fields": {...}}
+_date: tuple | None = None  # (datetime, picture name it was copied from)
 
 
 # ── species ──────────────────────────────────────────────────────────────────
@@ -240,5 +241,97 @@ def remove_gps_from(collection, keys, refresh_key=None) -> tuple:
         msg += (f". {len(kept)} picture{'s' if len(kept) != 1 else ''} still "
                 f"show{'s' if len(kept) == 1 else ''} GPS ({names}): it could not be "
                 f"removed, or it is inside the JPG itself (a PhotoLab export copies it in).")
+    logger.info(msg)
+    return (n, msg)
+
+
+# ── capture date ─────────────────────────────────────────────────────────────
+
+def parse_date(text):
+    """A datetime from a card's date ("YYYY:MM:DD HH:MM:SS", maybe with an
+    offset after it), or None."""
+    from datetime import datetime
+    try:
+        return datetime.strptime(str(text or "").strip()[:19], "%Y:%m:%d %H:%M:%S")
+    except ValueError:
+        return None
+
+
+def date_buffer():
+    """(datetime, source name) copied this session, or None."""
+    return _date
+
+
+def copy_date(when, source: str) -> str:
+    global _date
+    if when is None:
+        return ""
+    _date = (when, source)
+    msg = f"Copied date/time {when:%Y-%m-%d %H:%M:%S} from {source}"
+    logger.info(msg + " — Set date/time… uses it for pictures without a date.")
+    return msg
+
+
+def dateless_keys(collection, keys) -> list:
+    """The pictures whose capture date may be set: none yet, or one a person set
+    earlier (an estimate) — never a camera's date — and that have a file that
+    can receive one."""
+    out = []
+    for k in keys:
+        try:
+            if not collection.date_targets(k):
+                continue
+            if not collection.item_for_key(k).date or collection.date_is_by_hand(k):
+                out.append(k)
+        except Exception:
+            pass
+    return out
+
+
+def set_dates(collection, keys, start, refresh_key=None) -> tuple:
+    """Give the dateless pictures among `keys` a capture date: the first gets
+    `start`, each next (file-name order) the next second no other picture of
+    this collection already has. Returns (n_written, message)."""
+    from PyQt6.QtCore import Qt
+    from PyQt6.QtWidgets import QApplication
+    from engine.capture_date_write import spread_times, write_capture_dates
+    keys = sorted(dateless_keys(collection, keys))
+    if not keys:
+        return (0, "These pictures already have a capture date — nothing changed.")
+    taken = []
+    redo = set(keys)          # their old (hand-set) times are free again
+    for k in collection.all_keys():
+        if k in redo:
+            continue
+        try:
+            t = parse_date(collection.item_for_key(k).date)
+        except Exception:
+            t = None
+        if t:
+            taken.append(t)
+    times = spread_times(start, len(keys), taken)
+    plan = {when: collection.date_targets(k) for when, k in zip(times, keys)}
+    QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+    try:
+        written, had_date, failed = write_capture_dates(plan)
+    finally:
+        QApplication.restoreOverrideCursor()
+    done = set(written)
+    n = 0
+    for when, k in zip(times, keys):
+        if any(f in done for f in plan[when]):
+            collection.note_date_written(k, when.strftime("%Y:%m:%d %H:%M:%S"))
+            n += 1
+            if refresh_key is not None:
+                refresh_key(k)
+    import os
+    msg = (f"Capture date set for {n} picture{'s' if n != 1 else ''}"
+           + (f", from {times[0]:%Y-%m-%d %H:%M:%S}" if n else ""))
+    if had_date:
+        msg += (f". Skipped {len(had_date)} file(s) that already have a date: "
+                + ", ".join(os.path.basename(f) for f in had_date[:5]))
+    if failed:
+        msg += (f". Could NOT write {len(failed)} file(s): "
+                + ", ".join(os.path.basename(f) for f in failed[:5]))
     logger.info(msg)
     return (n, msg)

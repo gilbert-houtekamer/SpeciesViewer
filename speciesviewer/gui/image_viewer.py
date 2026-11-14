@@ -1869,6 +1869,20 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
             "Remove a position placed by hand (pasted, dropped on the map, or looked "
             "up from a place name) and its place name. GPS recorded by the camera "
             "is never removed.")
+        # Capture date for pictures that have none (WhatsApp / received pictures):
+        # copy it from a neighbour, then set it — a camera's own date is never
+        # replaced. Only collections that can write one offer the second entry.
+        menu.addSeparator()
+        act_copy_date = menu.addAction("Copy date/time  (this picture)")
+        act_copy_date.setEnabled(bool(item and getattr(item, "date", "")))
+        act_set_date = menu.addAction(f"Set date/time…  ({lbl})")
+        from gui.viewer_clipboard import dateless_keys
+        act_set_date.setEnabled(bool(dateless_keys(self._collection, keys_for_action)))
+        act_set_date.setToolTip(
+            "Give pictures without a capture date one (e.g. pictures received via "
+            "WhatsApp), so they appear in the blog and in Albums — or replace a date "
+            "set by hand earlier with a better estimate. A date the camera recorded "
+            "is never changed.")
         # Use ONE picture as the album's cover. Only offered when there is an
         # album to update and this picture has a JPG to make it from — a menu
         # entry that cannot do anything is worse than no entry.
@@ -1945,6 +1959,10 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
             self._paste_gps(keys_for_action)
         elif chosen == act_remove_gps:
             self._remove_gps(keys_for_action)
+        elif chosen == act_copy_date:
+            self._copy_date(key)
+        elif chosen == act_set_date:
+            self._set_date(keys_for_action)
         elif act_album_pic is not None and chosen == act_album_pic:
             self._set_album_picture(key)
         elif act_delete is not None and chosen == act_delete:
@@ -2865,6 +2883,59 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
         msg = self._on_clipboard("paste_gps", keys=keys)
         if msg:
             logger.info(msg)
+
+    # ── Capture date for dateless pictures ────────────────────────────────────
+    def _copy_date(self, key):
+        from gui import viewer_clipboard as clip
+        item = self._collection.item_for_key(key)
+        msg = clip.copy_date(clip.parse_date(getattr(item, "date", "")), str(key))
+        logger.info(msg or "Copy date/time: this picture has no date to copy.")
+
+    def _set_date(self, keys):
+        """Context-menu "Set date/time…": ask a start time (from the copied date,
+        else the earlier hand-set date, else the day's first dated picture), then
+        write it into the pictures without a camera date, one free second apart.
+        Flags the day for Read & Summarize."""
+        from datetime import datetime
+        from PyQt6.QtWidgets import QDialog, QMessageBox
+        from gui import viewer_clipboard as clip
+        from gui.set_date_dialog import SetDateDialog
+        todo = clip.dateless_keys(self._collection, list(keys))
+        if not todo:
+            return
+        redo = [k for k in todo if self._collection.item_for_key(k).date]
+        buf = clip.date_buffer()
+        if buf:
+            start, source = buf[0], f"the date copied from {buf[1]}"
+        elif redo:
+            start = clip.parse_date(self._collection.item_for_key(sorted(redo)[0]).date)
+            source = "the date set by hand earlier"
+        else:
+            dated = []
+            for k in self._collection.all_keys():
+                try:
+                    t = clip.parse_date(self._collection.item_for_key(k).date)
+                except Exception:
+                    t = None
+                if t:
+                    dated.append(t)
+            if dated:
+                start, source = min(dated), "the first picture of this day"
+            else:
+                start, source = datetime.now().replace(microsecond=0), "now"
+        dlg = SetDateDialog(self, len(todo), start, source, n_redo=len(redo))
+        if dlg.exec() != QDialog.DialogCode.Accepted:
+            return
+        n, msg = clip.set_dates(self._collection, todo, dlg.chosen(),
+                                refresh_key=self._cull_refresh_key)
+        if n:
+            # Same day flag as a location write: the CSVs learn the date from the
+            # Read & Summarize the viewer offers on close.
+            self._note_location_written(todo)
+            for k in todo:
+                self._notify_large_view(k)
+        if n != len(todo):
+            QMessageBox.warning(self, "Set date/time", msg)
 
     def _remove_gps(self, keys):
         """Context-menu "Remove GPS + place…": say exactly what goes, then clear

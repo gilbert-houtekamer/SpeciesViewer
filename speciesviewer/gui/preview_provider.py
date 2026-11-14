@@ -991,6 +991,54 @@ class PreviewCollection(PictureCollection):
                 self._gps_override = {}
             self._gps_override[upn_key] = (float(lat), float(lon))
 
+    def date_targets(self, upn_key: str):
+        """This UPN's JPG/HEIC/PNG files on disk — where Set date/time… writes a
+        capture date. Never a RAW (always dated, never written) or a sidecar
+        (Read & Summarize takes the date from the picture file). Nothing for a
+        read-only collection (an Album over the master's files)."""
+        if self.read_only:
+            return []
+        ok = {e.lstrip(".") for e in (JPEG | HEIC | {".png"})}
+        out = []
+        for fname in self._files(upn_key):
+            frow = self.fpr.fi.files_dict.get(fname) or {}
+            wf = frow.get("WindowsFileName", "")
+            if frow.get("WindowsExtension", "").lower() in ok and wf and Path(wf).exists():
+                out.append(wf)
+        return out
+
+    def date_is_by_hand(self, upn_key: str) -> bool:
+        """The capture date carries the MANUAL mark (Set date/time…). The mark
+        lives only in the files, so the day's JPG/HEIC/PNG files are read ONCE,
+        in one exiftool call, the first time this is asked; dates set in this
+        session are added by note_date_written."""
+        if getattr(self, "_dates_by_hand", None) is None:
+            self._dates_by_hand = set()
+            try:
+                from engine.capture_date_write import read_capture_info, _norm
+                files_by_key = {k: self.date_targets(k) for k in self.all_keys()}
+                info = read_capture_info([f for fs in files_by_key.values() for f in fs])
+                for k, fs in files_by_key.items():
+                    if any(info.get(_norm(f), (None, False))[1] for f in fs):
+                        self._dates_by_hand.add(k)
+            except Exception as e:
+                logger.debug(f"reading hand-set dates skipped: {e}")
+        return upn_key in self._dates_by_hand
+
+    def note_date_written(self, upn_key: str, stamp: str) -> None:
+        """Patch the in-memory rows with the date just written, so the card, the
+        shooting-order sort and item.date see it now; the day's CSVs follow at
+        the Read & Summarize the viewer offers on close."""
+        self.date_is_by_hand(upn_key)          # load the set first, then add
+        self._dates_by_hand.add(upn_key)
+        for fname in self._files(upn_key):
+            frow = self.fpr.fi.files_dict.get(fname)
+            if frow is not None:
+                frow["EXIF:DateTimeOriginal"] = stamp
+        row = self.fpr.upn.UniquePictureName_dict.get(upn_key)
+        if row is not None:
+            row["DateTimeOriginal"] = stamp
+
     # File-row keys that carry a coordinate or its provenance (see has_gps,
     # gps_cached, gps_is_derived) — blanked by note_gps_removed.
     _GPS_ROW_KEYS = ("Composite:GPSPosition", "EXIF:GPSLatitude", "EXIF:GPSLongitude",

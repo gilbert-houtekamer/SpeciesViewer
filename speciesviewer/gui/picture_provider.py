@@ -679,6 +679,23 @@ class PictureCollection(ABC):
         files (the master's, via a virtual trip) safe to hand to the map."""
         return []
 
+    def date_targets(self, key: str):
+        """The picture's own JPG/HEIC/PNG files that may receive a capture date
+        (Set date/time…, engine.capture_date_write). Empty where this collection
+        cannot write one — the default, and always for a read-only collection."""
+        return []
+
+    def date_is_by_hand(self, key: str) -> bool:
+        """True when the picture's capture date was set by a person (Set
+        date/time…) — an estimate that may be replaced. False by default."""
+        return False
+
+    def note_date_written(self, key: str, stamp: str) -> None:
+        """A capture date ("YYYY:MM:DD HH:MM:SS") was just written into `key`'s
+        files — update cached rows so the card and the sort see it. No-op by
+        default."""
+        return None
+
     def read_location(self, key: str) -> dict:
         """Location text currently in the picture's XMP (Location/City/State/
         Country/CountryCode), for display without the CSV. {} if none."""
