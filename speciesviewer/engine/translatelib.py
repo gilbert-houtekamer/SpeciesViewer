@@ -190,6 +190,15 @@ class _SharedTranslations:
 
 _shared = _SharedTranslations()
 
+
+def shared_verified_crcs():
+    """crc keys a person has verified anywhere on this computer (the shared
+    memory, including ticks not yet saved). The validation panel shows these as
+    Verified, so an overview's count must include them too."""
+    with _shared._lock:
+        _shared._ensure()
+        return {crc for crc, e in _shared._entries.items() if e.get('verified')}
+
 # Every CachedTranslate holding unsaved translations, with the thread that made
 # the change, so a pipeline step's are saved when the step ends
 # (save_translators) — the website builds never called writeTranslationCache,

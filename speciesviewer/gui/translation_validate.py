@@ -287,7 +287,9 @@ class TranslationValidateDialog(QDialog):
                                               corrected=new_trans, source_lang=c.src_lang)
                 c.original_trans, c.was_verified = new_trans, True
 
-        if newly_verified or trans_fixes or source_fixes:
+        # _dirty also covers ticks copied in from the computer-wide memory: save
+        # them, so this trip's own file (trip export reads it) is complete too.
+        if newly_verified or trans_fixes or source_fixes or self.translator._dirty:
             self.translator.writeTranslationCache(
                 on_locked=lambda e: prompt_translation_locked(self, e))
         summary = (f"{newly_verified} newly verified, {trans_fixes} translation(s) "

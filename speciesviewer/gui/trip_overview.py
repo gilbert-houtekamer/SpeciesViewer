@@ -209,6 +209,13 @@ def _verified_crc_set(trip_root):
                     verified.add(int(row[0]))
     except Exception:
         pass
+    # Plus the computer-wide memory: the validation panel ticks a text verified
+    # on another trip or master, so the sphere must agree with what it shows.
+    try:
+        from engine.translatelib import shared_verified_crcs
+        verified |= shared_verified_crcs()
+    except Exception:
+        pass
     return verified
 
 

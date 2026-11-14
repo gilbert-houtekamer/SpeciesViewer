@@ -33,7 +33,13 @@ _INI_FOR_KIND = {
 
 def advertised_names(base_url: str, master_web: str = "/nature/", timeout: int = 10):
     """The set of trip_names currently advertised on the site, or None if the
-    web trip_admin.csv could not be read (offline / not configured)."""
+    web trip_admin.csv could not be read (offline / not configured).
+
+    A website on THIS computer is read straight from its folder: it has no
+    base_url, and its local server may not be running."""
+    from utils import site_config
+    if site_config.is_local():
+        return _local_advertised_names(site_config.local_root(), master_web)
     base = (base_url or "").rstrip("/")
     if not base:
         return None
@@ -48,6 +54,24 @@ def advertised_names(base_url: str, master_web: str = "/nature/", timeout: int =
                 for row in reader if (row.get("trip_name") or "").strip()}
     except Exception as e:
         logger.info(f"publish_index: could not read web trip admin: {e}")
+        return None
+
+
+def _local_advertised_names(site_root, master_web: str = "/nature/"):
+    """advertised_names for the local website: the same trip_admin.csv, read
+    from the local site folder. No file yet = nothing listed (empty set)."""
+    from pathlib import Path
+    path = (Path(site_root) / (master_web or "/nature/").strip("/")
+            / "includes web" / "trip_admin.csv")
+    if not path.exists():
+        return set()
+    try:
+        with open(path, "r", encoding="utf-8", newline="") as f:
+            reader = csv.DictReader(f, delimiter=";")
+            return {(row.get("trip_name") or "").strip()
+                    for row in reader if (row.get("trip_name") or "").strip()}
+    except Exception as e:
+        logger.info(f"publish_index: could not read local trip admin {path}: {e}")
         return None
 
 

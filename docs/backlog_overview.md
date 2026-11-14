@@ -24,8 +24,8 @@ Madagascar starts 28 Oct: everything here is for **after the trip**.
 | # | What | Size |
 |---|------|------|
 | 2.1 | **Local names** — the laptop → BigBoy round trip (ch. 6). Planned late November. | S |
-| 2.2 | **Trip/Album Overview parity** — GPS column, lock glyph, Publish/Reset buttons, Write All Blogs, shared blog editor (ch. 15). | S |
-| 2.3 | **🛰️ row action on the Days panel** — double-click the cell; the review dialog should open on that day (ch. 17). | S |
+| 2.2 | ~~Trip/Album Overview parity~~ — **tested 14 Nov**; fixed: local-site publication status, Translations sphere vs. shared memory. **Trip/Album Overview parity** — GPS column, lock glyph, Publish/Reset buttons, Write All Blogs, shared blog editor (ch. 15). | S |
+| 2.3 | ~~🛰️ row action~~ — **tested 14 Nov**. **🛰️ row action on the Days panel** — double-click the cell; the review dialog should open on that day (ch. 17). | S |
 
 ## 3. Small features (S–M)
 
