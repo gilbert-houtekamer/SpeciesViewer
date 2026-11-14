@@ -1878,6 +1878,12 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
         act_set_date = menu.addAction(f"Set date/time…  ({lbl})")
         from gui.viewer_clipboard import dateless_keys
         act_set_date.setEnabled(bool(dateless_keys(self._collection, keys_for_action)))
+        act_move_day = None
+        if self._other_day_folders() and not getattr(self, "_day_frozen", False):
+            act_move_day = menu.addAction(f"Move to day…  ({lbl})")
+            act_move_day.setToolTip(
+                "Move these pictures to another day of this trip — for a picture "
+                "that is in the wrong day folder. Nothing is overwritten.")
         act_set_date.setToolTip(
             "Give pictures without a capture date one (e.g. pictures received via "
             "WhatsApp), so they appear in the blog and in Albums — or replace a date "
@@ -1963,6 +1969,8 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
             self._copy_date(key)
         elif chosen == act_set_date:
             self._set_date(keys_for_action)
+        elif act_move_day is not None and chosen == act_move_day:
+            self._move_to_day_ui(keys_for_action)
         elif act_album_pic is not None and chosen == act_album_pic:
             self._set_album_picture(key)
         elif act_delete is not None and chosen == act_delete:
@@ -2926,8 +2934,8 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
         dlg = SetDateDialog(self, len(todo), start, source, n_redo=len(redo))
         if dlg.exec() != QDialog.DialogCode.Accepted:
             return
-        n, msg = clip.set_dates(self._collection, todo, dlg.chosen(),
-                                refresh_key=self._cull_refresh_key)
+        n, msg, dated = clip.set_dates(self._collection, todo, dlg.chosen(),
+                                       refresh_key=self._cull_refresh_key)
         if n:
             # Same day flag as a location write: the CSVs learn the date from the
             # Read & Summarize the viewer offers on close.
@@ -2936,6 +2944,114 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
                 self._notify_large_view(k)
         if n != len(todo):
             QMessageBox.warning(self, "Set date/time", msg)
+        self._offer_move_to_dated_day(dated)
+
+    # ── Move pictures to another day of the trip ──────────────────────────────
+    def _other_day_folders(self) -> list:
+        """The trip's other day folders (siblings of this day named YYYY-MM-DD),
+        or [] outside a trip day (culling, album, master)."""
+        import re
+        if (not self.image_dir or not self.trip_root_dir or self.fpr is None
+                or not hasattr(self._collection, "move_keys_to_day")):
+            return []
+        here = Path(self.image_dir)
+        try:
+            return sorted(p for p in here.parent.iterdir()
+                          if p.is_dir() and p != here
+                          and re.fullmatch(r"\d{4}-\d{2}-\d{2}", p.name))
+        except OSError:
+            return []
+
+    def _offer_move_to_dated_day(self, dated: dict):
+        """After Set date/time: pictures whose new date is ANOTHER day of this
+        trip are offered a move to that day's folder. A date outside the trip's
+        days moves nothing, and says so."""
+        if not dated:
+            return
+        from PyQt6.QtWidgets import QMessageBox
+        here = Path(self.image_dir).name if self.image_dir else ""
+        days = {p.name: p for p in self._other_day_folders()}
+        by_day: dict = {}
+        for k, when in dated.items():
+            day = when.strftime("%Y-%m-%d")
+            if day != here:
+                by_day.setdefault(day, []).append(k)
+        for day, keys in sorted(by_day.items()):
+            one = len(keys) == 1
+            pics = f"{len(keys)} picture{'' if one else 's'}"
+            if day not in days:
+                QMessageBox.information(
+                    self, "Set date/time",
+                    f"{pics} now dated {day}. This trip has no day folder for that "
+                    f"date, so {'it stays' if one else 'they stay'} in {here}.")
+                continue
+            if QMessageBox.question(
+                    self, "Move to another day",
+                    f"{pics} now dated {day}. Move {'it' if one else 'them'} "
+                    f"to that day of the trip?") == QMessageBox.StandardButton.Yes:
+                self._move_keys_to_day(keys, days[day])
+
+    def _move_to_day_ui(self, keys):
+        """Context-menu "Move to day…": pick another day of this trip."""
+        from PyQt6.QtWidgets import QInputDialog
+        days = self._other_day_folders()
+        if not days or not keys:
+            return
+        n = len(keys)
+        name, ok = QInputDialog.getItem(
+            self, "Move to day",
+            f"Move {n} picture{'s' if n != 1 else ''} to this day of the trip:",
+            [p.name for p in days], 0, False)
+        if ok and name:
+            self._move_keys_to_day(list(keys), Path(self.image_dir).parent / name)
+
+    def _move_keys_to_day(self, keys, target: Path):
+        """Move the pictures' files to `target` (another day folder of this trip).
+        Refuses when either day is published. This day re-reads on close; the
+        target day's Read & Summarize is marked as needed in the overview."""
+        from PyQt6.QtWidgets import QMessageBox
+        from gui.day_freeze import day_is_frozen
+        if getattr(self, "_day_frozen", False):
+            QMessageBox.information(self, "Move to day",
+                                    "This day is published, so nothing can move out of it.")
+            return
+        frozen, sm = day_is_frozen(self.trip_root_dir, str(target))
+        if frozen:
+            QMessageBox.information(
+                self, "Move to day",
+                f"{target.name} is published, so nothing can move into it. "
+                f"Reset the trip first if this picture belongs there.")
+            return
+        moved, problems = self._collection.move_keys_to_day(list(keys), target)
+        if moved:
+            self._day_edited = True
+            logger.info(f"Moved {len(moved)} picture(s) from {Path(self.image_dir).name} "
+                        f"to {target.name}.")
+            if sm is not None:
+                # The target day changed on disk: its Read & Summarize (and
+                # everything after it) must run again — shown in the overview.
+                sm.updateState("ReadDirExif", False,
+                               f"Pictures moved in from {Path(self.image_dir).name} "
+                               f"— run Read & Summarize again.")
+                refresh = getattr(self.main_window, "refresh_trip_row", None)
+                if refresh is not None:
+                    try:
+                        refresh(sm, target.name)
+                    except Exception as e:
+                        logger.debug(f"refresh_trip_row after move skipped: {e}")
+            self._reapply_filter()
+            lv = getattr(self, "_large_view", None)
+            if lv is not None:
+                try:
+                    lv.drop_keys(set(moved))
+                except RuntimeError:
+                    pass
+        if problems:
+            lines = [f"{k}: {p}" for k, p in list(problems.items())[:8]]
+            QMessageBox.warning(
+                self, "Move to day",
+                f"{len(problems)} picture(s) not moved (nothing of them changed):\n\n"
+                + "\n".join(lines))
 
     def _remove_gps(self, keys):
         """Context-menu "Remove GPS + place…": say exactly what goes, then clear

@@ -291,13 +291,14 @@ def dateless_keys(collection, keys) -> list:
 def set_dates(collection, keys, start, refresh_key=None) -> tuple:
     """Give the dateless pictures among `keys` a capture date: the first gets
     `start`, each next (file-name order) the next second no other picture of
-    this collection already has. Returns (n_written, message)."""
+    this collection already has. Returns (n_written, message, {key: datetime}
+    for the pictures that got their date)."""
     from PyQt6.QtCore import Qt
     from PyQt6.QtWidgets import QApplication
     from engine.capture_date_write import spread_times, write_capture_dates
     keys = sorted(dateless_keys(collection, keys))
     if not keys:
-        return (0, "These pictures already have a capture date — nothing changed.")
+        return (0, "These pictures already have a capture date — nothing changed.", {})
     taken = []
     redo = set(keys)          # their old (hand-set) times are free again
     for k in collection.all_keys():
@@ -317,14 +318,15 @@ def set_dates(collection, keys, start, refresh_key=None) -> tuple:
     finally:
         QApplication.restoreOverrideCursor()
     done = set(written)
-    n = 0
+    dated = {}
     for when, k in zip(times, keys):
         if any(f in done for f in plan[when]):
             collection.note_date_written(k, when.strftime("%Y:%m:%d %H:%M:%S"))
-            n += 1
+            dated[k] = when
             if refresh_key is not None:
                 refresh_key(k)
     import os
+    n = len(dated)
     msg = (f"Capture date set for {n} picture{'s' if n != 1 else ''}"
            + (f", from {times[0]:%Y-%m-%d %H:%M:%S}" if n else ""))
     if had_date:
@@ -334,4 +336,4 @@ def set_dates(collection, keys, start, refresh_key=None) -> tuple:
         msg += (f". Could NOT write {len(failed)} file(s): "
                 + ", ".join(os.path.basename(f) for f in failed[:5]))
     logger.info(msg)
-    return (n, msg)
+    return (n, msg, dated)

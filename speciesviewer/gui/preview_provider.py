@@ -1820,6 +1820,41 @@ class PreviewCollection(PictureCollection):
         protected, deleted = self.delete_keys(matching, trash_root, allow_jpg_keys, progress_cb)
         return len(matching), protected, deleted
 
+    def move_keys_to_day(self, keys, target_dir) -> tuple:
+        """Move these pictures' files to another day folder of the trip
+        (engine.day_move: no overwrite, all-or-nothing per picture) and drop them
+        from this day's rows. Returns (moved_keys, {key: problem}). This day's
+        CSVs are written once; the target day learns its new pictures from its
+        own Read & Summarize."""
+        from engine.day_move import move_picture
+        if self.read_only:
+            return [], {k: "this day is read-only" for k in keys}
+        moved, problems, srcs = [], {}, []
+        for key in keys:
+            files = []
+            for fname in self._files(key):
+                wf = (self.fpr.fi.files_dict.get(fname) or {}).get("WindowsFileName", "")
+                if wf:
+                    files.append(wf)
+            done, problem = move_picture(files, target_dir)
+            if problem:
+                problems[key] = problem
+                continue
+            srcs += files
+            for fname in self._files(key):
+                self.fpr.fi.files_dict.pop(fname, None)
+            self.fpr.upn.UniquePictureName_dict.pop(key, None)
+            moved.append(key)
+        if moved:
+            from utils.preview_cache import drop_for_files
+            drop_for_files([Path(f) for f in srcs])
+            try:
+                self.fpr.upn.write_project_summary()
+                self.fpr.fi.write_project_files()
+            except Exception as e:
+                logger.error(f"move to day: CSV write failed: {e}")
+        return moved, problems
+
     def trash_upn(self, key: str, trash_dir) -> list | None:
         """Move ONE UPN's files to `trash_dir/<key>/` and drop it from the in-memory
         fpr — WITHOUT writing any CSV (the caller edits the correct per-day CSV;
