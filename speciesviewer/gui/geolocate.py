@@ -749,6 +749,66 @@ def _mirror_gps_to_master(files, lat, lon, method: str | None = None):
         logger.debug(f"GPS master-mirror skipped: {e}")
 
 
+def remove_gps_and_place(files):
+    """Remove a HAND-PLACED coordinate and its place name from the XMP of these
+    files — the undo of write_gps + write_location (a wrong paste, a wrong map
+    drop). Clears exactly what those write: XMP GPS, altitude, GPSProcessingMethod
+    and the place tags. The RAW is never touched.
+
+    The caller decides WHICH pictures (only those gps_is_derived says a human
+    placed); this does not re-check, it removes. ExifTool can report success on a
+    refused write, so the files are read back: returns (cleared, still_gps) —
+    files that no longer show a coordinate, and files that still do (refused, or
+    GPS inside the JPG itself put there by a PhotoLab export). Only pictures whose
+    files ALL cleared are mirrored to the master."""
+    import os
+    from engine.exif_writer import run_exiftool_files
+    files = [str(f) for f in files if f]
+    if not files:
+        return [], []
+    args = ["-XMP:GPSLatitude=", "-XMP:GPSLongitude=",
+            "-XMP:GPSAltitude=", "-XMP:GPSAltitudeRef=",
+            "-XMP:GPSProcessingMethod=", "-EXIF:GPSProcessingMethod="]
+    args += [f"-{tag}=" for tag in _LOCATION_TAGS.values()]
+    args.append("-overwrite_original")
+    try:
+        r = run_exiftool_files(args, files, pre_args=["-config", _exiftool_config()])
+        if r.returncode != 0:
+            logger.warning(f"GPS remove returned {r.returncode}: {r.stderr.strip()}")
+    except Exception as e:
+        logger.warning(f"GPS remove failed: {e}")
+        return [], files
+    left = batch_gps(files)
+    still = [f for f in files if os.path.normcase(os.path.normpath(f)) in left]
+    cleared = [f for f in files if f not in still]
+    _clear_gps_in_master(cleared, still)
+    return cleared, still
+
+
+def _clear_gps_in_master(cleared, still):
+    """Best-effort master mirror of remove_gps_and_place — same gates as
+    _mirror_gps_to_master (read-only or absent master: silent no-op). A picture
+    with ANY file still carrying a coordinate is left alone in the master."""
+    try:
+        from pathlib import Path
+        from utils.config import _config
+        master_root = (_config.get("master", "masterbiotadatabase", fallback="")
+                       or "").replace('"', "").replace("'", "").strip()
+        if not master_root or not Path(master_root).is_dir():
+            return
+        if _config.get("master", "readonly", fallback="yes").strip().lower() != "no":
+            return
+        from engine.filecsv import deriveUniquePictureName
+        keep = {deriveUniquePictureName(Path(f).name) for f in still}
+        upns = {deriveUniquePictureName(Path(f).name) for f in cleared} - keep
+        upns.discard("")
+        if upns:
+            from db.master_db import MasterDB
+            MasterDB(master_root).clear_gps(upns)
+    except Exception as e:
+        logger.debug(f"GPS remove master-mirror skipped: {e}")
+
+
 def write_altitude(files, altitude_m, *, method: str = GPS_MANUAL):
     """Write a signed altitude in metres into the XMP of one or more files —
     the tracklog-geotag dialog's altitude fill (camera GPS never records

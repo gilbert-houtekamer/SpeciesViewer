@@ -1818,6 +1818,32 @@ class MasterDB:
         MasterCheckpointWorker.get(self.master_root).notify()
         return len(pics)
 
+    def clear_gps(self, upns) -> int:
+        """Undo of apply_gps + apply_location_fields: empty the coordinate, its
+        provenance, the altitude and the place-name columns on these pictures —
+        the master mirror of the viewer's "Remove GPS + place". The caller only
+        passes pictures whose GPS was placed by hand (a camera fix is never
+        removed). ONE journal entry; UPNs the master lacks are skipped."""
+        con = self._connect()
+        blank = {"GPSPosition": "", "GPSProcessingMethod": "", "GPSAltitude": ""}
+        blank.update({c: "" for c in self.LOCATION_COLUMNS})
+        pics = {}
+        for upn in upns or ():
+            if upn and con.execute('SELECT 1 FROM pictures WHERE "UniquePictureName"=?',
+                                   (upn,)).fetchone() is not None:
+                pics[upn] = dict(blank)
+        if not pics:
+            return 0
+        entry = {"op": "gps", "ts": time.time(), "pictures": pics, "files": {}}
+        with self._append_lock:
+            entry["seq"] = self._next_seq()
+            self._append_jsonl(entry)
+        with con:
+            for upn, fields in pics.items():
+                self._set_picture_fields(con, upn, fields)
+        MasterCheckpointWorker.get(self.master_root).notify()
+        return len(pics)
+
     def apply_altitude(self, alt_by_upn: dict) -> int:
         """Mirror a placed altitude into the master's pictures.GPSAltitude —
         sibling to apply_gps, same shape. `alt_by_upn` maps UPN -> signed

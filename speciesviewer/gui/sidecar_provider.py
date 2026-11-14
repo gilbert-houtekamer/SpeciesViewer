@@ -1019,6 +1019,32 @@ class SidecarCollection(MasterCardOpsMixin, PictureCollection):
             if ll:
                 self._gps_by_stem[key] = ll
 
+    def note_gps_removed(self, key: str) -> None:
+        """"Remove GPS + place" just cleared this key's hand-placed coordinate and
+        place name from its XMP — the undo of note_gps_written. Forget the
+        coordinate (badge, card line, map read _gps_by_stem), blank the place in
+        the row, and drop the cached row so the next open re-reads the file."""
+        getattr(self, "_pasted_gps", set()).discard(key)
+        self._gps_by_stem.pop(key, None)
+        self._place_by_stem.pop(key, None)
+        g = self._groups.get(key, {})
+        xmp = g.get("meta")
+        if not xmp:
+            return
+        xmp = Path(xmp)
+        row = self._rows.get(_norm(xmp))
+        if row is not None:
+            for k in self._LOC_KEYS + ("CountryCode", "GPSProcessingMethod",
+                                       "EXIF:GPSProcessingMethod", "XMP:GPSProcessingMethod"):
+                if k in row:
+                    row[k] = ""
+        cache = self._caches.get(xmp.parent)
+        if cache is None:
+            from engine.sidecar_cache import SidecarCache
+            cache = self._caches[xmp.parent] = SidecarCache(xmp.parent)
+        cache.invalidate(xmp)
+        cache.save()
+
     supports_external_refresh = True
 
     # Fields whose change should re-paint a card (what another tool may edit).

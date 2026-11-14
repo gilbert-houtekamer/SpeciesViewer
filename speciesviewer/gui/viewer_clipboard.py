@@ -182,3 +182,63 @@ def paste_gps_into(collection, keys, refresh_key=None) -> tuple:
     logger.info(f"Pasted GPS {_gps['lat']:.6f}, {_gps['lon']:.6f}{place} "
                 f"into {n} picture(s).")
     return (n, msg)
+
+
+def removable_gps_keys(collection, keys) -> list:
+    """The pictures whose GPS may be removed: those that HAVE a coordinate a
+    person placed (paste, map, place lookup). A camera's own fix is evidence and
+    is never offered — gps_is_derived is the same test the map uses to allow a
+    move. A collection without that test offers nothing."""
+    derived = getattr(collection, "gps_is_derived", None)
+    if derived is None:
+        return []
+    out = []
+    for k in keys:
+        try:
+            if derived(k) and collection.location_targets(k):
+                out.append(k)
+        except Exception:
+            pass
+    return out
+
+
+def remove_gps_from(collection, keys, refresh_key=None) -> tuple:
+    """Remove the hand-placed GPS + place from these pictures (the undo of
+    paste_gps_into). Only removable_gps_keys are touched. Returns
+    (n_removed, message); the caller confirms with the user FIRST."""
+    from PyQt6.QtCore import Qt
+    from PyQt6.QtWidgets import QApplication
+    from gui.geolocate import remove_gps_and_place
+    import os
+    keys = removable_gps_keys(collection, keys)
+    targets = {k: [str(f) for f in collection.location_targets(k) if f] for k in keys}
+    all_files = sorted({f for fs in targets.values() for f in fs})
+    if not all_files:
+        return (0, "No GPS placed by hand on these pictures — nothing removed.")
+    QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+    try:
+        cleared, still = remove_gps_and_place(all_files)
+    finally:
+        QApplication.restoreOverrideCursor()
+    still_n = {os.path.normcase(os.path.normpath(f)) for f in still}
+    done, kept = [], []
+    for k, fs in targets.items():
+        if any(os.path.normcase(os.path.normpath(f)) in still_n for f in fs):
+            kept.append(k)
+        else:
+            done.append(k)
+    note = getattr(collection, "note_gps_removed", None)
+    for k in done:
+        if note is not None:
+            note(k)
+        if refresh_key is not None:
+            refresh_key(k)
+    n = len(done)
+    msg = f"GPS + place removed from {n} picture{'s' if n != 1 else ''}"
+    if kept:
+        names = ", ".join(sorted(os.path.basename(f) for f in still)[:5])
+        msg += (f". {len(kept)} picture{'s' if len(kept) != 1 else ''} still "
+                f"show{'s' if len(kept) == 1 else ''} GPS ({names}): it could not be "
+                f"removed, or it is inside the JPG itself (a PhotoLab export copies it in).")
+    logger.info(msg)
+    return (n, msg)

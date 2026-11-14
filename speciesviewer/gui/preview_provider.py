@@ -991,6 +991,43 @@ class PreviewCollection(PictureCollection):
                 self._gps_override = {}
             self._gps_override[upn_key] = (float(lat), float(lon))
 
+    # File-row keys that carry a coordinate or its provenance (see has_gps,
+    # gps_cached, gps_is_derived) — blanked by note_gps_removed.
+    _GPS_ROW_KEYS = ("Composite:GPSPosition", "EXIF:GPSLatitude", "EXIF:GPSLongitude",
+                     "EXIF:GPSProcessingMethod", "XMP:GPSLatitude", "XMP:GPSLongitude")
+
+    def note_gps_removed(self, upn_key: str) -> None:
+        """"Remove GPS + place" just cleared this UPN's hand-placed coordinate and
+        place name from its XMP — the undo of note_gps_written +
+        note_location_written. Blank the same in-memory rows those read, so the
+        badge, the map, the info panel and the location line agree with the file
+        at once; the day CSVs are saved like a location write (trips only)."""
+        getattr(self, "_pasted_gps", set()).discard(upn_key)
+        getattr(self, "_gps_override", {}).pop(upn_key, None)
+        for fname in self._files(upn_key):
+            frow = self.fpr.fi.files_dict.get(fname)
+            if not frow:
+                continue
+            for k in self._GPS_ROW_KEYS + tuple(self._LOC_XMP_KEYS.values()):
+                if frow.get(k):
+                    frow[k] = ""
+        if self.read_only:
+            return
+        from engine.csv_columns import PICTURE_FIELDS
+        row = self.fpr.upn.UniquePictureName_dict.get(upn_key)
+        if not row:
+            return
+        cols = ("GPSPosition", "GPSProcessingMethod", "GPSAltitude") + tuple(self._LOC_XMP_KEYS)
+        changed = False
+        for col in cols:
+            if col in PICTURE_FIELDS and row.get(col):
+                row[col] = ""
+                changed = True
+        self._csv_dirty_files = True
+        if changed:
+            self._csv_dirty_summary = True
+        self.flush_csv()
+
     def gps_is_derived(self, upn_key: str) -> bool:
         """True when this picture's coordinate was placed by a HUMAN — dragged onto
         the map, copied from a neighbour, or looked up from a place name — rather

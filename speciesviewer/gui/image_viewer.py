@@ -1859,6 +1859,16 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
         act_paste_gps = menu.addAction(f"Paste GPS + place  ({lbl})")
         from gui.viewer_clipboard import gps_buffer
         act_paste_gps.setEnabled(gps_buffer() is not None)
+        # The undo of a wrong paste / map drop. Only GPS a person placed is ever
+        # offered; a camera's own fix stays (greyed out when none is removable).
+        act_remove_gps = menu.addAction(f"Remove GPS + place…  ({lbl})")
+        _derived = getattr(self._collection, "gps_is_derived", None)
+        act_remove_gps.setEnabled(bool(_derived) and any(
+            _derived(k) for k in keys_for_action))
+        act_remove_gps.setToolTip(
+            "Remove a position placed by hand (pasted, dropped on the map, or looked "
+            "up from a place name) and its place name. GPS recorded by the camera "
+            "is never removed.")
         # Use ONE picture as the album's cover. Only offered when there is an
         # album to update and this picture has a JPG to make it from — a menu
         # entry that cannot do anything is worse than no entry.
@@ -1933,6 +1943,8 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
             self._copy_gps(key)
         elif chosen == act_paste_gps:
             self._paste_gps(keys_for_action)
+        elif chosen == act_remove_gps:
+            self._remove_gps(keys_for_action)
         elif act_album_pic is not None and chosen == act_album_pic:
             self._set_album_picture(key)
         elif act_delete is not None and chosen == act_delete:
@@ -2853,6 +2865,52 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
         msg = self._on_clipboard("paste_gps", keys=keys)
         if msg:
             logger.info(msg)
+
+    def _remove_gps(self, keys):
+        """Context-menu "Remove GPS + place…": say exactly what goes, then clear
+        the hand-placed coordinate and place name (viewer_clipboard.remove_gps_from).
+        Camera GPS is never touched; pictures that have it are named as kept."""
+        from PyQt6.QtWidgets import QMessageBox
+        from gui import viewer_clipboard as clip
+        keys = list(keys)
+        removable = clip.removable_gps_keys(self._collection, keys)
+        if not removable:
+            logger.info("Remove GPS: no position placed by hand on these pictures.")
+            return
+        places = set()
+        for k in removable:
+            try:
+                f = self._collection.read_location(k) or {}
+            except Exception:
+                f = {}
+            p = f.get("Location") or f.get("City") or ""
+            if p:
+                places.add(p)
+        n = len(removable)
+        pics = f"{n} picture{'s' if n != 1 else ''}"
+        text = f"Remove the GPS position and the place name from {pics}?"
+        if places:
+            text += "\n\nPlace name that goes: " + ", ".join(sorted(places)[:5])
+            if len(places) > 5:
+                text += f" and {len(places) - 5} more"
+        kept = len(keys) - n
+        if kept:
+            text += (f"\n\n{kept} other selected picture{'s' if kept != 1 else ''} "
+                     f"keep{'s' if kept == 1 else ''} their GPS: recorded by the camera, "
+                     f"or none.")
+        text += ("\n\nThis cannot be undone here; copy and paste a position again "
+                 "to put one back.")
+        if QMessageBox.question(self, "Remove GPS + place", text) != \
+                QMessageBox.StandardButton.Yes:
+            return
+        n_done, msg = clip.remove_gps_from(self._collection, removable,
+                                           refresh_key=self._cull_refresh_key)
+        if n_done:
+            self._note_location_written(removable)
+            for k in removable:
+                self._notify_large_view(k)
+        if n_done != n:
+            QMessageBox.warning(self, "Remove GPS + place", msg)
 
     def keyPressEvent(self, event):
         from gui.viewer_keys import (handle_cull_key, handle_grid_arrows,
