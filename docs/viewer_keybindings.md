@@ -133,7 +133,11 @@ disk.
 
 The Species Image Preview's right-click **Copy GPS + place** / **Paste GPS +
 place** use the same buffer as the keys — the menu and the key are two doors
-into one drawer.
+into one drawer. Beside them, **Remove GPS + place…** undoes a paste (only for a
+position placed by hand, never a camera fix), and **Copy date/time** / **Set
+date/time…** / **Move to day…** fix a picture without a capture date — menu
+only, no keys (see the manual, ch. 10, "Fixing where and when a picture was
+taken").
 
 A paste writes the **whole selection in one pair of exiftool calls**, not one
 pair per picture, so twelve pictures cost the same two calls as three hundred.

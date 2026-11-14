@@ -253,6 +253,31 @@ Select cards and **right-click** one to act on the whole selection;
 > The colour and rating live in the sidecar; SpeciesViewer re-reads on focus, but
 > if you have both windows visible at once, press it.
 
+### Fixing where and when a picture was taken
+
+The right-click menu of a trip day has three pairs of entries for pictures with
+a missing or wrong place or time. Each acts on the selection, or else on the
+picture you clicked.
+
+| Menu item | Does |
+|---|---|
+| **Copy GPS + place** / **Paste GPS + place** | Give a picture without GPS the position and place name of a neighbour (also `Ctrl+Shift+C` / `Ctrl+Shift+V`). |
+| **Remove GPS + place…** | Undo a wrong paste or a wrong drop on the map: removes the position *and* the place name. Only a position placed by hand (pasted, dropped on the map, looked up from a place name) can be removed; GPS the camera recorded never is, so the item is greyed out for those pictures. Asks first, naming the place that goes. |
+| **Copy date/time** / **Set date/time…** | Give a picture **without a capture date** one. WhatsApp downloads and pictures received from others usually have none, and such a picture is left out of the blog, out of every Album and out of the GPS fill-in from neighbouring pictures. Copy the time from a neighbour, then adjust the date, time and seconds separately. Several pictures get one second apart each, never a second another picture already has. |
+| **Move to day…** | Move pictures that sit in the wrong day folder to another day of this trip. |
+
+**A date you set is an estimate, and stays one.** It is marked as set by hand,
+so **Set date/time…** stays available for that picture: when you later remember
+better, set it again. A date the camera recorded can never be changed.
+
+**When the new date is another day of the trip**, SpeciesViewer offers to move
+the picture to that day's folder (the same move as **Move to day…**). The
+picture's files travel together, including its `.xmp` and `.dop`. Nothing is
+overwritten: if a file with the same name is already there, that picture stays
+where it is. A published day refuses, in both directions. Afterwards this day
+re-reads when you close the viewer, and the other day's **Read & Summarize**
+shows as needed in the trip overview.
+
 ### A workable culling order
 
 Not prescriptive, but this is the order the filters are built for:
