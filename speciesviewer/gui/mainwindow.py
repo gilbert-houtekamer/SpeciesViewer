@@ -912,6 +912,69 @@ class MainWindow(QMainWindow):
                                         _format_translations_item(review_day, verified_crcs))
                 break
 
+        # A day just read may lie outside the trip's dates. Asked after the
+        # current step (and any modal run) is over — see _check_trip_dates.
+        QTimer.singleShot(0, self._check_trip_dates)
+
+    def _check_trip_dates(self, _tries: int = 0):
+        """Ask to widen the trip's dates when a day it has read lies outside them
+        (engine.trip_range). Never narrows a planned range; asks once per
+        session for the same dates and days."""
+        if QApplication.activeModalWidget() is not None:
+            if _tries < 600:          # a run or a dialog is still open: later
+                QTimer.singleShot(1000, lambda: self._check_trip_dates(_tries + 1))
+            return
+        from engine.trip_range import trip_days, check_range, set_trip_dates
+        from utils.trip_config import read_trip_ini
+        trip_db = _config.get("trip", "tripbiotadatabase", fallback="")
+        info = read_trip_ini(trip_db) if trip_db else None
+        if not info:
+            return
+        days = trip_days(trip_db)
+        fromdate, todate = info.get("fromdate", ""), info.get("todate", "")
+        found = check_range(fromdate, todate, days)
+        if found is None:
+            return
+        asked = self.__dict__.setdefault("_trip_dates_asked", set())
+        stamp = (trip_db, fromdate, todate, tuple(days))
+        if stamp in asked:
+            return
+        asked.add(stamp)
+        out = found["outside"]
+        what = (f"{out[0]}" if len(out) == 1
+                else f"{len(out)} days ({out[0]} – {out[-1]})")
+        stored = f"{fromdate} – {todate}" if fromdate and todate else "not set"
+        w_from, w_to = found["widened"]
+        box = QMessageBox(self)
+        box.setIcon(QMessageBox.Icon.Question)
+        box.setWindowTitle("Trip dates")
+        text = (f"This trip has pictures from {what}, outside its dates "
+                f"({stored}).\n\nAn Album made from this trip, and the trip list "
+                f"on the website, use the trip's dates.")
+        box.setText(text)
+        b_widen = box.addButton(f"Change to {w_from} – {w_to}",
+                                QMessageBox.ButtonRole.AcceptRole)
+        b_days = None
+        if found["days_only"]:
+            d_from, d_to = found["days_only"]
+            if (d_from, d_to) != (w_from, w_to):
+                b_days = box.addButton(f"Change to {d_from} – {d_to}",
+                                       QMessageBox.ButtonRole.AcceptRole)
+        b_keep = box.addButton("Keep", QMessageBox.ButtonRole.RejectRole)
+        box.setDefaultButton(b_widen)
+        box.exec()
+        chosen = box.clickedButton()
+        if chosen is b_keep or chosen is None:
+            logger.info(f"Trip dates kept at {stored}; days outside: {', '.join(out)}.")
+            return
+        new = (w_from, w_to) if chosen is b_widen else found["days_only"]
+        if set_trip_dates(trip_db, *new):
+            logger.info(f"Trip dates changed from {stored} to {new[0]} – {new[1]}.")
+            populate_trip_overview(self)
+        else:
+            QMessageBox.warning(self, "Trip dates",
+                                "The trip's dates could not be saved (no trip settings file).")
+
 
 
     def handle_trip_table_current_changed(self, row, column, prev_row, prev_column):
