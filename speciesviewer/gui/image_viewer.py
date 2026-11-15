@@ -1898,6 +1898,14 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
             _root, kind, owner = cover
             menu.addSeparator()
             act_album_pic = menu.addAction(f"Use as {kind} picture  ({owner})")
+        # The banner may come from a RAW without a JPG: a RAW's wider framing
+        # often makes the better banner than a JPG cropped tight on the bird.
+        act_banner = None
+        if cover and n == 1 and self._banner_source(key):
+            _root, kind, owner = cover
+            if act_album_pic is None:
+                menu.addSeparator()
+            act_banner = menu.addAction(f"Use as {kind} banner…  ({owner})")
         # (Registering a freshly-rendered DxO JPG into the master is now the shared
         # master menu's "Add new renders…" item, appended below for master pictures —
         # no separate album-only entry, and no "Re-extract" step: the day reads the
@@ -1973,6 +1981,8 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
             self._move_to_day_ui(keys_for_action)
         elif act_album_pic is not None and chosen == act_album_pic:
             self._set_album_picture(key)
+        elif act_banner is not None and chosen == act_banner:
+            self._set_banner(key)
         elif act_delete is not None and chosen == act_delete:
             self._delete_keys_ui(keys_for_action)
         return set(keys_for_action)
@@ -2060,6 +2070,44 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
             try:
                 self.status_label.setText(
                     f"Album picture set from {Path(jpg).name}.")
+            except Exception:
+                pass
+
+    def _banner_source(self, key: str):
+        """The file to cut a banner from: the RAW if there is one (wider framing,
+        no JPG needed), else the picture's JPG."""
+        for get in ("raw_path", "jpg_path"):
+            fn = getattr(self._collection, get, None)
+            try:
+                p = fn(key) if callable(fn) else None
+            except Exception:
+                p = None
+            if p:
+                return Path(p)
+        return None
+
+    def _set_banner(self, key: str):
+        cover = self._cover_target()
+        src = self._banner_source(key)
+        if not cover or src is None:
+            return
+        root, kind, owner = cover
+        from utils.album_banner import load_source
+        from gui.banner_crop_dialog import BannerCropDialog
+        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+        try:
+            img = load_source(src)
+        except Exception as e:
+            QApplication.restoreOverrideCursor()
+            QMessageBox.warning(self, "Banner", f"Could not read that picture:\n\n{e}")
+            return
+        QApplication.restoreOverrideCursor()
+        ini = "virttrip.ini" if kind == "album" else "trip.ini"
+        dlg = BannerCropDialog(self, img, src, root, kind=kind, owner=owner,
+                               ini_name=ini)
+        if dlg.exec() == QDialog.DialogCode.Accepted and dlg.written:
+            try:
+                self.status_label.setText(f"Banner made from {src.name}.")
             except Exception:
                 pass
 

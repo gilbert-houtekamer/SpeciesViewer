@@ -153,7 +153,8 @@ def trip_blog_review_state(ini_path) -> bool:
     return titel_nl in _TRIP_DEFAULT_TITLES_NL
 
 
-def set_trip_flag(trip_root: str, key: str, value: str) -> bool:
+def set_trip_flag(trip_root: str, key: str, value: str,
+                  ini_name: str = "trip.ini") -> bool:
     """Set a single ``key = value`` in the [trip_config] section of
     <trip_root>/trip.ini, PRESERVING the rest of the file — its ``;`` comment and
     the multi-line [trip_text] values (a configparser rewrite would drop the
@@ -162,9 +163,10 @@ def set_trip_flag(trip_root: str, key: str, value: str) -> bool:
     False when there's no trip.ini / no [trip_config] section.
 
     Used to stamp lifecycle milestones (e.g. retired_to_album) that the menu
-    gating reads cheaply. Idempotent — safe to call again to refresh the value."""
+    gating reads cheaply. Idempotent — safe to call again to refresh the value.
+    ini_name="virttrip.ini" does the same for an album."""
     import os
-    ini_path = os.path.join(trip_root, "trip.ini")
+    ini_path = os.path.join(trip_root, ini_name)
     if not os.path.isfile(ini_path):
         return False
     with open(ini_path, "r", encoding="utf-8") as f:
