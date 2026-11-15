@@ -72,7 +72,8 @@ class TripBlogEditorDialog(QDialog):
             # ini) — pass the generated default straight through, a no-op swap.
             tab = _DayTab(ini_path, day_num, translator, _GENERATED_DEFAULT_SCORE,
                           excluded=day_dir.name in self._excluded,
-                          review_state_fn=trip_blog_review_state)
+                          review_state_fn=trip_blog_review_state,
+                          cover_root=trip_root, day_name=day_dir.name)
             tab.day_name = day_dir.name          # YYYY-MM-DD
             tab.day_dir  = day_dir                # what sv4WriteBlog scopes to
             tab._on_review_change = self._refresh_tab_labels   # live tab-dot update

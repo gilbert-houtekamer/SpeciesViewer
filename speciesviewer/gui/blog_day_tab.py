@@ -44,9 +44,14 @@ class _DayTab(QWidget):
 
     def __init__(self, ini_path: Path, day_num: int,
                  translator, default_min_score: int, excluded: bool = False,
-                 review_state_fn: Callable[[Path], bool] = _default_review_state_fn):
+                 review_state_fn: Callable[[Path], bool] = _default_review_state_fn,
+                 cover_root=None, day_name: str = ""):
         super().__init__()
         self.ini_path    = ini_path
+        # Where the day's built blog lives (trip or album root) — given, the tab
+        # shows the picker for the picture that stands for the day (blogjpg).
+        self._cover_root = cover_root
+        self._cover_day  = day_name
         self.day_num     = day_num
         self._translator = translator
         # A day unticked in "In Blog": it is not published, so it is never a draft
@@ -97,6 +102,7 @@ class _DayTab(QWidget):
             "column_width":  cfg.getint    ("blog_config", "column_width",  fallback=300),
             "only_new":      cfg.getboolean("blog_config", "only_new",      fallback=False),
             "species":       cfg.get       ("blog_selection", "species",    fallback="biota"),
+            "blogjpg":       cfg.get       ("blog_text", "blogjpg",          fallback=""),
         }
 
     # ------------------------------------------------------------------
@@ -203,6 +209,17 @@ class _DayTab(QWidget):
         row.addStretch()
         layout.addLayout(row)
 
+        # The picture that stands for this day on the blog index. Chosen from the
+        # pictures the blog was last written with (so: after a first write).
+        self.cover_picker = None
+        if self._cover_root and self._cover_day:
+            from gui.blog_cover_picker import BlogCoverPicker
+            layout.addWidget(QLabel("Picture on the blog index:"))
+            self.cover_picker = BlogCoverPicker(
+                self._cover_root, self._cover_day, self._data["species"],
+                self._data["blogjpg"], one_row=True)
+            layout.addWidget(self.cover_picker)
+
         review_row = QHBoxLayout()
         self.reviewed_box = QCheckBox("Reviewed — the text is final (green in the trip overview)")
         self.reviewed_box.setChecked(not self._draft)
@@ -232,6 +249,8 @@ class _DayTab(QWidget):
         self.message_en.textChanged.connect(self._mark_dirty)
         self.min_score.valueChanged.connect(self._mark_dirty)
         self.col_width.valueChanged.connect(self._mark_dirty)
+        if self.cover_picker is not None:
+            self.cover_picker._list.currentRowChanged.connect(self._mark_dirty)
 
     def _mark_dirty(self, *args):
         self._dirty = True
@@ -316,6 +335,12 @@ class _DayTab(QWidget):
         cfg.set("blog_text",   "message_nl",    self.message_nl.toPlainText())
         cfg.set("blog_text",   "titel_en",      self.titel_en.text())
         cfg.set("blog_text",   "message_en",    self.message_en.toPlainText())
+        if self.cover_picker is not None:
+            cover = self.cover_picker.choice()
+            if cover:
+                cfg.set("blog_text", "blogjpg", cover)
+            else:
+                cfg.remove_option("blog_text", "blogjpg")
 
         with open(self.ini_path, "w", encoding="utf-8") as f:
             cfg.write(f)

@@ -2211,7 +2211,11 @@ class MainWindow(QMainWindow):
             return 0
 
         try:
-            rows, _c = _read_sidecar_rows([src_of[u][0] for u in need])
+            paths = [src_of[u][0] for u in need]
+            rows, _c = self._run_with_wait(
+                f"Opening the map — reading where {len(paths):,} pictures were "
+                f"taken.\nThe first time this can take a minute or two.",
+                lambda: _read_sidecar_rows(paths))
         except Exception as e:
             if self.logger:
                 self.logger.warning(f"{label}: could not read sidecars: {e}")
@@ -2247,6 +2251,48 @@ class MainWindow(QMainWindow):
         if placed:
             self._mirror_placed_gps_to_master(placed)
         return found
+
+    def _run_with_wait(self, text: str, fn):
+        """Run fn() on a worker thread while the window stays responsive; after
+        half a second a small wait window shows `text`. Returns fn's result or
+        re-raises its exception. fn must not touch any widget."""
+        import threading
+        from PyQt6.QtCore import QEventLoop, QTimer
+        from PyQt6.QtWidgets import QProgressDialog
+        box: dict = {}
+
+        def work():
+            try:
+                box["result"] = fn()
+            except BaseException as e:          # handed back to the GUI thread
+                box["error"] = e
+
+        th = threading.Thread(target=work, daemon=True)
+        th.start()
+        dlg = QProgressDialog(text, "", 0, 0, self)
+        dlg.setCancelButton(None)          # the read can't be stopped half-way
+        dlg.setWindowTitle("Please wait")
+        dlg.setWindowModality(Qt.WindowModality.ApplicationModal)
+        dlg.setMinimumDuration(500)
+        loop = QEventLoop()
+        timer = QTimer()
+        timer.timeout.connect(lambda: (not th.is_alive()) and loop.quit())
+        timer.start(50)
+        cursor = QApplication.overrideCursor() is not None
+        if cursor:                     # a wait cursor over a live dialog misleads
+            QApplication.restoreOverrideCursor()
+        try:
+            if th.is_alive():
+                loop.exec()
+        finally:
+            timer.stop()
+            dlg.close()
+            dlg.deleteLater()
+            if cursor:
+                QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+        if "error" in box:
+            raise box["error"]
+        return box.get("result")
 
     def _mirror_placed_gps_to_master(self, gps_by_upn: dict) -> None:
         """Best-effort: fold placed coordinates the master DB does not have yet into

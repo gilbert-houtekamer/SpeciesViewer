@@ -136,6 +136,43 @@ class Trip:
             row = dict(fallback_row)
             row['trip_name'] = self.tripname
             self.trip_dict[self.tripname] = row
+    def useOwnImages(self, own_row):
+        """An album's own settings (virttrip.ini) name its banner and picture —
+        the master registry only learns them at Publish Album. So for the pages
+        built now, the album's own names win over a registry row that may be
+        older (e.g. still the default tripbanner.jpg after a new banner was set)."""
+        if not own_row or not self.tripname:
+            return
+        row = self.trip_dict.get(self.tripname)
+        if row is None:
+            return
+        for key in ("trip_banner", "trip_picture"):
+            name = (own_row.get(key) or "").strip()
+            if name:
+                row[key] = name
+    def uploadOwnImages(self, sftp, local_root, remote_dir):
+        """Upload the banner and picture this trip's row names, from local_root to
+        remote_dir (prefix included). Unchanged files are skipped by the FTP
+        cache. Returns the names uploaded; a missing local file is logged."""
+        import logging
+        log = logging.getLogger("speciesviewer")
+        row = self.trip_dict.get(self.tripname) or {}
+        done = []
+        for key in ("trip_banner", "trip_picture"):
+            name = (row.get(key) or "").strip()
+            if not name or "/" in name:          # the site default lives elsewhere
+                continue
+            local = os.path.join(str(local_root), name)
+            if not os.path.isfile(local):
+                log.warning(f"  {name} not found in the album folder — not uploaded")
+                continue
+            try:
+                sftp.cachedUpload(local, remote_dir.rstrip("/") + "/" + name,
+                                  preserve_mtime=True)
+                done.append(name)
+            except Exception as e:
+                log.warning(f"  {name} could not be uploaded: {e}")
+        return done
     def removeTrip(self, trip_name):
         """Drop one trip from the in-memory admin dict (by trip_name). Returns
         True when a row was actually removed. Used by Manage Trips to un-advertise

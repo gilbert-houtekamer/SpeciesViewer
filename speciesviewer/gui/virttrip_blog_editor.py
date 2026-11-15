@@ -24,6 +24,7 @@ from PyQt6.QtWidgets import (
 )
 
 from gui.blog_day_tab import _DayTab, _GENERATED_DEFAULT_SCORE, DRAFT_DOT, REVIEWED_DOT, DISABLED_DOT
+from utils.virttrip_config import ALBUM_MIN_SCORE_DEFAULT
 from utils.config import _config
 
 logger = logging.getLogger("speciesviewer")
@@ -67,7 +68,7 @@ class VirtTripBlogEditorDialog(QDialog):
 
         # Config-level minimum score — the one Write All Blogs actually uses
         config_score = int(_config.get("virttrip", "minimum_score",
-                                       fallback=str(_GENERATED_DEFAULT_SCORE)))
+                                       fallback=str(ALBUM_MIN_SCORE_DEFAULT)))
 
         layout = QVBoxLayout(self)
 
@@ -80,7 +81,8 @@ class VirtTripBlogEditorDialog(QDialog):
                 continue
             day_num = (date.fromisoformat(day_dir.name) - first_date).days + 1
             tab = _DayTab(ini_path, day_num, translator, config_score,
-                          excluded=day_dir.name in self._excluded)
+                          excluded=day_dir.name in self._excluded,
+                          cover_root=blog_dir.parent.parent, day_name=day_dir.name)
             tab.day_name = day_dir.name          # YYYY-MM-DD — what svv3 filters on
             tab._on_review_change = self._refresh_tab_labels   # live tab-dot update
             tab._on_saved = self._note_saved                   # silent save happened

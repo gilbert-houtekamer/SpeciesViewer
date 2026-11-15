@@ -166,7 +166,9 @@ def main(args, config):
         # Fallback for a retroactive virttrip not yet added to master: seed its
         # own banner/picture from virttrip.ini so the banner still resolves.
         from utils.virttrip_config import read_virttrip_ini
-        project.Trip.ensureTripRegistered(read_virttrip_ini(virttrip_root))
+        _own = read_virttrip_ini(virttrip_root)
+        project.Trip.ensureTripRegistered(_own)
+        project.Trip.useOwnImages(_own)      # a banner changed since Publish
     master_web = config.get("master", "MasterBiotaWebRoot", fallback="/nature/")
     project.master_biota_web_root = master_web
     if project.Trip is not None:
@@ -266,6 +268,9 @@ def main(args, config):
     os.makedirs(admin_dir, exist_ok=True)
     location_cache = os.path.join(admin_dir, "FTPcache.json")
     sftp.openFTPCache(location_cache)
+    # The banner (and picture) the pages name must be on the server too.
+    if project.Trip is not None:
+        project.Trip.uploadOwnImages(sftp, virttrip_root, prefix + bio_web)
 
     # Upload 'includes web/' (CSS, banner, category images).
     # sv1MakeReposity does this for regular trips; virtual trips skip sv1 so the

@@ -21,6 +21,7 @@ from PyQt6.QtWidgets import QLabel, QListView, QListWidget, QListWidgetItem, QVB
 from engine.handling import parseListFromCSV
 
 THUMB = 140
+ROW_THUMB = 96      # the one-row strip in the Blog Editor
 
 
 def blog_pictures_for_day(trip_root, day_name: str, group: str = "biota"):
@@ -30,9 +31,14 @@ def blog_pictures_for_day(trip_root, day_name: str, group: str = "biota"):
     try:
         with io.open(admin, "r", newline="", encoding="utf-8") as f:
             for row in csv.DictReader(f, delimiter=";"):
+                if not row.get("blog") or (row.get("SelectedGroup") or "biota") != group:
+                    continue
+                # A trip fills Project with the day; an album leaves it empty,
+                # and the day is only in the blog's own name
+                # ("Blog Pictures 2015-04-18--biota-0").
                 if (row.get("Project") == day_name
-                        and (row.get("SelectedGroup") or "biota") == group
-                        and row.get("blog")):
+                        or (not row.get("Project")
+                            and row["blog"].startswith(f"Blog Pictures {day_name}--"))):
                     return row["blog"], parseListFromCSV(row.get("BestJPGs", ""))
     except OSError:
         pass
@@ -43,10 +49,12 @@ class BlogCoverPicker(QWidget):
     """Thumbnails of the blog's pictures; click one to make it the cover.
     The first tile, "Automatic", leaves the choice to the blog (blogjpg empty)."""
 
-    def __init__(self, trip_root, day_name: str, group: str, current: str = ""):
+    def __init__(self, trip_root, day_name: str, group: str, current: str = "",
+                 one_row: bool = False):
         super().__init__()
         self._trip_root, self._day, self._group = trip_root, day_name, group
         self._wanted = current
+        self._thumb = ROW_THUMB if one_row else THUMB
         lay = QVBoxLayout(self)
         lay.setContentsMargins(0, 0, 0, 0)
         self._note = QLabel()
@@ -59,6 +67,14 @@ class BlogCoverPicker(QWidget):
         self._list.setMovement(QListView.Movement.Static)
         self._list.setSpacing(6)
         self._list.setWordWrap(True)
+        if one_row:
+            # One scrolling strip, for a form that has no height to spare.
+            self._list.setFlow(QListView.Flow.LeftToRight)
+            self._list.setWrapping(False)
+            self._list.setIconSize(QSize(ROW_THUMB, ROW_THUMB))
+            self._list.setWordWrap(False)
+            self._list.setGridSize(QSize(ROW_THUMB + 16, ROW_THUMB + 26))
+            self._list.setFixedHeight(ROW_THUMB + 48)
         # The chosen picture must be unmistakable — the same frame as Trip ▸ Trash.
         self._list.setStyleSheet(
             "QListWidget::item:selected { border: 5px solid #2f7de1; }")
@@ -72,18 +88,21 @@ class BlogCoverPicker(QWidget):
         blog, names = blog_pictures_for_day(self._trip_root, self._day, self._group)
         auto = QListWidgetItem("Automatic\n(highest rated)")
         auto.setData(Qt.ItemDataRole.UserRole, "")
-        auto.setSizeHint(QSize(THUMB + 16, THUMB + 40))
+        auto.setSizeHint(QSize(self._thumb + 16, self._thumb + 24))
         auto.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
         self._list.addItem(auto)
         folder = Path(self._trip_root) / "web" / "biotablog" / blog
         for name in names:
-            item = QListWidgetItem(Path(name).stem.split(" - ")[-1])
+            # The camera's number is what tells two pictures apart: "N9030899"
+            # from "2026 Brazilie - N9030899", "dsc_4155" from an album's
+            # "2015 april ecuador dsc_4155".
+            item = QListWidgetItem(Path(name).stem.split(" - ")[-1].split()[-1])
             item.setData(Qt.ItemDataRole.UserRole, name)
             item.setToolTip(name)
             small = folder / f"{Path(name).stem}-small.jpg"
             pix = QPixmap(str(small if small.exists() else folder / name))
             if not pix.isNull():
-                item.setIcon(QIcon(pix.scaled(THUMB, THUMB, Qt.AspectRatioMode.KeepAspectRatio,
+                item.setIcon(QIcon(pix.scaled(self._thumb, self._thumb, Qt.AspectRatioMode.KeepAspectRatio,
                                               Qt.TransformationMode.SmoothTransformation)))
             self._list.addItem(item)
         if not names:
@@ -94,7 +113,7 @@ class BlogCoverPicker(QWidget):
                                f"choose another, or Automatic.")
         else:
             self._note.setText("Click the picture that stands for this blog on the blog "
-                               "index. It takes effect at the next Create Blog.")
+                               "index. It takes effect the next time the blog is written.")
         self._select(keep if keep in names else "")
 
     def _select(self, name: str):

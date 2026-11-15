@@ -817,6 +817,7 @@ def populate_virttrip_overview(self):
         # extract step. After registering a render in the master (a day card's
         # right-click → "Add new renders to the master"), re-writing the day's blog
         # picks it up straight away.
+        edit_blog = menu.addAction("✏️ Edit this day's blog…")
         reblog    = menu.addAction("📝 Re-write this day's blog")
         rebuild   = menu.addAction("🌐 Rebuild website (whole album)")
         chosen = menu.exec(self.virttrip_table.viewport().mapToGlobal(pos))
@@ -825,6 +826,10 @@ def populate_virttrip_overview(self):
             self.open_virttrip_map([day_dirs[row]])
         elif chosen == map_all:
             self.open_virttrip_map()
+        elif chosen == edit_blog:
+            day_num = (date.fromisoformat(day_name) - first_date).days + 1
+            _open_blog_editor(self, day_dirs, first_date, virttrip_path,
+                              jump_to_day_num=day_num)
         elif chosen == reblog:
             import batch.svv3WriteBlog
             _run_day_step(

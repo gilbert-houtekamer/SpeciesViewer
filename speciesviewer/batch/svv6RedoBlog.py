@@ -153,7 +153,9 @@ def main(args, config):
         # Fallback for a retroactive virttrip not yet added to master: seed its
         # own banner/picture from virttrip.ini so the banner still resolves.
         from utils.virttrip_config import read_virttrip_ini
-        project.Trip.ensureTripRegistered(read_virttrip_ini(virttrip_root))
+        _own = read_virttrip_ini(virttrip_root)
+        project.Trip.ensureTripRegistered(_own)
+        project.Trip.useOwnImages(_own)      # a banner changed since Publish
     master_web = config.get("master", "MasterBiotaWebRoot", fallback="/nature/")
     project.master_biota_web_root = master_web
     if project.Trip is not None:

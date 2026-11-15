@@ -193,7 +193,14 @@ class ImageFileFieldQt(QWidget):
         self.preview.setStyleSheet(
             f"border: 1px dashed {theme.LINE}; color: {theme.INK_FAINT}; font-size: 9pt;")
 
+    # Set by a dialog that offers its own way to choose (the album picture is
+    # chosen from the album's pictures); Browse then calls it instead.
+    pick_override = None
+
     def pick_file(self):
+        if callable(self.pick_override):
+            self.pick_override()
+            return
         root_path = self.root_field.get_text()
         if not os.path.isdir(root_path):
             self.status_icon.setToolTip("❌ Select valid Trip root first")

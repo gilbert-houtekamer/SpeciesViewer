@@ -14,7 +14,7 @@ from pathlib import Path
 from gui.batch import BatchModuleRunner
 from utils.config import set_setting, _config, get_virttrips_root, get_trips_root
 from utils.runtime_files import svconfig_path
-from utils.virttrip_config import read_virttrip_ini
+from utils.virttrip_config import read_virttrip_ini, ALBUM_MIN_SCORE_DEFAULT
 from gui.virttrip_overview import populate_virttrip_overview
 import batch.svv3WriteBlog
 import batch.svv4BuildWebsite
@@ -132,7 +132,8 @@ def _common_blog_min_score(virttrip_root):
         cfg = _cp.RawConfigParser()
         try:
             read_ini(cfg, fn)
-            scores.add(cfg.getint("blog_config", "minimum_score", fallback=25))
+            scores.add(cfg.getint("blog_config", "minimum_score",
+                                  fallback=ALBUM_MIN_SCORE_DEFAULT))
         except Exception:
             pass
     return scores.pop() if len(scores) == 1 else None
@@ -713,6 +714,8 @@ class VirtualTripCreationDialog(QDialog):
         tab2 = QWidget()
         layout2 = QVBoxLayout(tab2)
         self.trip_img_field = ImageFileFieldQt("Album picture", (600, 450), self.root_field)
+        self.trip_img_field.pick_override = self._pick_album_picture
+        self._pending_album_picture = None   # chosen before the folder exists
         self.trip_img_field.field.setText(trip_data.get("trip_picture", ""))
         layout2.addWidget(image_field_row(HTMLLabel(
             "<p><b>Album picture</b><br>"
@@ -934,6 +937,64 @@ class VirtualTripCreationDialog(QDialog):
         if p.get("note"):
             self.status_label.setText(p["note"])
 
+    def _pick_album_picture(self):
+        """Browse for the album picture: choose from the album's own pictures
+        (its date range in the master), see the 600x450 crop, then save. While
+        creating, the folder does not exist yet, so the choice is kept and the
+        picture made together with the folder."""
+        from PyQt6.QtWidgets import QMessageBox
+        from gui.album_picture_picker import AlbumPicturePicker, range_pictures
+        start, end = self.date_field.get_dates()
+        master = (_config.get("master", "masterbiotadatabase", fallback="")
+                  or "").strip().strip("\"'")
+        items = []
+        if master:
+            try:
+                from db.master_db import MasterDB
+                db = MasterDB(master)
+                db.ensure_fresh()
+                items = range_pictures(master, db.pictures_in_daterange(start, end))
+            except Exception as e:
+                self.logger.warning(f"Album picture: could not read the master: {e}")
+        if not items:
+            QMessageBox.information(
+                self, "Album picture",
+                f"There are no pictures with a JPG between {start} and {end}. "
+                f"Check the album's dates first.")
+            return
+        picker = AlbumPicturePicker(self, items, start, end)
+        if picker.exec() != QDialog.DialogCode.Accepted or picker.chosen is None:
+            return
+        root = self.root_field.get_text()
+        if self.mode == "create" or not root or not os.path.isdir(root):
+            from gui.album_picture_dialog import _pil_to_pixmap
+            from utils.album_picture import render_cover
+            try:
+                pix = _pil_to_pixmap(render_cover(picker.chosen))
+            except Exception as e:
+                QMessageBox.warning(self, "Album picture",
+                                    f"Could not read that picture:\n\n{e}")
+                return
+            self._pending_album_picture = picker.chosen
+            self.trip_img_field.preview.setPixmap(pix.scaled(
+                self.trip_img_field.preview.size(),
+                Qt.AspectRatioMode.KeepAspectRatio,
+                Qt.TransformationMode.SmoothTransformation))
+            self.trip_img_field.show_hint(
+                f"{picker.chosen.name} — made when the album is created.", error=False)
+            return
+        from gui.album_picture_dialog import AlbumPictureDialog
+        dlg = AlbumPictureDialog(self, picker.chosen, root,
+                                 album_name=self.title_nl_field.get_text())
+        if getattr(dlg, "_failed", False):
+            return
+        if dlg.exec() == QDialog.DialogCode.Accepted:
+            written = getattr(dlg, "written", None)
+            if written is not None:
+                self.trip_img_field._preview_src = None   # re-read the new file
+                self.trip_img_field.field.setText(Path(written).name)
+                self.trip_img_field.validate()
+
     def _make_album_folder(self) -> bool:
         """Create mode: check the name panel, make the album's folder, and fill
         the (hidden) fields the save reads. False = nothing made; the status
@@ -962,6 +1023,19 @@ class VirtualTripCreationDialog(QDialog):
         # The album's own copy of the default picture and banner — the files to
         # replace with real ones later.
         dist_dir = Path(__file__).resolve().parent.parent / "dist" / "includes web"
+        if self._pending_album_picture is not None:
+            # Chosen with Browse before the folder existed: make it now.
+            try:
+                from utils.album_picture import set_album_picture
+                written = set_album_picture(self._pending_album_picture, folder,
+                                            name="tripimage.jpg")
+                self.trip_img_field.field.setText(written.name)
+                self.trip_img_field.validate()
+                self.logger.info(f"Album picture made from "
+                                 f"{self._pending_album_picture.name}.")
+            except Exception as e:
+                self.logger.warning(f"Album picture not made "
+                                    f"({self._pending_album_picture.name}): {e}")
         for name, field in (("tripimage.jpg", self.trip_img_field),
                             ("tripbanner.jpg", self.topbar_img_field)):
             if field.get_filename().strip():
@@ -1414,22 +1488,32 @@ class VirttripWriteBlogDialog(QDialog):
         self.status_label = QLabel("")
         layout.addWidget(self.status_label)
 
-        # Minimum rating threshold — overrides the per-day ini value for this run
+        # Minimum rating threshold — the value for new day blogs; overrides the
+        # per-day ini values only when changed here (see on_run)
         score_row = QHBoxLayout()
         score_row.addWidget(QLabel("Minimum rating (0–100):"))
         self.min_score_spin = QSpinBox()
         self.min_score_spin.setRange(0, 100)
         self.min_score_spin.setMinimumWidth(90)
+        # A first run starts at 1 (every picture), whatever an earlier album
+        # used; later runs keep what the days use.
         self.min_score_spin.setValue(
-            common_score if common_score is not None
-            else int(_config.get("virttrip", "minimum_score", fallback="25")))
+            ALBUM_MIN_SCORE_DEFAULT if self._fresh
+            else common_score if common_score is not None
+            else int(_config.get("virttrip", "minimum_score",
+                                 fallback=str(ALBUM_MIN_SCORE_DEFAULT))))
+        self._shown_score = self.min_score_spin.value()
         self.min_score_spin.setToolTip(
-            "Pictures with a computed rating below this value are excluded from the blog.\n"
-            "Lower this if blog pages appear empty."
-        )
+            "Pictures with a computed score below this value are left out of the blog.\n"
+            "1 shows every picture; a picture without stars or colour scores 3 to 5,\n"
+            "one star 30, two stars 45, three 60.\n\n"
+            "Leave it as it is and every day keeps its own value (set per day in the\n"
+            "Blog Editor). Change it and every day gets this value.")
         score_row.addWidget(self.min_score_spin)
-        if common_score is not None:
-            note = QLabel(f"(all days currently use {common_score})")
+        if blog_count:
+            note = QLabel(f"(all days use {common_score}; change it to set every day)"
+                          if common_score is not None else
+                          "(days use their own values; change it to set every day)")
             note.setStyleSheet("color:#666;")
             score_row.addWidget(note)
         score_row.addStretch()
@@ -1498,10 +1582,12 @@ class VirttripWriteBlogDialog(QDialog):
             "Writing album blogs...",
             "✅ All blogs written and uploaded.",
         )
-        menu_spec.batch_parms["extra_config"] = [
-            ("blogconfig", "minimum_score", self.min_score_spin.value()),
-            ("blogconfig", "auto_create_blogs", self.auto_create_checkbox.isChecked()),
-        ]
+        extra = [("blogconfig", "auto_create_blogs", self.auto_create_checkbox.isChecked())]
+        # Only a value the person CHANGED here overrides the days; left alone, each
+        # day keeps the minimum it was given in the Blog Editor.
+        if self.min_score_spin.value() != self._shown_score:
+            extra.append(("blogconfig", "minimum_score", self.min_score_spin.value()))
+        menu_spec.batch_parms["extra_config"] = extra
 
         def on_success():
             populate_virttrip_overview(self.passed_parent)

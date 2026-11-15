@@ -7,6 +7,11 @@ from utils.ini_io import read_ini
 _SECTION_RE = re.compile(r'^\s*\[.+\]\s*$')
 _KEYVAL_RE  = re.compile(r'^[^\s\[;#][^=:]*[=:]')
 
+# An album's blog starts by showing every picture: old trips are mostly
+# unrated (an unrated picture scores 3-5), and a minimum of 25 left their days
+# empty. Raise it per day in the Blog Editor once pictures are rated.
+ALBUM_MIN_SCORE_DEFAULT = 1
+
 # Review state of one day's blog ini. A day blog is either absent, an
 # auto-generated draft nobody has looked at yet (amber), or text a human wrote
 # or blessed (green).

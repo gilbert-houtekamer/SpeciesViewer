@@ -49,7 +49,7 @@ import engine.speciesclassification
 import engine.bloglib
 import engine.triplib
 from engine import SVException
-from utils.virttrip_config import read_virttrip_ini
+from utils.virttrip_config import read_virttrip_ini, ALBUM_MIN_SCORE_DEFAULT
 from utils.runtime_files import svconfig_path
 from utils.ini_io import read_ini
 
@@ -217,9 +217,10 @@ def _generate_blog_ini(ini_path: Path, day_num: int, rows: list,
 
     try:
         from utils.config import _config as _sv_config
-        default_score = int(_sv_config.get("virttrip", "minimum_score", fallback="25"))
+        default_score = int(_sv_config.get("virttrip", "minimum_score",
+                                            fallback=str(ALBUM_MIN_SCORE_DEFAULT)))
     except Exception:
-        default_score = 25
+        default_score = ALBUM_MIN_SCORE_DEFAULT
 
     # reviewed = false marks this as a draft nobody has read: the day shows
     # amber in the trip overview and the editor until it is accepted. It is what
@@ -280,7 +281,7 @@ def _read_blog_ini(ini_path: Path) -> dict:
 
     return {
         "only_new":      cfg.getboolean("blog_config", "only_new",     fallback=False),
-        "minimum_score": cfg.getint    ("blog_config", "minimum_score", fallback=25),
+        "minimum_score": cfg.getint    ("blog_config", "minimum_score", fallback=ALBUM_MIN_SCORE_DEFAULT),
         "column_width":  cfg.getint    ("blog_config", "column_width",  fallback=300),
         "max_per_species": cfg.getint  ("blog_config", "max_per_species", fallback=1),
         "species":       cfg.get       ("blog_selection", "species",    fallback="biota"),
@@ -290,6 +291,35 @@ def _read_blog_ini(ini_path: Path) -> dict:
         "titel_en":      _u8("blog_text", "titel_en"),
         "message_en":    _u8("blog_text", "message_en"),
     }
+
+
+def _set_ini_min_score(ini_path: Path, score: int) -> bool:
+    """Change only the minimum_score line of a day's blog ini (every other line,
+    the day's texts included, stays byte-for-byte). Adds the line under
+    [blog_config] when it is missing. False (and logged) when it can't."""
+    import re
+    try:
+        raw = Path(ini_path).read_bytes()
+        try:
+            text = raw.decode("utf-8")
+        except UnicodeDecodeError:
+            text = raw.decode("latin-1")
+        # [^\r\n]* — never eat the \r of a Windows line end
+        line_re = re.compile(r"^([ \t]*minimum_score[ \t]*[=:][ \t]*)[^\r\n]*",
+                             re.MULTILINE)
+        if line_re.search(text):
+            new = line_re.sub(lambda m: f"{m.group(1)}{score}", text, count=1)
+        else:
+            sec_re = re.compile(r"^\[blog_config\][^\n]*\n", re.MULTILINE)
+            if not sec_re.search(text):
+                return False
+            new = sec_re.sub(lambda m: f"{m.group(0)}minimum_score = {score}\n",
+                             text, count=1)
+        Path(ini_path).write_text(new, encoding="utf-8", newline="")
+        return True
+    except OSError as e:
+        logger.error(f"Could not save the minimum rating in {Path(ini_path).name}: {e}")
+        return False
 
 
 # ---------------------------------------------------------------------------
@@ -358,7 +388,9 @@ def main(args, config):
         project.Trip.read_TripAdmin()
         # Fallback for a retroactive virttrip not yet added to master: seed its
         # own banner/picture from virttrip.ini so the banner still resolves.
-        project.Trip.ensureTripRegistered(read_virttrip_ini(virttrip_root))
+        _own = read_virttrip_ini(virttrip_root)
+        project.Trip.ensureTripRegistered(_own)
+        project.Trip.useOwnImages(_own)      # a banner changed since Publish
     master_web = config.get("master", "MasterBiotaWebRoot", fallback="/nature/")
     project.master_biota_web_root = master_web
     if project.Trip is not None:
@@ -507,6 +539,9 @@ def main(args, config):
         sftp.safeMkdir(prefix + blog_web.rstrip("/"))
         sftp.safeMkdir(prefix + bio_web.rstrip("/") + "/admin")
         logger.info(f"Remote directories ensured: {bio_web}")
+        # The banner (and picture) the pages are about to name must be there.
+        if project.Trip is not None:
+            project.Trip.uploadOwnImages(sftp, virttrip_root, prefix + bio_web)
 
     processed = 0
     for idx, label in enumerate(day_labels, start=1):
@@ -582,10 +617,13 @@ def main(args, config):
 
         today = blog.getDateFromPictures(0)
 
-        # Read blog ini; allow dialog to override minimum_score for this run
+        # Read blog ini. The dialog passes a minimum only when the person changed
+        # it there ("set every day"): it is used now AND kept in the day's ini, so
+        # the Blog Editor shows what the blog was written with.
         bc = _read_blog_ini(ini_path)
-        if min_score_override is not None:
+        if min_score_override is not None and bc["minimum_score"] != min_score_override:
             bc["minimum_score"] = min_score_override
+            _set_ini_min_score(ini_path, min_score_override)
 
         # initBlog must run first — it sets OnlyNewSpecies, which setBlogDay uses
         # to build the blogday key.  setBlogDay must run before makeRunSummaryPost,
