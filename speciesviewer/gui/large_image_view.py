@@ -1756,7 +1756,9 @@ class LargeImageView(QDialog):
         if px is None or px.isNull():
             self._embed_base_img = None
             self._view_tabs.setTabText(self._TAB_EMBED, "Camera JPEG")
-            self._embed_view.set_message("This RAW carries no embedded JPEG.")
+            self._embed_view.set_message(
+                "This RAW carries no camera JPEG (or an editor such as Capture NX "
+                "replaced it with its own crop).")
             return
         w, h = px.width(), px.height()
         self._view_tabs.setTabText(self._TAB_EMBED, f"Camera JPEG {w}×{h}")

@@ -87,6 +87,19 @@ _EMBED_TAGS = ("JpgFromRaw", "PreviewImage", "OtherImage", "ThumbnailImage")
 # That line is the ONE place a byte count is available for every format.
 _BINARY_LINE = re.compile(r"^(\w+)\s*:\s*\(Binary data (\d+) bytes", re.M)
 _ORIENT_LINE = re.compile(r"^Orientation\s*:\s*(\d+)\s*$", re.M)
+_SOFTWARE_LINE = re.compile(r"^Software\s*:\s*(.*?)\s*$", re.M)
+
+# Editors that REPLACE a RAW's embedded JPEG with their own rendering. Capture NX 2
+# (Nikon, 2013-2016 in the master: ~3,500 NEFs) wrote a ~800 px JPEG of ITS crop
+# in place of the camera's full-size one — so the "preview" of the RAW showed a
+# small cut-out while the sensor data still holds the whole frame. For these the
+# embed is not the camera's picture; decoding the RAW is.
+_EMBED_REWRITERS = ("Capture NX",)
+
+
+def _rewritten_by_editor(software: str) -> bool:
+    return (software or "").strip().startswith(_EMBED_REWRITERS)
+
 
 # A camera turned on its side does NOT rotate the pixels it embeds. It writes the
 # preview the way the sensor read it — landscape — and records the turn in the file's
@@ -220,8 +233,8 @@ def embed_lengths(src: Path) -> dict:
     return _embed_info(src)[0]
 
 
-def _embed_info(src: Path) -> tuple[dict, int]:
-    """({tag: byte length}, orientation) in ONE metadata call.
+def _embed_info(src: Path) -> tuple[dict, int, str]:
+    """({tag: byte length}, orientation, software) in ONE metadata call.
 
     Orientation rides along with the embed listing because it costs nothing there and
     the caller needs both to hand back an upright picture. ``-n`` makes it the number
@@ -231,19 +244,22 @@ def _embed_info(src: Path) -> tuple[dict, int]:
     with _lock:
         try:
             et = _get_helper()
-            out = et.execute("-a", "-s", "-n", "-preview:all", "-Orientation", src_s)
+            out = et.execute("-a", "-s", "-n", "-preview:all", "-Orientation",
+                             "-IFD0:Software", src_s)
         except Exception as e:
             logger.warning(f"Could not read embed lengths for {src.name}: {e}")
             _drop_helper()
-            return {}, 1
+            return {}, 1, ""
     lengths = {}
     for tag, n in _BINARY_LINE.findall(out or ""):
         n = int(n)
         if n > lengths.get(tag, 0):
             lengths[tag] = n
     m = _ORIENT_LINE.search(out or "")
+    sw = _SOFTWARE_LINE.search(out or "")
     return ({t: n for t, n in lengths.items() if n > 0},
-            int(m.group(1)) if m else 1)
+            int(m.group(1)) if m else 1,
+            sw.group(1) if sw else "")
 
 
 def extract_preview_bytes(src: Path) -> bytes | None:
@@ -271,7 +287,13 @@ def extract_preview_bytes(src: Path) -> bytes | None:
     worker threads at once (they queue on the lock rather than each spawning a
     process)."""
     src_s = str(src)
-    lengths, orientation = _embed_info(src)
+    lengths, orientation, software = _embed_info(src)
+    if _rewritten_by_editor(software):
+        # Not the camera's JPEG but the editor's crop: report none, so every
+        # caller decodes the RAW's full frame instead (see _EMBED_REWRITERS).
+        logger.debug(f"{src.name}: embedded JPEG was replaced by {software} — "
+                     f"decoding the RAW instead")
+        return None
     # Every discovered embed, biggest first — then any classic tag exiftool did not
     # report, so a body whose embeds -preview:all somehow misses can still not do
     # worse than the old list did. Those extra reads only happen if everything
