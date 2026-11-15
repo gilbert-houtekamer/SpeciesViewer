@@ -3878,6 +3878,36 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
         act_editloc = None
         if not self._view_read_only:
             act_editloc = menu.addAction(f"Edit location…  ({lbl})")
+        # GPS + capture date by hand, as in the trip day viewer: copy from one
+        # picture, paste / set on the selection, remove a hand-placed position.
+        # Trip pictures only — an Album's pictures are the master's.
+        act_copy_gps = act_paste_gps = act_remove_gps = None
+        act_copy_date = act_set_date = None
+        if not self._view_read_only and not self._album_mode:
+            from gui import viewer_clipboard as clip
+            menu.addSeparator()
+            act_copy_gps = menu.addAction("Copy GPS + place  (this picture)")
+            act_copy_gps.setEnabled(self._collection.gps_cached(upn_key) is not None)
+            act_paste_gps = menu.addAction(f"Paste GPS + place  ({lbl})")
+            act_paste_gps.setEnabled(clip.gps_buffer() is not None)
+            act_remove_gps = menu.addAction(f"Remove GPS + place…  ({lbl})")
+            act_remove_gps.setEnabled(bool(
+                clip.removable_gps_keys(self._collection, keys_for_action)))
+            act_remove_gps.setToolTip(
+                "Remove a position placed by hand (pasted, dropped on the map, or "
+                "looked up from a place name) and its place name. GPS recorded by "
+                "the camera is never removed.")
+            menu.addSeparator()
+            act_copy_date = menu.addAction("Copy date/time  (this picture)")
+            act_copy_date.setEnabled(bool(clicked_item and clicked_item.date))
+            act_set_date = menu.addAction(f"Set date/time…  ({lbl})")
+            act_set_date.setEnabled(bool(
+                clip.dateless_keys(self._collection, keys_for_action)))
+            act_set_date.setToolTip(
+                "Give pictures without a capture date one (e.g. pictures received "
+                "via WhatsApp), so they appear in the blog and in Albums — or "
+                "replace a date set by hand earlier with a better estimate. A date "
+                "the camera recorded is never changed.")
 
         # 3 — what is written about it. Headline / Description is normally about
         # the ONE picture it titles; the editor offers the whole selection
@@ -3931,11 +3961,127 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
             self._cull_geolocate(keys_for_action)
         elif act_editloc is not None and chosen == act_editloc:
             self._edit_location(keys_for_action)
+        elif act_copy_gps is not None and chosen == act_copy_gps:
+            from gui import viewer_clipboard as clip
+            logger.info(clip.copy_gps_from(self._collection, upn_key)
+                        or "Copy GPS: this picture has no GPS to copy.")
+        elif act_paste_gps is not None and chosen == act_paste_gps:
+            msg = self._on_clipboard("paste_gps", keys=keys_for_action)
+            if msg:
+                self._status.setText(msg)
+        elif act_remove_gps is not None and chosen == act_remove_gps:
+            self._remove_gps(keys_for_action)
+        elif act_copy_date is not None and chosen == act_copy_date:
+            from gui import viewer_clipboard as clip
+            logger.info(clip.copy_date(clip.parse_date(clicked_item.date), upn_key)
+                        or "Copy date/time: this picture has no date to copy.")
+        elif act_set_date is not None and chosen == act_set_date:
+            self._set_date(keys_for_action)
         elif act_hd is not None and chosen == act_hd:
             self._edit_headline_description(upn_key, keys_for_action)
         elif chosen == act_addfiles:
             self._do_trip_add(keys_for_action)
         return acted
+
+    def _remove_gps(self, keys):
+        """Context-menu "Remove GPS + place…": say exactly what goes, then clear
+        the hand-placed coordinate and place name. Camera GPS is never touched.
+        Twin of image_viewer.py's."""
+        from PyQt6.QtWidgets import QMessageBox
+        from gui import viewer_clipboard as clip
+        keys = list(keys)
+        removable = clip.removable_gps_keys(self._collection, keys)
+        if not removable:
+            return
+        places = sorted({p for p in (
+            (self._collection.read_location(k) or {}).get("Location")
+            or (self._collection.read_location(k) or {}).get("City") or ""
+            for k in removable) if p})
+        n = len(removable)
+        text = f"Remove the GPS position and the place name from {n} picture{'s' if n != 1 else ''}?"
+        if places:
+            text += "\n\nPlace name that goes: " + ", ".join(places[:5])
+            if len(places) > 5:
+                text += f" and {len(places) - 5} more"
+        kept = len(keys) - n
+        if kept:
+            text += (f"\n\n{kept} other selected picture{'s' if kept != 1 else ''} "
+                     f"keep{'s' if kept == 1 else ''} their GPS: recorded by the camera, "
+                     f"or none.")
+        text += ("\n\nThis cannot be undone here; copy and paste a position again "
+                 "to put one back.")
+        if QMessageBox.question(self, "Remove GPS + place", text) != \
+                QMessageBox.StandardButton.Yes:
+            return
+        n_done, msg = clip.remove_gps_from(self._collection, removable,
+                                           refresh_key=self._cull_refresh_key)
+        if n_done:
+            self._notify_large_view(removable)
+            self._status.setText(msg)
+        if n_done != n:
+            QMessageBox.warning(self, "Remove GPS + place", msg)
+
+    def _set_date(self, keys):
+        """Context-menu "Set date/time…": ask a start time (the copied date, else
+        the earlier hand-set date, else the first dated picture of that day),
+        then write it into the pictures without a camera date, one free second
+        apart. Twin of image_viewer.py's; moving a picture to another day is
+        done in the trip day viewer."""
+        from datetime import datetime
+        from PyQt6.QtWidgets import QDialog, QMessageBox
+        from gui import viewer_clipboard as clip
+        from gui.set_date_dialog import SetDateDialog
+        c = self._collection
+        todo = clip.dateless_keys(c, list(keys))
+        if not todo:
+            return
+        redo = [k for k in todo if c.item_for_key(k).date]
+        buf = clip.date_buffer()
+        start = None
+        if buf:
+            start, source = buf[0], f"the date copied from {buf[1]}"
+        elif redo:
+            start = clip.parse_date(c.item_for_key(sorted(redo)[0]).date)
+            source = "the date set by hand earlier"
+        if start is None:
+            # The first dated picture of the day these pictures are in (the
+            # whole trip's pictures, not just this species), else the folder's
+            # date, else now.
+            day = c.day_of(sorted(todo)[0]) or self._initial_day or ""
+            same_day = [t for t in c.capture_times()
+                        if not day or t.strftime("%Y-%m-%d") == day]
+            if same_day:
+                start, source = min(same_day), f"the first picture of {day or 'this day'}"
+            else:
+                try:
+                    start = datetime.strptime(day, "%Y-%m-%d").replace(hour=12)
+                    source = f"the day {day}"
+                except ValueError:
+                    start, source = datetime.now().replace(microsecond=0), "now"
+        dlg = SetDateDialog(self, len(todo), start, source, n_redo=len(redo))
+        if dlg.exec() != QDialog.DialogCode.Accepted:
+            return
+        n, msg, dated = clip.set_dates(c, todo, dlg.chosen(),
+                                       refresh_key=self._cull_refresh_key)
+        if n:
+            self._notify_large_view(list(dated))
+            self._status.setText(msg)
+        if n != len(todo):
+            QMessageBox.warning(self, "Set date/time", msg)
+        # A date on another day of the trip: the picture stays where it is
+        # here; say where it belongs so it can be moved in the day viewer.
+        other = {}
+        for k, when in dated.items():
+            day = when.strftime("%Y-%m-%d")
+            if c.day_of(k) and day != c.day_of(k):
+                other.setdefault((c.day_of(k), day), 0)
+                other[(c.day_of(k), day)] += 1
+        for (here, day), cnt in sorted(other.items()):
+            QMessageBox.information(
+                self, "Set date/time",
+                f"{cnt} picture{'s' if cnt != 1 else ''} in {here} now dated {day}. "
+                f"To move {'it' if cnt == 1 else 'them'} to that day, open {here} "
+                f"(Review & Rate Pictures) and right-click ▸ Move to day….")
 
     def _edit_headline_description(self, upn_key: str, keys: set | None = None):
         """Open the shared Headline / Description editor for the clicked card and
@@ -4421,6 +4567,8 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
         if what == "paste_gps":
             n, msg = clip.paste_gps_into(self._collection, keys,
                                          refresh_key=self._cull_refresh_key)
+            if n:
+                self._notify_large_view(keys)
             logger.info(f"Paste GPS: {msg}")
             return msg
         return ""

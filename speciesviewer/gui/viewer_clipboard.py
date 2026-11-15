@@ -301,7 +301,20 @@ def set_dates(collection, keys, start, refresh_key=None) -> tuple:
         return (0, "These pictures already have a capture date — nothing changed.", {})
     taken = []
     redo = set(keys)          # their old (hand-set) times are free again
-    for k in collection.all_keys():
+    # A viewer that shows only part of the day (one species of a trip) knows the
+    # times of the pictures it does NOT show too — those are taken as well.
+    others = getattr(collection, "capture_times", None)
+    if others is not None:
+        mine = set()
+        for k in redo:
+            try:
+                t = parse_date(collection.item_for_key(k).date)
+            except Exception:
+                t = None
+            if t:
+                mine.add(t)
+        taken.extend(t for t in others() if t not in mine)
+    for k in ([] if others is not None else collection.all_keys()):
         if k in redo:
             continue
         try:

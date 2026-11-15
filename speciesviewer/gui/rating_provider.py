@@ -1076,6 +1076,144 @@ class RatingEditorCollection(PictureCollection):
             self._persist_upn(upn_key, True)
         return changed
 
+    # ── GPS placed by hand: paste / remove (twins of PreviewCollection's) ─────
+    # Unlike the day viewer, this viewer keeps the day CSVs current itself (as
+    # note_location_written does), so a paste or removal goes into the picture
+    # row and the day's CSVs at once — no Read & Summarize needed to see it.
+
+    _GPS_FILE_KEYS = ("Composite:GPSPosition", "EXIF:GPSLatitude", "EXIF:GPSLongitude",
+                      "EXIF:GPSProcessingMethod", "XMP:GPSLatitude", "XMP:GPSLongitude")
+
+    @staticmethod
+    def _gps_text(lat: float, lon: float) -> str:
+        """exiftool's GPSPosition form, so the row reads like a Read & Summarize
+        wrote it (engine.geo.parse_gps_dms reads it back)."""
+        def one(v, pos, neg):
+            h = pos if v >= 0 else neg
+            v = abs(v)
+            d = int(v)
+            m = int((v - d) * 60)
+            s = (v - d - m / 60) * 3600
+            return f"{d} deg {m}' {s:.2f}\" {h}"
+        return f"{one(lat, 'N', 'S')}, {one(lon, 'E', 'W')}"
+
+    def note_gps_written(self, upn_key: str, lat=None, lon=None) -> None:
+        """Paste GPS just wrote a hand-placed coordinate into this trip picture's
+        XMP: put it in the picture row (GPSPosition + MANUAL) and save the day."""
+        if upn_key in self._master_keys:
+            return
+        from gui.geolocate import GPS_MANUAL
+        row = self.fpr.upn.UniquePictureName_dict.get(upn_key)
+        if row is None:
+            return
+        if lat is not None and lon is not None:
+            row["GPSPosition"] = self._gps_text(float(lat), float(lon))
+        row["GPSProcessingMethod"] = GPS_MANUAL
+        self._persist_upn(upn_key, False)
+
+    def gps_is_derived(self, upn_key: str) -> bool:
+        """True when this trip picture's coordinate was placed by a person
+        (paste, map, place lookup) — GPSProcessingMethod = MANUAL. A camera's fix
+        and a master reference card are never 'derived' here."""
+        if upn_key in self._master_keys or self._view_read_only:
+            return False
+        from gui.geolocate import GPS_MANUAL
+        row = self.fpr.upn.UniquePictureName_dict.get(upn_key) or {}
+        if (row.get("GPSProcessingMethod") or "").strip().upper() == GPS_MANUAL:
+            return True
+        for fname in self._files(upn_key):
+            frow = self.fpr.fi.files_dict.get(fname) or {}
+            if (frow.get("EXIF:GPSProcessingMethod") or "").strip().upper() == GPS_MANUAL:
+                return True
+        return False
+
+    def note_gps_removed(self, upn_key: str) -> None:
+        """Remove GPS + place just cleared this picture's hand-placed coordinate
+        and place name from its files: blank the same in the picture row and the
+        file rows, and save the day."""
+        if upn_key in self._master_keys:
+            return
+        from engine.csv_columns import PICTURE_FIELDS
+        for fname in self._files(upn_key):
+            frow = self.fpr.fi.files_dict.get(fname)
+            if not frow:
+                continue
+            for k in self._GPS_FILE_KEYS + tuple(f"XMP:{f}" for f in self._LOC_FIELDS):
+                if frow.get(k):
+                    frow[k] = ""
+        row = self.fpr.upn.UniquePictureName_dict.get(upn_key)
+        if row is None:
+            return
+        for col in ("GPSPosition", "GPSProcessingMethod", "GPSAltitude") + self._LOC_FIELDS:
+            if col in PICTURE_FIELDS and row.get(col):
+                row[col] = ""
+        self._persist_upn(upn_key, True)
+
+    # ── capture date for dateless pictures (twins of PreviewCollection's) ─────
+    def date_targets(self, upn_key: str):
+        """This trip picture's JPG/HEIC/PNG files on disk — where Set date/time…
+        writes a capture date. Never a RAW or a sidecar; nothing for a master
+        reference card or in a view-only viewer."""
+        if self._view_read_only or upn_key in self._master_keys:
+            return []
+        from utils.raw_extensions import JPEG
+        ok = {e.lstrip(".") for e in (JPEG | HEIC | {".png"})}
+        return [str(p) for e, p, _r in self._live_trip_files(upn_key) if e in ok]
+
+    def date_is_by_hand(self, upn_key: str) -> bool:
+        """The capture date carries the MANUAL mark (Set date/time…). Read from
+        the files, once per picture: the first question reads every not-yet-known
+        picture of the shown species in ONE exiftool call."""
+        known = self.__dict__.setdefault("_dates_by_hand", {})
+        if upn_key not in known:
+            todo = [k for k in self._order if k not in known] or [upn_key]
+            if upn_key not in todo:
+                todo.append(upn_key)
+            for k in todo:
+                known[k] = False
+            try:
+                from engine.capture_date_write import read_capture_info, _norm
+                files_by_key = {k: self.date_targets(k) for k in todo}
+                info = read_capture_info([f for fs in files_by_key.values() for f in fs])
+                for k, fs in files_by_key.items():
+                    known[k] = any(info.get(_norm(f), (None, False))[1] for f in fs)
+            except Exception as e:
+                logger.debug(f"reading hand-set dates skipped: {e}")
+        return known[upn_key]
+
+    def capture_times(self) -> list:
+        """Every capture time this viewer's trip (or day) already holds — not just
+        the shown species — so Set date/time… never gives a picture a second some
+        other picture of the trip already has."""
+        from datetime import datetime
+        out = []
+        for row in self.fpr.upn.UniquePictureName_dict.values():
+            try:
+                out.append(datetime.strptime(
+                    str(row.get("DateTimeOriginal") or "").strip()[:19], "%Y:%m:%d %H:%M:%S"))
+            except ValueError:
+                pass
+        return out
+
+    def day_of(self, upn_key: str) -> str:
+        """The trip day (YYYY-MM-DD folder) this picture belongs to, or ''."""
+        return self._upn_day_map.get(upn_key) or ""
+
+    def note_date_written(self, upn_key: str, stamp: str) -> None:
+        """A capture date was just written into this picture's files: put it in
+        the picture row and file rows (card, sort, blog) and save the day."""
+        self.date_is_by_hand(upn_key)
+        self._dates_by_hand[upn_key] = True
+        for fname in self._files(upn_key):
+            frow = self.fpr.fi.files_dict.get(fname)
+            if frow is not None and (frow.get("WindowsExtension", "").lower()
+                                     in ("jpg", "jpeg", "heic", "heif", "hif", "png")):
+                frow["EXIF:DateTimeOriginal"] = stamp
+        row = self.fpr.upn.UniquePictureName_dict.get(upn_key)
+        if row is not None:
+            row["DateTimeOriginal"] = stamp
+        self._persist_upn(upn_key, True)
+
     def cancel_pending_loads(self) -> None:
         self._loader.cancel_all()
 

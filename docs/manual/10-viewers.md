@@ -176,6 +176,13 @@ whole selection. Two of its entries name the pictures:
 | **Set species…** | Identify the whole selection at once |
 | **Move to existing species…** | Reassign the selection to a *different existing* species — the two swans mislabelled among the ducks. Constrained to the trip's species list: no new species, no GBIF lookup. |
 
+In a trip, the same menu also has the place and time entries of the culling
+grid (see [Fixing where and when a picture was taken](#fixing-where-and-when-a-picture-was-taken)):
+**Copy / Paste GPS + place**, **Remove GPS + place…**, **Copy date/time** and
+**Set date/time…**. Only **Move to day…** is not here: when a new date falls on
+another day of the trip, the Species Viewer says so, and you move the picture
+from that day's culling grid.
+
 **Esc** clears the selection.
 
 > **"look in trip names"** in the Set species dialog narrows its as-you-type
@@ -256,7 +263,8 @@ Select cards and **right-click** one to act on the whole selection;
 ### Fixing where and when a picture was taken
 
 The right-click menu of a trip day has three pairs of entries for pictures with
-a missing or wrong place or time. Each acts on the selection, or else on the
+a missing or wrong place or time (all but **Move to day…** are in the trip's
+Species Viewer too). Each acts on the selection, or else on the
 picture you clicked.
 
 | Menu item | Does |
