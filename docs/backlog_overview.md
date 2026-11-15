@@ -35,7 +35,7 @@ Madagascar starts 28 Oct: everything here is for **after the trip**.
 | 3.2 | ~~“All N files from this card are verified present”~~ — **done 15 Nov**: the read ends with “✅ All N picture(s) from this card for the chosen days are here” or “⚠️ Only n of N …”. New copies are size-checked, ones already here compared in full. | 18 |
 | 3.3 | ~~Master Species Viewer: search like the Biota Browser~~ — **done 28 Oct** (one picker for Trip/Album/Master, any name, 3+ letters). Left: the photo count next to each match. | 3 |
 | 3.4 | **AVI lists: choose the sheet** of a workbook with several sheets. | 9 |
-| 3.5 | Blog index rewritten when the trip banner changes, for a trip with no days yet (parked 27 Oct). | 7 |
+| 3.5 | ~~Blog index rewritten when the trip banner changes~~ — **mostly answered 15 Nov** by the fixed banner name: “Use as … banner…” always writes `tripbanner.jpg`, so once a trip uses it the pages never need rewriting for a new banner. Left until a trip runs into it: a trip still on its own banner name needs its pages written once after the switch, and a trip's banner reaches the server only at Publish / Rebuild website. | 7 |
 | 3.6 | Filter a viewer by camera (wishlist; typing `img` in Find file works today). | 9 |
 
 ## 4. Bigger features and decisions (L)
