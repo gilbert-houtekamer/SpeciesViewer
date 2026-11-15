@@ -1522,6 +1522,38 @@ class ReadSDCardDialog(QDialog):
     # Worth having here specifically because Read SD-cards now runs
     # non-modal (see on_view above), so it's exactly the kind of long-lived
     # window you want to find again while working elsewhere.
+    # Where the window's centre was when it last closed (this session), so it
+    # opens again where you put it rather than where Windows drops it (top-left,
+    # after the taskbar fix's hide/show). None = centre on the main window.
+    _last_centre = None
+
+    def _place(self):
+        """Put the window's centre where it was last time (or on the main
+        window), kept on a visible screen."""
+        from PyQt6.QtCore import QPoint
+        centre = ReadSDCardDialog._last_centre
+        if centre is None:
+            host = self.parentWidget().window() if self.parentWidget() else None
+            if host is None:
+                return
+            centre = host.frameGeometry().center()
+        frame = self.frameGeometry()
+        frame.moveCenter(QPoint(centre))
+        screen = (QGuiApplication.screenAt(frame.center()) or self.screen()
+                  or QGuiApplication.primaryScreen())
+        if screen is not None:
+            avail = screen.availableGeometry()
+            frame.moveLeft(max(avail.left(), min(frame.left(),
+                                                 avail.right() - frame.width() + 1)))
+            frame.moveTop(max(avail.top(), min(frame.top(),
+                                               avail.bottom() - frame.height() + 1)))
+        self.move(frame.topLeft())
+
+    def hideEvent(self, event):
+        if not getattr(self, "_placing", False):
+            ReadSDCardDialog._last_centre = self.frameGeometry().center()
+        super().hideEvent(event)
+
     def showEvent(self, event):
         super().showEvent(event)
         if getattr(self, "_taskbar_fix_scheduled", False):
@@ -1529,7 +1561,18 @@ class ReadSDCardDialog(QDialog):
         self._taskbar_fix_scheduled = True
         from PyQt6.QtCore import QTimer
         from gui.window_state import give_independent_taskbar_entry
-        QTimer.singleShot(0, lambda: give_independent_taskbar_entry(self))
+        self._place()
+
+        def taskbar_then_place():
+            # The taskbar fix hides and re-shows the window, and Windows may
+            # move it while doing so — place it again afterwards.
+            self._placing = True
+            try:
+                give_independent_taskbar_entry(self)
+            finally:
+                self._placing = False
+            self._place()
+        QTimer.singleShot(0, taskbar_then_place)
         # Trip mode scans at once: which days a card or dump holds is the first
         # thing you need to see, and the choice is yours to make from there.
         if self.trip_mode and not self._auto_scanned:
@@ -2097,10 +2140,18 @@ class ReadSDCardDialog(QDialog):
         # Window decorations are outside width()/height() but inside the work area.
         chrome_w = max(frame.width() - self.width(), 0)
         chrome_h = max(frame.height() - self.height(), 0)
+        centre = frame.center()
         self.resize(min(want_w, avail.width() - chrome_w),
                     min(want_h, avail.height() - chrome_h))
 
+        # Grow or shrink around the CENTRE, not the top-left corner: a dialog
+        # that opened centred stays centred after "Scan days" changes its size
+        # (backlog 1.3), and one the person moved stays where they put it.
         frame = self.frameGeometry()
+        if self.isVisible():
+            frame.moveCenter(centre)
+            self.move(frame.topLeft())
+            frame = self.frameGeometry()
         if avail.contains(frame):
             return
         frame.moveLeft(max(avail.left(), min(frame.left(),
