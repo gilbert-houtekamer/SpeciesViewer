@@ -1,5 +1,14 @@
 #!/usr/bin/env python3
-"""Put the <?xpacket?> wrapper back on sidecars that lost it.
+"""RETIRED 2026-11-15 — kept for reference only. DO NOT RUN ON A MASTER.
+
+Its test for damage ("no xpacket wrapper") is wrong for a master, where ~58,000
+healthy sidecars (PhotoLab and others) have no wrapper: --apply on a master root
+would rewrite all of them. The cause it repaired (SV's old ElementTree crop
+writer) is gone, and both repairs are done (Sep 2026 trip folders, 28 Oct 2026
+24 master files). If the damage ever returns, start here AND test for the real
+damage (exiftool -validate "Duplicate XMP property") instead of the wrapper.
+
+Put the <?xpacket?> wrapper back on sidecars that lost it.
 
 An XMP sidecar is an xpacket: a `<?xpacket begin=...?>` processing instruction,
 the `x:xmpmeta` document, and a `<?xpacket end="w"?>` trailer. SpeciesViewer's
@@ -22,7 +31,7 @@ import shutil
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "speciesviewer"))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent / "speciesviewer"))
 
 BEGIN = '<?xpacket begin="\ufeff" id="W5M0MpCehiHzreSzNTczkc9d"?>\n'
 END = '\n<?xpacket end="w"?>\n'

@@ -15,9 +15,9 @@ Madagascar starts 28 Oct: everything here is for **after the trip**.
 |---|------|------|-------|
 | 1.1 | ~~Two wrong coordinates found by the coarse-GPS scan~~ — **done 15 Nov**. South Africa elephant (P6240939): State/Country fixed to North West / South Africa in sidecar + master (site page follows on rebuild). Galapagos: 72 penguin pictures of one 18-min snorkel (6 May 2015) share the TG-3's last surface fix — not an error, left as is. The other 789 of the 791: report first, decide later. | S / M | Wrong maps on the site |
 | 1.2 | ~~Trip dates and the days it holds can disagree~~ — **done 15 Nov** (a054b84): after a step, a read day outside the trip's dates gets one question to widen them; a wider planned range is never questioned. | S | |
-| 1.3 | Read-Card dialog shrinks after Scan days but isn't re-centred (ch. 1). | S | Cosmetic |
-| 1.4 | **Master sidecars repaired 28 Oct — check the colours** (ch. 3). 24 master `.XMP` files exiftool refused (21 Extremadura 2026, 1 each Braakman, North Greece, Gran Canaria) were repaired. Compare the other 19's colour/rating with the master database: an edit may have been refused before. (The 5 vultures edited that evening: re-set by hand.) | S | Report first |
-| 1.5 | **The XMP repair tool would rewrite the whole master** (ch. 3). `svr_xmp_wrapper_repair.py` treats "no xpacket wrapper" as damage — normal for ~58,000 master sidecars. Make it look for the real damage (a duplicated property) before anyone runs it with `--apply` on the master. | S | Safety |
+| 1.3 | ~~Read-Card dialog shrinks after Scan days but isn't re-centred (ch. 1)~~ — **done 15 Nov** (b11047f): resizes keep the centre; reopens where it was last closed. | S | Cosmetic |
+| 1.4 | ~~Master sidecars repaired 28 Oct — check the colours~~ — **closed 15 Nov**: Extremadura/Braakman/North Greece agree with the master; one Gran Canaria picture (ds5_6925) has 0 stars in its sidecar vs 2 in the master, and four vultures differ between RAW sidecar and JPG — judged unimportant, left as is. | S | |
+| 1.5 | ~~The XMP repair tool would rewrite the whole master~~ — **closed 15 Nov**: tool retired to `tools/retired/` (its cause is gone, both repairs done); a note says never to run it on a master. | S | Safety |
 
 ## 2. Built, waiting for a live test
 
