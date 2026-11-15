@@ -675,6 +675,27 @@ class SpeciesInfoPanel(QWidget):
         selected.update(self._selected_qualifiers())   # toggles win over field text
         return build_species_subject(name, selected)
 
+    def _learn_local_name(self, name: str) -> bool:
+        """"Local name…": ask which species `name` means, keep it as an alias
+        (master and trip, the same as the culling panel does) and put that
+        species in the field, keeping any qualifiers typed after the name.
+        False when cancelled or the name could not be kept."""
+        from gui.culling_species import (LocalNameDialog, build_species_subject,
+                                         remember_local_name)
+        sc = self._fpr.sc
+        dlg = LocalNameDialog(sc, name, self)
+        if dlg.exec() != QDialog.DialogCode.Accepted:
+            self.status_label.setText("Commit cancelled — name not stored.")
+            return False
+        ok, msg = remember_local_name(sc, name, dlg.sci)
+        if not ok:
+            QMessageBox.warning(self, "Name not kept", msg)
+            return False
+        _name, field_quals = _subject_name_and_quals(self.subject_field.get_text())
+        self.subject_field.set_text(build_species_subject(dlg.chosen, field_quals))
+        logger.info(f"Local name '{name}' kept for {dlg.sci}.")
+        return True
+
     def _do_commit(self):
         corrected_subject = self._compose_subject()
         fpr = self._fpr
@@ -701,11 +722,23 @@ class SpeciesInfoPanel(QWidget):
             except Exception:
                 _lookup = corrected_subject
             if not fpr.sc.getSpecies(_lookup):
-                reply = QMessageBox.question(
-                    self, "Unknown species",
+                box = QMessageBox(
+                    QMessageBox.Icon.Question, "Unknown species",
                     f"'{_lookup}' is not a known species (not in your list and not "
-                    f"found in GBIF).\n\nStore it anyway as a placeholder or a new species?",
-                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+                    f"found in GBIF).\n\n"
+                    f"Yes — store it anyway, as a placeholder or a new species.\n"
+                    f"No — don't store it.\n"
+                    f"Local name — it is another name for a species you have; "
+                    f"remember it.",
+                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, self)
+                local_btn = box.addButton("Local name…", QMessageBox.ButtonRole.ActionRole)
+                box.setDefaultButton(QMessageBox.StandardButton.No)
+                box.exec()
+                if box.clickedButton() is local_btn:
+                    if self._learn_local_name(_lookup):
+                        self._do_commit()     # the field now holds the species
+                    return
+                reply = box.standardButton(box.clickedButton())
                 if reply != QMessageBox.StandardButton.Yes:
                     self.status_label.setText("Commit cancelled — name not stored.")
                     logger.info(f"Commit cancelled: '{_lookup}' not stored (unknown species).")

@@ -31,7 +31,7 @@ Madagascar starts 28 Oct: everything here is for **after the trip**.
 
 | # | What | Chapter |
 |---|------|---------|
-| 3.1 | **“Local name…” in the pipeline Species Editor** too (it only has Yes/No for an unknown name). | 6 |
+| 3.1 | ~~“Local name…” in the pipeline Species Editor too~~ — **done 15 Nov**: Yes / No / Local name…, same window and saving as the culling panel. | 6 |
 | 3.2 | **“All N files from this card are verified present”** — one closing line; the checksums already exist. | 18 |
 | 3.3 | ~~Master Species Viewer: search like the Biota Browser~~ — **done 28 Oct** (one picker for Trip/Album/Master, any name, 3+ letters). Left: the photo count next to each match. | 3 |
 | 3.4 | **AVI lists: choose the sheet** of a workbook with several sheets. | 9 |
