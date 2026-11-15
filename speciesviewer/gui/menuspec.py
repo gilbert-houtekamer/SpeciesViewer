@@ -528,6 +528,21 @@ def build_menu_spec(main_window):
 
     count_species.callback = _show_count_species
 
+    def _show_album_count_species():
+        # The album's own Count Species: the same independent window as the
+        # trip's, reading the master over the album's dates.
+        import batch.svv7CountSpecies
+        from gui.trip_process import AlbumCountSpeciesDialog
+        from gui.virttrip_process import _virttrip_spec
+        spec = _virttrip_spec(batch.svv7CountSpecies.main,
+                              "Counting the album's species ...",
+                              "✅ Species report will be shown.")
+        dlg = AlbumCountSpeciesDialog(main_window, spec)
+        main_window._album_count_species_dialog = dlg
+        dlg.show()
+        dlg.raise_()
+        dlg.activateWindow()
+
     def _show_trip_trash():
         # The pictures deleted on this trip's days: look, restore, discard.
         # Independent window like Count Species; main_window keeps the reference.
@@ -2011,6 +2026,14 @@ def build_menu_spec(main_window):
                 tooltip="List this album on the site's trip index, or remove it from there",
             ),
             f"{MenuSpec.separator()}_vt3": None,
+            "Count Species": MenuSpec(
+                callback=lambda: _show_album_count_species(),
+                title="Count Species",
+                enabled=has_active_album,
+                tooltip="One row per species, one column per day; flags species "
+                        "with no JPG",
+                showsubdirectory=False,
+            ),
             "Album Species Viewer": MenuSpec(
                 callback=lambda: main_window.open_virttrip_rating_editor(),
                 title="Album Species Viewer",

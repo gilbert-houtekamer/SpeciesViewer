@@ -4596,6 +4596,15 @@ class CountSpeciesDialog(BaseTripModuleDialog):
         # user may have set it deliberately.
         self.resize(max(want, 600), self.height())
 
+    def _reports_dir(self) -> Path:
+        """Where the step writes its report (the album version overrides it)."""
+        return Path(_config.get("trip", "tripbiotadatabase")) / "metadata" / "reports"
+
+    def _save_folder(self) -> list:
+        """Where Save As / Save Species Table start: [] = the trip's picture
+        folder (start_file's own default). The album version overrides it."""
+        return []
+
     def on_write(self):
         if self.subdirectory:
             selected_subdir = self.subdir_dropdown.currentText()
@@ -4603,7 +4612,7 @@ class CountSpeciesDialog(BaseTripModuleDialog):
 
         def load_report():
             try:
-                reports_dir = Path(_config.get("trip", "tripbiotadatabase")) / "metadata" / "reports"
+                reports_dir = self._reports_dir()
                 report_path = reports_dir / "Species overview.txt"
                 if report_path.exists():
                     with open(report_path, "r", encoding="utf-8") as f:
@@ -4648,7 +4657,7 @@ class CountSpeciesDialog(BaseTripModuleDialog):
 
     def save_report(self):
         from utils.start_folder import start_file
-        default_path = start_file([], "Species overview.txt")   # the trip's picture folder
+        default_path = start_file(self._save_folder(), "Species overview.txt")
         filename, _ = QFileDialog.getSaveFileName(
             self, "Save Report As", default_path, "Text Files (*.txt);;All Files (*)"
         )
@@ -4662,8 +4671,7 @@ class CountSpeciesDialog(BaseTripModuleDialog):
         on these days). The step writes the table next to the text report;
         this only converts it to the format the user picks."""
         import csv
-        source = (Path(_config.get("trip", "tripbiotadatabase")) / "metadata"
-                  / "reports" / "Species overview.csv")
+        source = self._reports_dir() / "Species overview.csv"
         if not source.exists():
             QMessageBox.information(
                 self, "Save Species Table",
@@ -4672,7 +4680,7 @@ class CountSpeciesDialog(BaseTripModuleDialog):
         with open(source, "r", encoding="utf-8-sig", newline="") as f:
             rows = list(csv.reader(f))
         from utils.start_folder import start_file
-        default_path = start_file([], "Species table.xlsx")     # the trip's picture folder
+        default_path = start_file(self._save_folder(), "Species table.xlsx")
         filename, chosen = QFileDialog.getSaveFileName(
             self, "Save Species Table As", default_path,
             "Excel Workbook (*.xlsx);;CSV (*.csv)")
@@ -4696,7 +4704,7 @@ class CountSpeciesDialog(BaseTripModuleDialog):
                 ws.auto_filter.ref = ws.dimensions
                 ws.freeze_panes = "C2"
                 widths = {"Nr": 5, "Group": 8, "English": 32, "Dutch": 32,
-                          "Scientific": 30, "New": 6, "Days": 6, "Pics": 6,
+                          "Scientific": 30, "New": 6, "Stars": 6, "Days": 6, "Pics": 6,
                           "Best": 6, "JPG": 6}
                 from openpyxl.styles import Alignment
                 from openpyxl.utils import get_column_letter
@@ -4724,6 +4732,32 @@ class CountSpeciesDialog(BaseTripModuleDialog):
     def copy_to_clipboard(self):
         clipboard = QGuiApplication.clipboard()
         clipboard.setText(self.report_viewer.toPlainText())
+
+class AlbumCountSpeciesDialog(CountSpeciesDialog):
+    """Count Species for the active album: the same window, report and
+    spreadsheet export as a trip's, built from the master over the album's
+    dates (batch.svv7CountSpecies). No New column; best stars in its place."""
+
+    def __init__(self, parent, menu_spec):
+        super().__init__(parent, menu_spec)
+        self.setWindowTitle("Count Species — Album")
+        # The base window names the active TRIP's folder; this is the album's.
+        self.root_caption.setText("Album folder")
+        self.info_text.setText("Count the species in this album: one row per species, "
+                               "one column per day, read from the master.")
+        self.root_label.setText(str(self._album_root()))
+
+    @staticmethod
+    def _album_root() -> Path:
+        return Path(_config.get("virttrip", "virttripbiotadatabase", fallback="")
+                    .replace('"', "").replace("'", "").strip())
+
+    def _reports_dir(self) -> Path:
+        return self._album_root() / "metadata" / "reports"
+
+    def _save_folder(self) -> list:
+        return [str(self._album_root())]
+
 
 class BlogAdminDialog(QDialog):
     """Manage the trip's blog_admin.csv: review and delete blog entries.

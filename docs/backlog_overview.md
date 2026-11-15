@@ -44,7 +44,7 @@ Madagascar starts 28 Oct: everything here is for **after the trip**.
 |---|------|---------|
 | 4.1 | **Decide how capture time is stored** — A (camera's own, today), B (normalise to local), C (add a UTC column). Touches sidecars, data_files, website and master; the backlog leans to C. | 17 |
 | 4.2 | **Create JPG size for a RAW** — 3200–8640 px depending on the body; resize like the others? NEEDS DECISION. | 7 |
-| 4.3 | **Count Species for an Album** — the trip report (species × days, colours, the export) plus the no-JPG flag. | 2 |
+| 4.3 | ~~Count Species for an Album~~ — **done 15 Nov**: Albums ▸ Count Species — the trip's report over the album's dates in the master (★ in place of New), spreadsheet export and the no-JPG line. | 2 |
 | 4.4 | **Wikipedia beside the species** — a link (or summary) on the species page and in the app, EN and NL. Link free; quoting needs attribution (CC BY-SA). | 6 |
 | 4.5 | **Aliases elsewhere** — reading a tour operator's list, the waarneming.nl import, search by a remembered name. | 6 |
 | 4.6 | **Another language *instead of* Dutch** — English stays; the second language becomes the user's own (French, German, …), so the program suits every user. Design together with the species list (ch. 6). | 24 |
