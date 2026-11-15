@@ -2408,6 +2408,24 @@ class ReadSDCardDialog(QDialog):
             return f"⚠️ Done, but {failed} picture(s) FAILED to copy —"
         return "✅ Done —"
 
+    @staticmethod
+    def _complete_txt(summary) -> str:
+        """The closing sentence: did every picture this read was meant to bring
+        arrive? Says it plainly either way; empty when the summary can't tell
+        (an aborted run reports itself)."""
+        expected = summary.get("expected")
+        present = summary.get("present")
+        if expected is None or present is None or summary.get("error"):
+            return ""
+        if expected <= 0:
+            return ""
+        if present >= expected:
+            return (f"\n✅ All {expected} picture(s) from this card for the chosen "
+                    f"days are here: each new copy checked, each one already here "
+                    f"identical to the card.")
+        return (f"\n⚠️ Only {present} of the {expected} picture(s) from this card for "
+                f"the chosen days are here — keep the card and read it again.")
+
     def _log_read_done(self, text):
         """Closing log line for a finished Read, at the level the outcome
         deserves — see _done_marker."""
@@ -2695,7 +2713,7 @@ class ReadSDCardDialog(QDialog):
             self.logger.warning(f"⏹ Card read aborted. {msg}")
             self.status_label.setText(f"⚠️ {msg}")
         else:
-            msg = f"Copied {copied}{renamed_txt}, {tail}"
+            msg = f"Copied {copied}{renamed_txt}, {tail}{self._complete_txt(summary)}"
             if geocode_follows:
                 # Not "done" yet — the geocode phase below is still to come, and a
                 # premature ✅/"complete" here read as success while the log kept

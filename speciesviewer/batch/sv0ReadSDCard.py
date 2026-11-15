@@ -1788,6 +1788,19 @@ def copy_card(source, dest, prefix="", bucket_by_date=False, tz_offset_hours=0.0
             1 for t in raw_targets if not Path(t).with_suffix(".xmp").exists()
             and not Path(t).with_suffix(".XMP").exists())
 
+    # ── Did the card arrive complete? ─────────────────────────────────────
+    # Every picture this read was meant to bring (the chosen days, minus those
+    # deleted during the trip) is accounted for when it was copied now (size
+    # checked after the copy) or was already here with identical content
+    # (size + SHA-256), or a newer render of it is here. `expected - present`
+    # is what did NOT arrive: failed, or not reached because of a cancel.
+    expected = (total - summary["deselected"] - summary["culled"]
+                - summary.get("deleted_here", 0))
+    present = (summary["copied"] + summary["skipped"]
+               + summary.get("older_kept", 0))
+    summary["expected"] = expected
+    summary["present"] = present
+
     line = (
         f"Card read summary — copied {summary['copied']} (of which {summary['renamed']} renamed), "
         f"skipped {summary['skipped']}, deselected {summary['deselected']}, "

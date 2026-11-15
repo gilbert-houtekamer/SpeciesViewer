@@ -32,7 +32,7 @@ Madagascar starts 28 Oct: everything here is for **after the trip**.
 | # | What | Chapter |
 |---|------|---------|
 | 3.1 | ~~“Local name…” in the pipeline Species Editor too~~ — **done 15 Nov**: Yes / No / Local name…, same window and saving as the culling panel. | 6 |
-| 3.2 | **“All N files from this card are verified present”** — one closing line; the checksums already exist. | 18 |
+| 3.2 | ~~“All N files from this card are verified present”~~ — **done 15 Nov**: the read ends with “✅ All N picture(s) from this card for the chosen days are here” or “⚠️ Only n of N …”. New copies are size-checked, ones already here compared in full. | 18 |
 | 3.3 | ~~Master Species Viewer: search like the Biota Browser~~ — **done 28 Oct** (one picker for Trip/Album/Master, any name, 3+ letters). Left: the photo count next to each match. | 3 |
 | 3.4 | **AVI lists: choose the sheet** of a workbook with several sheets. | 9 |
 | 3.5 | Blog index rewritten when the trip banner changes, for a trip with no days yet (parked 27 Oct). | 7 |
