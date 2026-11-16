@@ -564,16 +564,18 @@ and <code>docs/plans/taxonomy_order_design.md</code>.</p>
     a link is free, quoting text needs attribution.</li>
   <li><span class="tag-parked">PARKED</span> <strong>Auto-detect obscure flag</strong> — derive from
     the GBIF family, no extra API call.</li>
-  <li><span class="tag-open">OPEN</span> <strong>Uncertain identifications</strong>
-    (agreed 16 Nov 2026; replaces &ldquo;Identified to genus or family only&rdquo; and the
-    placeholder cleanup). A swift lizard that is surely <em>Oplurus</em> but not which one becomes
-    &ldquo;Oplurus sp.&rdquo;, filed under its family with a place in the species order and a page.
-    Each identification also gets a certainty: certain, probable (&ldquo;cf.&rdquo;) or possible
-    (&ldquo;?&rdquo;). Complexes (species a photo cannot separate) are defined in SV. An
-    <em>Uncertain</em> view, like the one for missing GPS, lists the hard cases to review with a
-    guide. Only a certain species ever counts. The &ldquo;? &lt;name&gt;&rdquo; placeholder
-    retires. First step: moving a master picture that has JPGs to another species.
+  <li><span class="tag-complete">DONE 16 Nov</span> <strong>Uncertain identifications</strong>
+    (commits 5bb4dd1, d084fdc, 6b9c616, 595b487). A master picture with JPGs can move to another
+    species, with undo. A group &ldquo;Oplurus sp.&rdquo; is filed under its family and has a page.
+    Each identification has a certainty: certain, probable (&ldquo;cf.&rdquo;) or possible
+    (&ldquo;?&rdquo;). Only a certain species counts. Review the open ones with the purple
+    <em>?</em> filter in the Image Viewer or <em>Uncertain only</em> in the Master Species Viewer;
+    the master&rsquo;s Check now warns when a count is wrong. The &ldquo;? &lt;name&gt;&rdquo;
+    placeholder is retired: the master held none, and one stray species-list row was fixed by hand.
     Plan: <code>docs/plans/uncertain_ids_plan.md</code>.</li>
+  <li><span class="tag-parked">PARKED</span> <strong>Complexes, defined in SV</strong> &mdash;
+    species a photo cannot separate, with their own Dutch and English names and member species.
+    Waits for a real case; needs a short design first (phase 5 of the plan above).</li>
   <li><span class="tag-parked">PARKED</span> <strong>Regional most-likely-birds</strong> (eBird).</li>
       <li><strong>A genuinely different name</strong> for the same bird —
         <em>Bank Swallow</em> against <em>Sand Martin</em>, <em>Mealy Amazon</em> against

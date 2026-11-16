@@ -197,6 +197,17 @@ later. Four guards keep it safe:
 
 ### Phase 4: Retire "?"
 
+*Done 16 Nov 2026 without a tool (option B).* The inventory found no "?",
+"cf." or trailing-"?" name in the main master (79,937 pictures, 3,029 species
+rows, 26,836-row species list). The trips held only list rows that no picture
+used. The one master row, `nymphalis l-album` "? false comma", was a duplicate
+of `polygonia vaualbum` (compton tortoiseshell). It was removed by hand, and
+"nymphalis l-album" and "false comma" became aliases. The 2017 Oostzee trip's
+lists were cleaned too. The "?" guards in the counting rule and the merge stay
+as cheap insurance. Typing "? name" is still possible; there is no conversion.
+
+*The original plan, kept for reference:*
+
 A repair tool, run as dry-run → review → apply over the master and every trip:
 
 | Today | Becomes |

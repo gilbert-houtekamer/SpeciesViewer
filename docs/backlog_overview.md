@@ -48,7 +48,8 @@ Madagascar starts 28 Oct: everything here is for **after the trip**.
 | 4.4 | **Wikipedia beside the species** — a link (or summary) on the species page and in the app, EN and NL. Link free; quoting needs attribution (CC BY-SA). | 6 |
 | 4.5 | **Aliases elsewhere** — reading a tour operator's list, the waarneming.nl import, search by a remembered name. | 6 |
 | 4.6 | **Another language *instead of* Dutch** — English stays; the second language becomes the user's own (French, German, …), so the program suits every user. Design together with the species list (ch. 6). | 24 |
-| 4.7 | **Uncertain identifications** — “Oplurus sp.” groups, certainty (probable “cf.” / possible “?”), complexes defined in SV, an Uncertain review view; only a certain species counts. Retires the “? name” kludge. Agreed 16 Nov; plan in `docs/plans/uncertain_ids_plan.md` (6 phases, phase 0 = move a master picture that has JPGs). | 6 |
+| 4.7 | ~~Uncertain identifications~~ — **done 16 Nov** (5bb4dd1, d084fdc, 6b9c616, 595b487): move master pictures with JPGs; “Oplurus sp.” groups; certainty (probable “cf.” / possible “?”); Uncertain review (purple ? in the Image Viewer, Uncertain only in the Master Species Viewer); only a certain species counts. “? name” retired by hand: none left in the master. Complexes split off as 4.8. | 6 |
+| 4.8 | **Complexes, defined in SV** — species a photo can't separate, with their own Dutch and English names and members. Parked until a real case; needs a short design first (phase 5 of `docs/plans/uncertain_ids_plan.md`). | 6 |
 
 ## 5. Refactors
 
