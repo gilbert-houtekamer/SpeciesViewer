@@ -207,8 +207,24 @@ def getFormattedLocation(picture, obscure=False, altitude=False, lang="en"):
         inner = f"{inner}, {alt}" if inner else alt
     return f"{place} ({inner})" if inner else place
 
+def has_page(node) -> bool:
+    """Does this taxon have a page on the site? It does when it has pictures.
+
+    NOT iSpeciesCollectionCount: that says "counts as a species", and a group
+    ("oplurus sp") or a species with only probable pictures has a page but no
+    count (engine/species_count.py). The species count is still accepted, so a
+    caller that only restored that one (the album blog redo) keeps its links."""
+    def n(col):
+        try:
+            return int(node.get(col, 0) or 0)
+        except (TypeError, ValueError):
+            return 0
+    return (n('iPictureCollectionCount') + n('iPictureThisRunCount')
+            + n('iSpeciesCollectionCount') + n('iSpeciesThisRunCount')) > 0
+
+
 def makeLinkScienticficName(MyProject, BiotaWebRoot, classification, workstr):
-    if classification['iSpeciesCollectionCount'] == 0:
+    if not has_page(classification):
         workstr +=  classification['ScientificName'].strip('0123456789 ').capitalize()
     else:
         workstr +=  '<a href="' + BiotaWebRoot + classification["TargetPath"] + classification["ScientificName"] + '-' + MyProject.getLanguage() +  '.html\"' + '>\n'
@@ -218,7 +234,7 @@ def makeLinkScienticficName(MyProject, BiotaWebRoot, classification, workstr):
 def makeLinkSpeciesDisplay(MyProject, BiotaWebRoot, species, display_html):
     """Wrap an already-formatted HTML fragment (e.g. '<i>Saxicola rubicola</i>')
     in a link to the species page within the current trip, if that page exists."""
-    if int(species.get('iSpeciesCollectionCount', 0)) == 0:
+    if not has_page(species):
         return display_html
     url = BiotaWebRoot + species["TargetPath"] + species["ScientificName"] + '-' + MyProject.getLanguage() + '.html'
     return '<a href="' + url + '">' + display_html + '</a>'
@@ -321,6 +337,24 @@ def formatSexe(upn):
             return ' ♂♀'
     except:
         pass
+    return ''
+
+def formatCertainty(upn):
+    """' cf.' / ' ?' after the name when the ID is probable / possible
+    (engine/species_count.py); '' when certain."""
+    from engine.species_count import CERTAINTY_MARK
+    mark = CERTAINTY_MARK.get((upn.get('certainty') or '').strip(), '')
+    return f' {mark}' if mark else ''
+
+def certaintySentence(upn, language):
+    """One sentence for the picture text when the ID is not certain."""
+    c = (upn.get('certainty') or '').strip()
+    if c == 'probable':
+        return (' De determinatie is waarschijnlijk, niet zeker.' if language == 'nl'
+                else ' The identification is probable, not certain.')
+    if c == 'possible':
+        return (' De determinatie is mogelijk, niet zeker.' if language == 'nl'
+                else ' The identification is possible, not certain.')
     return ''
 
 def formatAgePlumage(upn):
@@ -452,7 +486,7 @@ def getAltTextForJPG(MyProject, jpgname):
         # use &quot; for the href's delimiters.
         sci_html = sci_display
         species = MyProject.sp.species_dict.get(upn['WetSoortNaam'])
-        if species and int(species.get('iSpeciesCollectionCount', 0)) > 0:
+        if species and has_page(species):
             url = MyProject.getBiotaWebRoot() + species["TargetPath"] + species["ScientificName"] + '-' + MyProject.getLanguage() + '.html'
             sci_html = '<a href=&quot;' + url + '&quot;>' + sci_display + '</a>'
         names = sci_html + ' / ' + \
@@ -990,7 +1024,7 @@ def formatToken(tokenno, MyProject, species_param, file, picture):
                         elif picture['ageintext'] == 'juv.':
                             workstr += 'jonge ' + picture['NLSoortNaam'].lower() + '.'
                         elif picture['ageintext'] == 'imm.':
-                            workstr += 'onvolwassen ' +  + picture['NLSoortNaam'].lower() + '.'                     
+                            workstr += 'onvolwassen ' + picture['NLSoortNaam'].lower() + '.'                     
                     if picture['summerwinter'] == 'br.' and 'aves' in picture['TargetPath']:
                         workstr += ' De vogel is in broedkleed (zomerkleed).'                        
                     if picture['summerwinter'] == 'non-br.' and 'aves' in picture['TargetPath']:
@@ -1012,6 +1046,8 @@ def formatToken(tokenno, MyProject, species_param, file, picture):
                         workstr += ' The bird is in breeding (summer) plumage.'                        
                     if picture['summerwinter'] == 'non-br.' and 'aves' in picture['TargetPath']:
                         workstr += ' The vogel is in winter plumage.'   
+                # full disclosure: an identification that is not certain says so
+                workstr += certaintySentence(picture, language)
             except:
                 workstr = ""                    
             return workstr
@@ -1244,7 +1280,7 @@ def formatToken(tokenno, MyProject, species_param, file, picture):
         elif tokenno == 125:
             # Always output 3 lines (local name, English/Dutch, scientific) for consistent card height
             sci_display = formatSubspecies(species_local['ScientificName'].strip('0123456789 ')).capitalize()
-            sexe_age = formatSexe(picture) + formatAgePlumage(picture)
+            sexe_age = formatSexe(picture) + formatAgePlumage(picture) + formatCertainty(picture)
             dutch = species_local['DutchName']
             english = species_local['EnglishName']
             is_nl = MyProject.getLanguage() == 'nl'

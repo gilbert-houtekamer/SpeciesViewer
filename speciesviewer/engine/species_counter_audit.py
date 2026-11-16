@@ -18,6 +18,7 @@ import csv
 import logging
 from utils.ini_io import read_ini
 from utils.runtime_files import svconfig_path
+from engine.species_count import counts_as_species
 
 logger = logging.getLogger("speciesviewer")
 
@@ -36,7 +37,8 @@ def _parse_files(raw):
 
 def _actual_from_pictures(active_dir):
     """One pass over data_pictures.csv. Returns
-       (per_species, upn_set) where per_species[name] = {'pics', 'jpgs'}."""
+       (per_species, upn_set) where per_species[name] = {'pics', 'jpgs', 'counting'}
+    ('counting': the pictures that count as a species, engine/species_count.py)."""
     per = {}
     upns = set()
     path = os.path.join(active_dir, "data_pictures.csv")
@@ -48,8 +50,11 @@ def _actual_from_pictures(active_dir):
             sp = (r.get("WetSoortNaam") or "").strip().lower()
             if not sp:
                 continue
-            rec = per.setdefault(sp, {"pics": 0, "jpgs": 0})
+            rec = per.setdefault(sp, {"pics": 0, "jpgs": 0, "counting": 0})
             rec["pics"] += 1
+            # pictures that count as a species: certain, real species
+            if counts_as_species(sp, r.get("certainty") or ""):
+                rec["counting"] += 1
             files = _parse_files(r.get("Files", ""))
             if any(f.lower().endswith(_JPG_EXTS) for f in files):
                 rec["jpgs"] += 1

@@ -23,6 +23,7 @@ from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QCursor
 
 from engine.speciesclassification import SpeciesClassification, Level
+from engine.species_count import CERTAINTY_MARK, CERTAINTY_WORDS, POSSIBLE, PROBABLE
 from utils.config import _config, get_setting, set_setting
 from utils.gui_config import get_cache_gui_section, update_cache_gui_section
 from gui import theme
@@ -393,16 +394,32 @@ _RECENT_KEY = "recent_names"
 _RECENT_MAX = 20
 
 
+def _recent_form(name: str) -> str:
+    """One spelling per recent: a group always reads "furcifer sp." however it
+    was typed ("furcifer sp", "Furcifer spec."), so it gets one chip, not three."""
+    from engine.species_count import group_base, group_label
+    name = (name or "").strip()
+    base = group_base(name)
+    return group_label(base) if base else name
+
+
 def load_recent_species() -> list[str]:
     val = get_cache_gui_section(_RECENT_SECTION, _RECENT_KEY)
-    return [s for s in val if isinstance(s, str) and s.strip()] if isinstance(val, list) else []
+    out, seen = [], set()
+    for s in (val if isinstance(val, list) else []):
+        if isinstance(s, str) and s.strip():
+            s = _recent_form(s)
+            if s.lower() not in seen:
+                seen.add(s.lower())
+                out.append(s)
+    return out
 
 
 def remember_recent_species(name: str):
     """LRU bump: move `name` to the front of the recents (case-insensitive dedup),
     capped at _RECENT_MAX — so a re-used species rises to the top and the
     least-recently-used drops off the end."""
-    name = (name or "").strip()
+    name = _recent_form(name)
     if not name:
         return
     recent = [r for r in load_recent_species() if r.lower() != name.lower()]
@@ -426,7 +443,7 @@ def remember_species_from_subject(subject: str):
 
 def forget_recent_species(name: str):
     """Drop `name` from the recents (e.g. a wrong/untested name typed by mistake)."""
-    name = (name or "").strip()
+    name = _recent_form(name)
     if not name:
         return
     recent = [r for r in load_recent_species() if r.lower() != name.lower()]
@@ -483,6 +500,12 @@ QUALIFIER_GROUPS = [
     # Gambia's wet/dry seasons), so they map into "breeding" for back-compat.
     ("Plumage", [
         ("breeding", "breeding", {"breeding", "br.", "br", "summer", "zomer"}),
+    ]),
+    # How sure the identification is (engine/species_count.py). No button =
+    # certain, the default; only a certain picture counts as a species.
+    ("Certainty", [
+        ("probable", "probable", CERTAINTY_WORDS[PROBABLE]),
+        ("possible", "possible", CERTAINTY_WORDS[POSSIBLE]),
     ]),
 ]
 
@@ -734,7 +757,7 @@ class QualifierDialog(QDialog):
 
     def __init__(self, lineage: dict, preset: dict, n_pictures: int, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("Sex / age / plumage")
+        self.setWindowTitle("Sex / age / plumage / certainty")
         layout = QVBoxLayout(self)
 
         what = "this picture" if n_pictures == 1 else f"these {n_pictures} pictures"
@@ -871,12 +894,14 @@ _QUAL_ABBREV = {
     "male": "♂", "female": "♀", "couple": "♂♀",
     "juvenile": "juv.", "immature": "imm.", "adult": "ad.",
     "breeding": "br.",
+    "probable": CERTAINTY_MARK[PROBABLE], "possible": CERTAINTY_MARK[POSSIBLE],
 }
 # Keyed by the picture-record field values getBirdInfo produces (malefemale /
 # ageintext / summerwinter). non-br. is the default plumage, so it has no mark.
 _FIELD_ABBREV = {
     "male": "♂", "female": "♀", "couple": "♂♀",
     "juv.": "juv.", "imm.": "imm.", "ad.": "ad.", "br.": "br.",
+    "probable": CERTAINTY_MARK[PROBABLE], "possible": CERTAINTY_MARK[POSSIBLE],
 }
 
 
@@ -889,11 +914,12 @@ def qualifier_suffix_from_subject(subject: str) -> str:
     return (" " + " ".join(parts)) if parts else ""
 
 
-def qualifier_suffix_from_fields(malefemale="", ageintext="", summerwinter="") -> str:
+def qualifier_suffix_from_fields(malefemale="", ageintext="", summerwinter="",
+                                 certainty="") -> str:
     """Same compact suffix, built from the picture record's already-derived
-    malefemale / ageintext / summerwinter fields (e.g. master rows)."""
+    malefemale / ageintext / summerwinter / certainty fields (e.g. master rows)."""
     parts = [_FIELD_ABBREV.get((v or "").strip().lower(), "")
-             for v in (malefemale, ageintext, summerwinter)]
+             for v in (malefemale, ageintext, summerwinter, certainty)]
     parts = [p for p in parts if p]
     return (" " + " ".join(parts)) if parts else ""
 
@@ -1053,7 +1079,7 @@ class CullingSpeciesWidget(QWidget):
         # "<species>, <token>"; the pipeline reads them to caption the picture and
         # to show one best photo per age/sex/plumage on the species page. Single-
         # select within each row; click again to clear.
-        self._qual_header = QLabel("SEX / AGE / PLUMAGE — OPTIONAL")
+        self._qual_header = QLabel("SEX / AGE / PLUMAGE / CERTAINTY — OPTIONAL")
         self._qual_header.setStyleSheet(_MICRO)
         layout.addWidget(self._qual_header)
         self._qual_buttons: dict[int, list[tuple[QPushButton, str]]] = {}

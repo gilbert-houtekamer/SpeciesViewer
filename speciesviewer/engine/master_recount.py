@@ -207,7 +207,9 @@ def _recount(master_root):
             a = actual.get(name.lower(), {"pics": 0, "jpgs": 0})
             r["iPictureCollectionCount"] = str(a["pics"])
             r["iPicturesWithJPGsCollection"] = str(a["jpgs"])
-            r["iSpeciesCollectionCount"] = "1" if a["pics"] else "0"
+            # 1 only with a picture that COUNTS (certain, real species):
+            # engine/species_count.py — a page needs pictures, a count needs this
+            r["iSpeciesCollectionCount"] = "1" if a.get("counting") else "0"
             # no best picture, or one whose picture is gone: the best picture
             # with a JPG (Nemosia pileata: 3 with a JPG, none picked — the
             # website left the species off the All Species page). A picture

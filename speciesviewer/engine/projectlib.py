@@ -10,6 +10,7 @@ from engine.exceptions import SVException
 from engine.handling import read_file, read_pictures
 from engine.websupport import getTemplateOutputString
 from engine.specieslib import Level
+from engine.species_count import certainty_of, counts_as_species
 from engine.statemachine import getAllProjectStatus
 import engine.breadcrumb
 import engine.translatelib
@@ -828,6 +829,7 @@ class Project:
             "malefemale":       "",
             "ageintext":        "",
             "summerwinter":     "",
+            "certainty":        "",
             "errormessage":     "",
         }
         return PictureRecord
@@ -895,6 +897,7 @@ class Project:
         upn["malefemale"] = ""
         upn["ageintext"] = ""
         upn["summerwinter"] = ""    
+        upn["certainty"] = ""
         upn["errormessage"] = ""
 
         return upn
@@ -1050,6 +1053,8 @@ class Project:
                             picture.update(taxon_columns(sp.species_dict, species))
                             # 
                             upn["malefemale"], upn["ageintext"], upn["summerwinter"] = sp.getBirdInfo(thisfile['XMP:Subject'])
+                            # how sure the ID is — only a certain picture counts
+                            upn["certainty"] = certainty_of(thisfile['XMP:Subject'] or subject_in_jpg)
 
                             # picture['Class'] = next['Up']
                             # next = species_dict[next['Up']]
@@ -1124,7 +1129,11 @@ class Project:
             if upn['WetSoortNaam'] != "":               # did we find a species
                 species = sp.species_dict[upn['WetSoortNaam']]
                 species['iPictureThisRunCount'] = int(species['iPictureThisRunCount']) + 1        # add the pictures from this run, starting from 0
-                if (species['iSpeciesCollectionCount'] == 0): species['iSpeciesThisRunCount'] = int(1)                        
+                # A species is new this run only through a picture that COUNTS:
+                # certain, of a real species (engine/species_count.py).
+                if (int(species['iSpeciesCollectionCount']) == 0
+                        and counts_as_species(upn['WetSoortNaam'], upn.get('certainty', ''))):
+                    species['iSpeciesThisRunCount'] = int(1)
                 if upn['BestJPG'] != "":                # do we have a picture?
                     species['iPicturesWithJPGsThisRun'] = int(species['iPicturesWithJPGsThisRun']) + 1    # add the JPGs from this run, starting from 0
 
@@ -1207,8 +1216,12 @@ class Project:
                 else:
                     # species given, make sure we add it to dictionary 
                     if upn['WetSoortNaam'] not in SpeciesJPGCount:
-                        SpeciesJPGCount[upn['WetSoortNaam']] = [0,0,0,0,0]
-                    pictures, jpgs, starred, yellow_or_red, keep = SpeciesJPGCount[upn['WetSoortNaam']]
+                        SpeciesJPGCount[upn['WetSoortNaam']] = [0,0,0,0,0,0]
+                    pictures, jpgs, starred, yellow_or_red, keep, sure = SpeciesJPGCount[upn['WetSoortNaam']]
+                    # #Sure = the pictures that count as a species: a certain ID
+                    # (engine/species_count.py). Count Species numbers a species
+                    # only when some day has one.
+                    if counts_as_species(upn['WetSoortNaam'], upn.get('certainty', '')): sure += 1
                     if upn['Label'] in ["Red", "Yellow"]: yellow_or_red += 1
                     if upn['BestJPG'] != "": jpgs += 1
                     if upn['Rating'] > starred: starred = upn['Rating'] 
@@ -1217,7 +1230,7 @@ class Project:
                     # of the day's "Duplicate or bad quality" (Blue/Purple)
                     # count, so the two always add up to #Raw.
                     if upn['Label'] not in ["Blue", "Purple"]: keep += 1
-                    SpeciesJPGCount[upn['WetSoortNaam']] = [pictures+1, jpgs, starred, yellow_or_red, keep]
+                    SpeciesJPGCount[upn['WetSoortNaam']] = [pictures+1, jpgs, starred, yellow_or_red, keep, sure]
             # report
             if processedUPNs:
                 if NoGPSPos:
@@ -1245,17 +1258,19 @@ class Project:
                 # verify if JPGs are present for each species
                 if len(SpeciesJPGCount) > 0:
                     print("\nSpecies specified in this dir:\n", file=sf)
-                    print(f" #Raw  #JPG  Best Color    old  #Keep Name                             (Engels/Nederlands)", file=sf)
+                    print(f" #Raw  #JPG  Best Color    old  #Keep  #Sure Name                             (Engels/Nederlands)", file=sf)
                     for species in SpeciesJPGCount:
-                        pictures, jpgcount, starred, yellow_or_red, keep = SpeciesJPGCount[species]
+                        pictures, jpgcount, starred, yellow_or_red, keep, sure = SpeciesJPGCount[species]
                         knownjpg = sp.species_dict[species]['iPicturesWithJPGsCollection']
-                        print(f"{pictures:5} {jpgcount:5} {starred:5} {yellow_or_red:5} {knownjpg:6} {keep:6} {species:32} ({sp.species_dict[species]['EnglishName']} / {sp.species_dict[species]['DutchName']})", file=sf)
+                        print(f"{pictures:5} {jpgcount:5} {starred:5} {yellow_or_red:5} {knownjpg:6} {keep:6} {sure:6} {species:32} ({sp.species_dict[species]['EnglishName']} / {sp.species_dict[species]['DutchName']})", file=sf)
 
         return 0
 
     def getPictureAgeSexePlumage(self, upn):
         try:
-            str = upn['malefemale'] + upn['ageintext'] + upn['summerwinter']
+            # an uncertain ID is its own group on the species page, so a
+            # "probable" picture shows beside the certain ones, not instead
+            str = upn['malefemale'] + upn['ageintext'] + upn['summerwinter'] + (upn.get('certainty') or '')
         except:
             str = ""
         return str

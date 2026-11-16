@@ -1813,7 +1813,7 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
         elif (getattr(self, "_master_ops_enabled", False) and item is not None
                 and getattr(item, "from_master", False)
                 and not self._collection.master_read_only):
-            act_qualifiers = menu.addAction("Sex / age / plumage…")
+            act_qualifiers = menu.addAction("Sex / age / plumage / certainty…")
         act_rate = menu.addAction(f"Set rating…  ({lbl})")
         # Exposure suggestion for PhotoLab/Lightroom — same sidecar mechanism as
         # the large viewer's slider (gui/exposure_widget.py), offered here for

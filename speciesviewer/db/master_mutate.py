@@ -705,8 +705,8 @@ def new_species_rows(db, master_root, sci: str) -> list[dict]:
         for f in SPECIES_FIELDS:
             if f.startswith("i") or f == "currentHighestRating":
                 row[f] = 0
-        if i == len(chain) - 1:
-            row["iSpeciesCollectionCount"] = 1     # the species itself: it gets a picture
+        # every count starts at 0: the move itself sets the species' own count
+        # to 1 when the picture counts (a certain picture of a real species)
         rows.append(row)
     return rows
 
@@ -873,7 +873,7 @@ def _emptied(row: dict) -> dict:
     for f in ("iPictureCollectionCount", "iPicturesWithJPGsCollection",
               "currentHighestRating"):
         r[f] = 0
-    r["iSpeciesCollectionCount"] = 1        # the species itself, as new_species_rows
+    r["iSpeciesCollectionCount"] = 0        # as new_species_rows: the move-back sets it
     for f in ("BestJPG", "BestUPN", "BestJPGPathName"):
         r[f] = ""
     r["JPGmap"] = []

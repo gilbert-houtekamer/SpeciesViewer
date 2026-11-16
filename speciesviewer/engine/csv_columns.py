@@ -208,6 +208,10 @@ PICTURE_FIELDS = [
     # there is still exactly one rule, and one place a human can lean on it.
     # Same placement reason as Municipality: near the end, but BEFORE Headline.
     "BestJPGPinned",
+    # How sure the identification is: "" = certain, "probable" or "possible"
+    # (engine/species_count.py). Mirrors a keyword word, like malefemale does.
+    # Only a certain picture counts as a species. Same placement as above.
+    "certainty",
     # Headline LAST on purpose — so a trailing column drifts off a stale master header harmlessly.
     # Blog extras (the only Headline carriers) are excluded from the master,
     # so a trailing column drifts off the stale master header harmlessly

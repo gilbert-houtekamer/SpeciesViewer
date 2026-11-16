@@ -2410,7 +2410,7 @@ class LargeImageView(QDialog):
         if (key and getattr(item, "from_master", False)
                 and hasattr(self._collection, "apply_master_qualifiers")
                 and not getattr(self._collection, "master_read_only", True)):
-            act_qual = menu.addAction("Sex / age / plumage…")
+            act_qual = menu.addAction("Sex / age / plumage / certainty…")
             menu.addSeparator()
 
         act_geo = menu.addAction("Get location  (from GPS)")
@@ -3001,7 +3001,7 @@ class LargeImageView(QDialog):
             if (getattr(item, "from_master", False)
                     and hasattr(self._collection, "apply_master_qualifiers")
                     and not getattr(self._collection, "master_read_only", True)):
-                qbtn = QPushButton("Sex / age / plumage…")
+                qbtn = QPushButton("Sex / age / plumage / certainty…")
                 qbtn.setToolTip(
                     "Which form of the species this photo shows. The website publishes "
                     "one best photo per form, so this changes what appears.")

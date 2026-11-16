@@ -87,6 +87,10 @@ def collect_species_from_csv(path):
             continue
         if not counts_as_species(name):          # a group: "oplurus sp"
             continue
+        # species.csv: a row whose pictures are all uncertain counts 0 (option A)
+        sc_raw = (row.get("iSpeciesCollectionCount") or "").strip()
+        if sc_raw.isdigit() and int(sc_raw) == 0 and (row.get("iPictureCollectionCount") or "0").strip() not in ("", "0"):
+            continue
         raw_count = row.get("iPictureCollectionCount")
         if raw_count is not None and str(raw_count).strip().isdigit():
             if int(str(raw_count).strip()) == 0:
@@ -142,7 +146,8 @@ def collect_species_before(master_repo, before_date, sc_records=None):
                 if sc_records and topics.is_topic_node(sc_records, name):
                     topic_rows += 1
                     continue
-                if not counts_as_species(name):  # a group: "oplurus sp"
+                # a group ("oplurus sp") or an uncertain picture is no lifer
+                if not counts_as_species(name, row.get("certainty") or ""):
                     continue
                 names.add(name.lower())
     except Exception as e:

@@ -205,15 +205,23 @@ def scanSpecies(sc, speciesname, report):
                 # A species and its subspecies count once (engine/subspecies.py):
                 # the second line of a group is listed but not numbered again.
                 group = species_of(sc.sc_dict, scientific)
-                # A group ("oplurus sp") is listed but never numbered or new:
-                # only a certain species counts (engine/species_count.py).
-                counts = counts_as_species(scientific)
+                # A group ("oplurus sp"), or a species seen only as probable /
+                # possible, is listed but never numbered or new: only a certain
+                # species counts (engine/species_count.py). #Sure is the day
+                # summary's 7th number; a summary from before it was all certain.
+                sure = any(len(info[1]) <= 6 or int(info[1][6]) > 0
+                           for info in result_dict[scientific])
+                counts = counts_as_species(scientific) and sure
                 repeat = group in counted_groups or not counts
                 if counts:
                     counted_groups.add(group)
                 known = scientific in reference_names or group in reference_names or not counts
-                data_line = ('   ' if repeat else str(counter).rjust(3)) + ' ' + english.ljust(32) + dutch.ljust(40)
-                row_nr = '' if repeat else counter
+                # say WHY a line has no number: "cf." = seen, but only as a
+                # probable / possible ID (a group's name already says "sp.")
+                unsure = counts_as_species(scientific) and not sure
+                nr_text = 'cf.' if unsure else ('   ' if repeat else str(counter).rjust(3))
+                data_line = nr_text + ' ' + english.ljust(32) + dutch.ljust(40)
+                row_nr = 'cf.' if unsure else ('' if repeat else counter)
                 row_new = ''
                 day_marks = {}
                 if known or repeat:
@@ -321,6 +329,8 @@ def print_headers(sc, report):
     print(f'                 Pics = pictures kept over all days (Good + Unrated, i.e. not Blue/Purple)', file=report)
     print(f'                 Best = overall best rating (j = JPG exists but unrated)', file=report)
     print(f'                 No JPG = new species with no JPG at all yet, only RAW or HEIC', file=report)
+    print(f'                 cf. = only probable or possible pictures, so not counted', file=report)
+    print(f'                 (no number) = a group ("sp."), or a subspecies of a species already counted', file=report)
     print(f'                 (blank) = not a new species, but no JPG yet for this trip\n', file=report)
     counter = 0
     print(column_header(), file=report)

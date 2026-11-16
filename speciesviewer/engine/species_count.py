@@ -6,7 +6,13 @@ name — "oplurus sp": surely an Oplurus, but not which one.
 A group is an ordinary species-level row in the species list, filed under its
 family, with its own folder and species page. It just never adds to a count:
 not to trip totals, lifers, the master's species number or the website.
-A "? name" placeholder never counts either (it retires in phase 4).
+A "? name" placeholder never counts either (it retires in phase 4), nor does a
+picture whose identification is only probable or possible (phase 2).
+
+What a species row's iSpeciesCollectionCount means (decided 16 Nov, option A):
+"this counts as a species" — 1 on a species row with at least one picture that
+counts, 0 otherwise, the sum above. "Has pictures / has a page" is the picture
+count, never this one.
 
 The stored name has NO trailing dot ("oplurus sp", not "oplurus sp."): the
 name is also a folder name, and Windows silently drops a trailing dot from a
@@ -51,8 +57,38 @@ def is_placeholder(name: str) -> bool:
     return (name or "").strip().startswith("?")
 
 
-def counts_as_species(name: str) -> bool:
+# ── certainty (phase 2): how sure the identification is ─────────────────────
+# Stored as a keyword word beside the name, like sex/age/plumage
+# ("furcifer lateralis, probable") and mirrored in the picture's `certainty`
+# column. Certain is the default and has no word.
+PROBABLE, POSSIBLE = "probable", "possible"
+CERTAINTY_WORDS = {
+    PROBABLE: {"probable", "probably", "cf", "cf.", "waarschijnlijk"},
+    POSSIBLE: {"possible", "possibly", "?", "mogelijk"},
+}
+# how an uncertain name reads: "carpet chameleon cf." / "carpet chameleon ?"
+CERTAINTY_MARK = {PROBABLE: "cf.", POSSIBLE: "?"}
+_WORD_TO_CERTAINTY = {w: c for c, words in CERTAINTY_WORDS.items() for w in words}
+
+
+def certainty_of(subject: str) -> str:
+    """"probable", "possible" or "" (certain) for a stored keyword, in either
+    stored form ("x, probable" or "['x', 'probable']")."""
+    s = str(subject or "").strip()
+    if s.startswith("[") and s.endswith("]"):
+        s = s[1:-1]
+    for part in s.split(","):
+        c = _WORD_TO_CERTAINTY.get(part.strip().strip("'\"").lower())
+        if c:
+            return c
+    return ""
+
+
+def counts_as_species(name: str, certainty: str = "") -> bool:
     """THE counting rule: True when a picture with this name adds a species to
-    a count. A group or a placeholder never does."""
+    a count. A group, a placeholder or an uncertain picture never does."""
     n = (name or "").strip()
-    return bool(n) and not is_placeholder(n) and not is_group(n)
+    # Only the two known words make a picture uncertain: a stray value in the
+    # column (a positional re-head of an old CSV) must never un-count a species.
+    uncertain = (certainty or "").strip().lower() in (PROBABLE, POSSIBLE)
+    return bool(n) and not is_placeholder(n) and not is_group(n) and not uncertain

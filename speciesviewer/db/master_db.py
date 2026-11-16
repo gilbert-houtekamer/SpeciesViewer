@@ -71,7 +71,7 @@ def _diag(msg: str) -> None:
 # v3: pictures/files tables gained the Municipality / XMP:Municipality columns
 #     (they're created from PICTURE_FIELDS / DATA_FILE_FIELDS).
 # v4: pictures gained BestJPGPinned — the human's choice of a picture's public JPG.
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5        # 5: pictures.certainty (uncertain IDs phase 2)
 
 # Column that's typed as INTEGER (we sort on Rate; rest stay TEXT to mirror CSV).
 _INT_COLS_PICTURES = {"Rate"}
@@ -1061,15 +1061,61 @@ class MasterDB:
         sci = (sci or "").strip().lower()
         return sorted(groups.get(sci, {sci}))
 
-    def _group_picture_count(self, con: sqlite3.Connection, sci: str) -> int:
-        names = self._species_group(sci)
+    def _counting_pictures(self, con: sqlite3.Connection, names) -> int:
+        """How many pictures of `names` count as a species: a certain picture of a
+        real species (engine/species_count.py). A group's never do."""
+        names = [n.strip().lower() for n in names if counts_as_species(n)]
+        if not names:
+            return 0
         marks = ",".join("?" * len(names))
         return con.execute(
-            f'SELECT COUNT(*) FROM pictures WHERE LOWER(TRIM("WetSoortNaam")) IN ({marks})',
+            f'SELECT COUNT(*) FROM pictures WHERE LOWER(TRIM("WetSoortNaam")) IN ({marks})'
+            + " AND LOWER(TRIM(COALESCE(\"certainty\", ''))) NOT IN ('probable', 'possible')",
             names).fetchone()[0]
 
+    def _group_picture_count(self, con: sqlite3.Connection, sci: str) -> int:
+        """Counting pictures of `sci`'s species group (species + its subspecies)."""
+        return self._counting_pictures(con, self._species_group(sci))
+
+    @staticmethod
+    def _picture_counts(prow) -> bool:
+        """Does this picture row count as a species?"""
+        if prow is None:
+            return False
+        keys = prow.keys() if hasattr(prow, "keys") else ()
+        cert = prow["certainty"] if "certainty" in keys else ""
+        return counts_as_species(prow["WetSoortNaam"] or "", cert or "")
+
+    @staticmethod
+    def _picture_is_certain(prow) -> bool:
+        keys = prow.keys() if prow is not None and hasattr(prow, "keys") else ()
+        c = ((prow["certainty"] if "certainty" in keys else "") or "").strip().lower()
+        return c not in ("probable", "possible")
+
+    def _count_change_updates(self, con: sqlite3.Connection, sci: str, delta: int) -> dict:
+        """Species-count changes when `sci` gains (+1) or loses (-1) ONE picture that
+        counts, from the snapshot BEFORE the change. The row's own count is 1 while it
+        has a counting picture; every ancestor moves by one when the species group
+        (species + subspecies) starts or stops counting. {} when nothing changes."""
+        updates: dict[str, dict] = {}
+        chain = self._species_chain(con, sci)
+        if not chain or not counts_as_species(sci):
+            return updates
+        own_before = self._counting_pictures(con, [sci]) > 0
+        own_after = self._counting_pictures(con, [sci]) + delta > 0
+        if own_before != own_after:
+            updates[chain[0]["ScientificName"]] = {"iSpeciesCollectionCount": int(own_after)}
+        grp = self._group_picture_count(con, sci)
+        if (grp > 0) != (grp + delta > 0):
+            step = 1 if delta > 0 else -1
+            for a in chain[1:]:
+                updates[a["ScientificName"]] = {
+                    "iSpeciesCollectionCount": _coerce_int(a["iSpeciesCollectionCount"]) + step}
+        return updates
+
     # ── species count maintenance for a no-JPG delete ─────────────────────────
-    def _species_delete_updates(self, con: sqlite3.Connection, sci: str):
+    def _species_delete_updates(self, con: sqlite3.Connection, sci: str,
+                                counts: bool = True):
         """Compute the species-table changes for removing ONE no-JPG picture of
         `sci`, from the pre-delete snapshot. Returns (updates, deleted) where
         updates is {ScientificName: {col: value}} and deleted is [ScientificName].
@@ -1096,9 +1142,12 @@ class MasterDB:
         emptied = (n_left == 0)
         # the species COUNT drops only when the whole group (species + its
         # subspecies) is left without pictures
-        # A group ("oplurus sp") never counted, so it never un-counts.
-        group_emptied = (emptied and counts_as_species(sciname)
-                         and self._group_picture_count(con, sciname) - 1 <= 0)
+        # `counts`: whether the deleted picture counts as a species. Only then
+        # can the species (or, for the ancestors, its group) stop counting — and
+        # it can while other, uncertain pictures stay (engine/species_count.py).
+        count_updates = (self._count_change_updates(con, sciname, -1)
+                         if counts else {})
+        group_emptied = any(n != sciname for n in count_updates)
 
         # ancestor chain (pre-delete snapshot)
         chain = []
@@ -1123,6 +1172,8 @@ class MasterDB:
                     x for x in leaves if x != sciname]
         else:
             updates.setdefault(sciname, {})["iPictureCollectionCount"] = n_left
+            if sciname in count_updates:
+                updates[sciname].update(count_updates[sciname])
 
         for a in chain:
             u = updates.setdefault(a["ScientificName"], {})
@@ -1322,7 +1373,7 @@ class MasterDB:
         return updates
 
     def _species_move_updates(self, con: sqlite3.Connection,
-                              source_sci: str, target_sci: str):
+                              source_sci: str, target_sci: str, counts: bool = True):
         """Species-table changes for moving ONE no-JPG picture from `source_sci`
         to `target_sci`. Returns (updates {ScientificName: {col: value}},
         deleted [ScientificName]) as ABSOLUTE values so they're safe to replay.
@@ -1363,26 +1414,29 @@ class MasterDB:
 
         source_empties = bool(src_chain) and (_pic_count(source_sci) - 1 <= 0)
         target_was_empty = (_pic_count(target_sci) == 0)
-        # The species COUNT follows the group (species + its subspecies): a
-        # move inside one group (carrion crow -> hooded crow) changes no count.
-        same_group = self._species_group(source_sci) == self._species_group(target_sci)
-        # A group ("oplurus sp", engine/species_count.py) is no species: moving
-        # into or out of one changes no species count.
-        source_group_empties = (source_empties and not same_group
-                                and counts_as_species(source_sci)
-                                and self._group_picture_count(con, source_sci) - 1 <= 0)
-        target_group_was_empty = (not same_group and counts_as_species(target_sci)
-                                  and self._group_picture_count(con, target_sci) == 0)
-
-        # iSpeciesCollectionCount changes only on the ANCESTORS when a species
-        # appears/disappears under them.
+        # The species COUNT (engine/species_count.py): only a picture that counts
+        # (certain, of a real species) can change it. Each row's own count is 1
+        # while it has a counting picture; an ancestor moves by one when a species
+        # group (species + subspecies) starts or stops counting — so a move inside
+        # one group (carrion crow -> hooded crow) leaves the ancestors alone.
         spec_delta: dict[str, int] = {}
-        if source_group_empties:
-            for r in src_chain[1:]:
-                spec_delta[r["ScientificName"]] = spec_delta.get(r["ScientificName"], 0) - 1
-        if target_group_was_empty:
-            for r in tgt_chain[1:]:
-                spec_delta[r["ScientificName"]] = spec_delta.get(r["ScientificName"], 0) + 1
+        own: dict[str, int] = {}
+        if counts:
+            same_group = self._species_group(source_sci) == self._species_group(target_sci)
+            if src_chain and counts_as_species(source_sci):
+                sname = src_chain[0]["ScientificName"]
+                if self._counting_pictures(con, [source_sci]) - 1 <= 0:
+                    own[sname] = 0
+                if not same_group and self._group_picture_count(con, source_sci) - 1 <= 0:
+                    for r in src_chain[1:]:
+                        spec_delta[r["ScientificName"]] = spec_delta.get(r["ScientificName"], 0) - 1
+            if counts_as_species(target_sci):
+                tname = tgt_chain[0]["ScientificName"]
+                if self._counting_pictures(con, [target_sci]) == 0:
+                    own[tname] = 1
+                if not same_group and self._group_picture_count(con, target_sci) == 0:
+                    for r in tgt_chain[1:]:
+                        spec_delta[r["ScientificName"]] = spec_delta.get(r["ScientificName"], 0) + 1
 
         for name, d in pic_delta.items():
             if d:
@@ -1392,6 +1446,10 @@ class MasterDB:
             if d:
                 cur = _coerce_int(rows_by_name[name]["iSpeciesCollectionCount"])
                 updates.setdefault(name, {})["iSpeciesCollectionCount"] = cur + d
+        for name, v in own.items():
+            if name in spec_delta:       # a row that is both (a species above its subspecies)
+                continue
+            updates.setdefault(name, {})["iSpeciesCollectionCount"] = v
 
         # Parent Leaves: drop the emptied source, add the un-emptied target. Build
         # incrementally so a shared parent (moving between two species of one
@@ -1888,18 +1946,34 @@ class MasterDB:
         published — but it re-derives nothing here: the grouping is computed at render
         time, so there is no rollup to keep in step.
 
-        Only the four qualifier columns are writable, so a caller cannot smuggle a species
-        change in through this door."""
+        Only the qualifier columns are writable, so a caller cannot smuggle a species
+        change in through this door.
+
+        Certainty (probable / possible) is read from the same keyword and IS counted:
+        only a certain picture counts as a species (engine/species_count.py), so
+        setting it can make the species start or stop counting. Those count changes
+        go into the same journal entry — but no file moves: certainty is not a move."""
+        from engine.species_count import certainty_of
         con = self._connect()
         prow = con.execute(
-            'SELECT 1 FROM pictures WHERE "UniquePictureName"=?', (upn,)).fetchone()
+            'SELECT * FROM pictures WHERE "UniquePictureName"=?', (upn,)).fetchone()
         if prow is None:
             return False
+        certainty = certainty_of(subject)
         fields = {"subject": subject, "malefemale": malefemale,
-                  "ageintext": ageintext, "summerwinter": summerwinter}
+                  "ageintext": ageintext, "summerwinter": summerwinter,
+                  "certainty": certainty}
+        counted_before = self._picture_counts(prow)
+        counted_after = counts_as_species(prow["WetSoortNaam"] or "", certainty)
+        spec_updates = {}
+        if counted_before != counted_after:
+            spec_updates = self._count_change_updates(
+                con, (prow["WetSoortNaam"] or "").strip(), 1 if counted_after else -1)
         entry = {"op": "qualifiers", "ts": time.time(), "upn": upn,
                  "pictures": {upn: fields},
                  "files": dict(file_updates or {})}
+        if spec_updates:
+            entry["species"] = spec_updates
         with self._append_lock:
             entry["seq"] = self._next_seq()
             self._append_jsonl(entry)
@@ -1907,6 +1981,8 @@ class MasterDB:
             self._set_picture_fields(con, upn, fields)
             for fname, upd in (file_updates or {}).items():
                 self._set_file_fields(con, fname, upd)
+            for name, upd in spec_updates.items():
+                self._set_species_fields(con, name, upd)
         MasterCheckpointWorker.get(self.master_root).notify()
         return True
 
@@ -2163,7 +2239,8 @@ class MasterDB:
         fnames = [r["File:FileName"] for r in con.execute(
             'SELECT "File:FileName" FROM files WHERE "UniquePictureName"=?', (upn,))]
         had_jpg = self._upn_has_jpg(con, upn)     # snapshot BEFORE the rows go
-        spec_updates, spec_deleted = self._species_delete_updates(con, sci)
+        spec_updates, spec_deleted = self._species_delete_updates(
+            con, sci, counts=self._picture_counts(prow))
         # The deleted picture's BestJPG must leave the species' JPGmap, or the page
         # keeps trying to render a file that is gone. Derived for the post-delete
         # state (exclude), and skipped when the species row itself is being removed.
@@ -2468,7 +2545,10 @@ class MasterDB:
         target_sci = picture_fields.get("WetSoortNaam", "") or ""
 
         def _rollups():
-            updates, deleted = self._species_move_updates(con, source_sci, target_sci)
+            # a move keeps the picture's certainty; each side's NAME is checked
+            # inside (a group on either side never counts)
+            updates, deleted = self._species_move_updates(
+                con, source_sci, target_sci, counts=self._picture_is_certain(prow))
             if prow is not None and self._upn_has_jpg(con, upn):
                 jpg_updates = self._species_move_jpg_updates(
                     con, prow, target_sci,

@@ -83,7 +83,7 @@ changing a name is just a keyword edit.
 
 ### Phase 1: Group names ("Oplurus sp.")
 
-*Built 16 Nov 2026, awaiting test. Tests: `tests/test_species_groups.py` and the
+*Done 16 Nov 2026 (d084fdc), tested in the QA master. Tests: `tests/test_species_groups.py` and the
 two group tests in `tests/test_master_move_jpg.py`.*
 
 - **The rule:** `engine/species_count.py`, `counts_as_species(name)`. A group
@@ -119,6 +119,25 @@ two group tests in `tests/test_master_move_jpg.py`.*
   through Count Species, Freeze and the master merge, and checks every number.
 
 ### Phase 2: Certainty
+
+*Built 16 Nov 2026, awaiting test. Tests: `tests/test_certainty.py`.*
+
+- **Decided (option A):** a species row's `iSpeciesCollectionCount` means
+  "counts as a species": 1 with at least one picture that counts, else 0, the
+  sum above. "Has a page" is the picture count (`websupport.has_page`).
+- Certainty is a fourth qualifier group (probable / possible; also cf., ?,
+  waarschijnlijk, mogelijk) and a `certainty` picture column before Headline.
+  Only those two words make a picture uncertain, so a stray value never
+  un-counts a species.
+- Counted in: the trip's daily counts (new this run), Freeze (the day's counting
+  pictures), master Recount, the master's live counts on move, delete AND
+  certainty change (same journal entry, no file moves), Count Species (new
+  `#Sure` number in the day summary), album Count Species, lifer baseline,
+  trip registry.
+- Shown as "cf." / "?" after the name in the viewers and on website cards, plus
+  one sentence in the picture text. An uncertain picture is its own group on
+  the species page, so it shows beside the certain ones.
+- The master's cache rebuilds once (schema 5).
 
 - **Storage:** a keyword token beside the name in `XMP:Subject`, the same way
   sex/age/plumage are stored ("oplurus cuvieri, probable"). The sidecar stays the one

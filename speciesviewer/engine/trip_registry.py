@@ -340,6 +340,7 @@ def load_master_index(master_repo):
             idx = {h: i for i, h in enumerate(header)}
             di, si, ui = (idx.get("DateTimeOriginal"), idx.get("WetSoortNaam"),
                           idx.get("UniquePictureName"))
+            ci = idx.get("certainty")
             if di is None or si is None or ui is None:
                 logger.info("trip_registry: master CSV missing expected columns")
                 return None, None, None, None
@@ -351,7 +352,8 @@ def load_master_index(master_repo):
                 wsn = row[si].strip()
                 if not wsn:
                     continue
-                if counts_as_species(wsn):       # no group, no "? name"
+                cert = row[ci] if ci is not None and ci < len(row) else ""
+                if counts_as_species(wsn, cert):   # no group, no "? name", certain
                     species.add(wsn.lower())
                 d = _norm_date(row[di]) if di < len(row) else None
                 if not d:

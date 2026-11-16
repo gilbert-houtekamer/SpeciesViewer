@@ -270,7 +270,7 @@ class MasterCardMenuMixin:
             handlers[a] = lambda: self._do_master_move(upn_key, move_keys)
 
         if "qualifiers" in want:
-            a = menu.addAction("Sex / age / plumage…")
+            a = menu.addAction("Sex / age / plumage / certainty…")
             handlers[a] = lambda: self._do_master_qualifiers(upn_key)
         if "add" in want:
             # Same words as the trip viewer's own action — it is the same job

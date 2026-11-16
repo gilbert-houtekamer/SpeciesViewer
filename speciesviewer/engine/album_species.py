@@ -81,8 +81,11 @@ def species_table(sc_dict, by_day: dict):
             continue
         group = "Birds" if _is_bird(sc_dict, rec) else "Other"
         whole = species_of(sc_dict, sci_l)
-        # a group ("oplurus sp") is listed but not numbered (engine/species_count.py)
-        repeat = whole in counted or not counts_as_species(sci_l)
+        # a group ("oplurus sp"), or a species with only probable/possible
+        # pictures, is listed but not numbered (engine/species_count.py)
+        counts = any(counts_as_species(sci_l, r.get("certainty") or "")
+                     for rows_day in per_day.values() for r in rows_day)
+        repeat = whole in counted or not counts
         if not repeat:
             counted.add(whole)
         if not repeat:

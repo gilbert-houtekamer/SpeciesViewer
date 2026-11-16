@@ -325,7 +325,7 @@ class SpeciesInfoPanel(QWidget):
         # to caption the picture and to show one best photo per age/sex/plumage.
         # Single-select within each row; click again to clear.
         from gui.culling_species import QUALIFIER_GROUPS
-        self._qual_header = QLabel("SEX / AGE / PLUMAGE — OPTIONAL")
+        self._qual_header = QLabel("SEX / AGE / PLUMAGE / CERTAINTY — OPTIONAL")
         self._qual_header.setStyleSheet(_MICRO)
         layout.addWidget(self._qual_header)
         self._qual_buttons: dict[int, list[tuple[QPushButton, str]]] = {}

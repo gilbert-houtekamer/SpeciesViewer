@@ -20,6 +20,7 @@ import engine.projectlib
 import engine.specieslib
 import engine.speciesclassification
 from engine import COLUMN_NAMES, SELECTED_FIELDS, SVException
+from engine.species_count import counts_as_species
 from engine.csv_columns import PICTURE_FIELDS
 from engine.handling import read_file, read_pictures
 from engine.specieslib import Level
@@ -313,7 +314,11 @@ def mergeCurrentTripTotals(MyProject):
         up = d['Up']
         if up and up in day and name not in day[up]['Leaves']:
             day[up]['Leaves'].append(name)
-    species_count = _recountSpeciesTotals(day, getattr(getattr(MyProject, 'sc', None), 'sc_dict', {}))
+    # the species this day brings a picture of that COUNTS (certain, real species)
+    counting = {(u.get('WetSoortNaam') or '') for u in MyProject.UniquePictureName_dict.values()
+                if counts_as_species(u.get('WetSoortNaam') or '', u.get('certainty') or '')}
+    species_count = _recountSpeciesTotals(day, getattr(getattr(MyProject, 'sc', None), 'sc_dict', {}),
+                                          counting)
 
     before = _species_with_jpgs(active.species_dict)
     after = _species_with_jpgs(day)
@@ -327,7 +332,7 @@ def mergeCurrentTripTotals(MyProject):
             f"species with a picture. Nothing was published; please report this.")
     return (*species_count, after) if species_count else None
 
-def _recountSpeciesTotals(day, sc_dict=None):
+def _recountSpeciesTotals(day, sc_dict=None, counting=None):
     """Species counters are COUNTED from the tree, never added up.
 
     A species is 1 in the trip collection when the trip already holds a picture
@@ -338,12 +343,27 @@ def _recountSpeciesTotals(day, sc_dict=None):
     new, and adding those marks up put Brazil 2026 at 705 species instead of
     328 (2026-10-09). Counted here, at publish time, the order of the steps no
     longer matters. Picture counters are real per-day sums and are untouched.
-    A species and its subspecies count once (engine/subspecies.py)."""
+    A species and its subspecies count once (engine/subspecies.py).
+
+    `counting` (the names this day has a picture of that counts) switches the
+    species rule to "only a certain picture counts" (uncertain IDs phase 2);
+    without it the old picture-count rule applies."""
     from engine.subspecies import fold_species_flags
 
     def walk(name, seen):
         node = day[name]
-        if node['Level'] in (Level.SPECIES, 'Level.SPECIES'):
+        if node['Level'] in (Level.SPECIES, 'Level.SPECIES') and counting is not None:
+            # Only a picture that COUNTS makes a species (engine/species_count.py).
+            # The trip's own count says whether it already holds one; `counting`
+            # whether this day brings one. Picture counters can't tell: a species
+            # with only "probable" pictures has pictures but is no species.
+            if _int(node['iSpeciesCollectionCount']) > 0 and counts_as_species(name):
+                coll, new = 1, 0
+            elif name in counting:
+                coll, new = 0, 1
+            else:
+                coll, new = 0, 0
+        elif node['Level'] in (Level.SPECIES, 'Level.SPECIES'):
             if _int(node['iPictureCollectionCount']) > 0:
                 coll, new = 1, 0
             elif _int(node['iPictureThisRunCount']) > 0:

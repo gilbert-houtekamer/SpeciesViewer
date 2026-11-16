@@ -161,7 +161,10 @@ class SpeciesClassification:
                     'blog', 'goodidpicture',
                     'juvenile', 'juv.', 'ímmature', 'imm.', 'onvolwassen',  'adult', 'volwassen', 
                     'male', 'man', 'female', 'vrouw', 'couple', 'paar', 'paartje', 
-                    'summer', 'zomer', 'winter', 'breeding', 'non-breeding']
+                    'summer', 'zomer', 'winter', 'breeding', 'non-breeding',
+                    # certainty words (engine/species_count.py) are no species either
+                    'probable', 'probably', 'cf', 'cf.', 'waarschijnlijk',
+                    'possible', 'possibly', '?', 'mogelijk']
 
     # Marker keywords for non-species "blog extras": landscapes, context shots,
     # the birding group, etc. A photo carrying one of these (and no resolvable

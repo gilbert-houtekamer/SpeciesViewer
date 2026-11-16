@@ -179,7 +179,8 @@ class RatingEditorItem(PictureItem):
         # Master/trip picture rows carry the derived fields; fall back to parsing
         # the raw subject when they're absent.
         suffix = qualifier_suffix_from_fields(
-            r.get("malefemale", ""), r.get("ageintext", ""), r.get("summerwinter", ""))
+            r.get("malefemale", ""), r.get("ageintext", ""), r.get("summerwinter", ""),
+            r.get("certainty", ""))
         return suffix or qualifier_suffix_from_subject(r.get("subject", "") or "")
 
     @property
