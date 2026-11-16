@@ -92,3 +92,17 @@ def counts_as_species(name: str, certainty: str = "") -> bool:
     # column (a positional re-head of an old CSV) must never un-count a species.
     uncertain = (certainty or "").strip().lower() in (PROBABLE, POSSIBLE)
     return bool(n) and not is_placeholder(n) and not is_group(n) and not uncertain
+
+
+def is_uncertain_id(subject: str = "", name: str = "") -> bool:
+    """What the "Uncertain" review views show (phase 3): a picture whose ID is
+    still open — a group ("oplurus sp"), a probable or possible ID, or an old
+    "? name" placeholder. `subject` is the stored keyword, `name` the resolved
+    scientific name (either may be empty)."""
+    if certainty_of(subject):
+        return True
+    s = str(subject or "").strip()
+    if s.startswith("[") and s.endswith("]"):
+        s = s[1:-1]
+    parts = [p.strip().strip("'\"") for p in s.split(",")] + [name or ""]
+    return any(is_group(p) or is_placeholder(p) for p in parts if p.strip())

@@ -871,6 +871,12 @@ class SidecarCollection(MasterCardOpsMixin, PictureCollection):
         """UPNs that carry a species/subject tag — the 'Species' filter."""
         return [s for s in self.all_keys() if self._species_of(s).strip()]
 
+    def uncertain_keys(self) -> list[str]:
+        """Pictures whose identification is still open: a group ("oplurus sp"),
+        a probable / possible ID or a "? name" (engine/species_count.py)."""
+        from engine.species_count import is_uncertain_id
+        return [s for s in self.all_keys() if is_uncertain_id(self._species_of(s))]
+
     # ── PictureCollection ─────────────────────────────────────────────────
     def __len__(self) -> int:
         return len(self._order)

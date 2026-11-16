@@ -380,14 +380,38 @@ class DatabaseSettingsDialog(QDialog):
                                                      if f.detail else ""))
         else:
             lines.append("\nNo problems found.")
-        box = QMessageBox(self)
-        box.setWindowTitle("Consistency check")
-        box.setIcon(QMessageBox.Icon.Critical if rep.errors
-                    else QMessageBox.Icon.Information)
-        box.setText(f"The master is {rep.summary()}.")
-        box.setDetailedText("\n".join(lines))
-        box.exec()
+        self._show_report(f"The master is {rep.summary()}.", "\n".join(lines),
+                          bool(rep.errors))
         self._refresh()
+
+    def _show_report(self, summary: str, details: str, is_error: bool):
+        """The check's report in a window you can resize, details open at once
+        (a message box keeps them tiny and fixed-size)."""
+        from PyQt6.QtWidgets import QPlainTextEdit, QDialogButtonBox
+        dlg = QDialog(self)
+        dlg.setWindowTitle("Consistency check")
+        dlg.setSizeGripEnabled(True)
+        lay = QVBoxLayout(dlg)
+        head = QLabel(summary)
+        head.setWordWrap(True)
+        if is_error:
+            head.setStyleSheet("font-weight: bold; color: #c62828;")
+        else:
+            head.setStyleSheet("font-weight: bold;")
+        lay.addWidget(head)
+        text = QPlainTextEdit()
+        text.setReadOnly(True)
+        text.setPlainText(details)
+        text.setLineWrapMode(QPlainTextEdit.LineWrapMode.WidgetWidth)
+        lay.addWidget(text, 1)
+        btns = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok)
+        btns.accepted.connect(dlg.accept)
+        lay.addWidget(btns)
+        # a good default: most of the settings window, never larger than the screen
+        w, h = max(760, int(self.width() * 0.7)), max(460, int(self.height() * 0.6))
+        scr = (self.screen() or QApplication.primaryScreen()).availableGeometry()
+        dlg.resize(min(w, scr.width() - 40), min(h, scr.height() - 80))
+        dlg.exec()
 
     def _backup_now(self):
         if not self._master_root:

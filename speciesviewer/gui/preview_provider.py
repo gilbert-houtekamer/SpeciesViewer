@@ -546,6 +546,15 @@ class PreviewCollection(PictureCollection):
     def no_gps_keys(self) -> list[str]:
         return [k for k in self.all_keys() if not self.has_gps(k)]
 
+    def uncertain_keys(self) -> list[str]:
+        """UPNs whose identification is still open: a group ("oplurus sp"), a
+        probable / possible ID or a "? name" (engine/species_count.py)."""
+        from engine.species_count import is_uncertain_id
+        pics = self.fpr.upn.UniquePictureName_dict
+        return [k for k in self.all_keys()
+                if is_uncertain_id(pics[k].get("subject", "") or "",
+                                   pics[k].get("WetSoortNaam", "") or "")]
+
     def color_keys(self, colors: set[str]) -> list[str]:
         wanted = {c.lower() for c in colors}
         return [k for k in self.all_keys()

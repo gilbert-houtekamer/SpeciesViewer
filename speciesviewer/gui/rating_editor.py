@@ -1977,6 +1977,27 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
         top.addWidget(self._jpg_btn)
         top.addSpacing(8)
 
+        # Master only: review the identifications still open — groups (sp.),
+        # probable / possible IDs, old "? names" (uncertain IDs phase 3). The
+        # species list narrows to the species that have one, grouped by family;
+        # the card menu resolves them (Move to another species…, certainty).
+        self._uncertain_only = False
+        self._uncertain: dict = {}            # UPN -> {"sci", "family"}
+        self._uncertain_btn = QPushButton("Uncertain only")
+        self._uncertain_btn.setCheckable(True)
+        self._uncertain_btn.setToolTip(
+            "Show only pictures whose identification is still open: a group "
+            "(sp.), a probable or possible ID, or an old \"? name\"")
+        self._uncertain_btn.setStyleSheet(f"""
+            QPushButton {{ border: 1px solid {_LINE}; border-radius: 3px; padding: 2px 6px; }}
+            QPushButton:checked {{ background-color: #D7BDE2; border-color: #8E44AD; color: #16241f; }}
+        """)
+        self._uncertain_btn.toggled.connect(self._on_uncertain_toggled)
+        top.addWidget(self._uncertain_btn)
+        top.addSpacing(8)
+        if not self._master_only:
+            self._uncertain_btn.hide()
+
         # Colour filter — the same selector row as the culling grid, so you can
         # narrow the view to one colour (e.g. see exactly what a Blue-delete
         # would target). Local import avoids a circular import with image_viewer.
@@ -2791,7 +2812,9 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
         self.fpr.fi = Files(None)
         self.fpr.upn = Pictures(None)
         if self._master_only or self._tm_radio.isChecked():
-            self._album_restrict = None
+            # master mode never narrows — except to review the uncertain IDs
+            self._album_restrict = (set(self._uncertain) if (self._master_only
+                                    and self._uncertain_only) else None)
             scope = "the whole master"
         elif scope_day:
             day = self._current_day()
@@ -2885,7 +2908,15 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
         # trip's publication to-do and means nothing here: these pictures are
         # already in the master.
         if self._album_query:
+            # Uncertain only: just the species with an open ID, by family.
+            review = self._master_only and self._uncertain_only
+            family = {}
+            if review:
+                for info in self._uncertain.values():
+                    family.setdefault(info["sci"].lower(), info["family"])
             for sci, row in self._album_species.items():
+                if review and sci.lower() not in family:
+                    continue
                 name = self._species_name(row)
                 if not name:
                     continue
@@ -2893,8 +2924,15 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
                 self._name_to_sci.setdefault(name, sci)
                 self._species_all_names.setdefault(
                     name, [n for n, _s in all_names_ordered(row, self._species_lang)])
-            for name in sorted(names, key=str.casefold):
-                self._species_combo.addItem(name, name)
+            if review:
+                labelled = sorted(
+                    ((family.get(self._name_to_sci[n].lower(), ""), n) for n in names),
+                    key=lambda fn: (fn[0].casefold(), fn[1].casefold()))
+                for fam, name in labelled:
+                    self._species_combo.addItem(f"{fam} · {name}" if fam else name, name)
+            else:
+                for name in sorted(names, key=str.casefold):
+                    self._species_combo.addItem(name, name)
             if self._master_only:
                 self._species_combo.setCurrentIndex(-1)   # nothing picked yet
             self._species_combo.blockSignals(False)
@@ -3156,6 +3194,8 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
                 f"select one to view pictures.")
             self._update_crumb()
             return
+        if self._master_only and self._uncertain_only:
+            self._refresh_uncertain()
         self._collection.set_species_lang(self._species_lang)
         self._collection.set_jpg_only(self._jpg_only)
         # Re-apply the colour filter from the bar — the collection is recreated
@@ -3548,6 +3588,30 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
             idx = self._camera_combo.findData(prev)
             self._camera_combo.setCurrentIndex(idx if idx >= 0 else 0)
         self._camera_combo.blockSignals(False)
+
+    def _refresh_uncertain(self) -> None:
+        """Re-read which master pictures still have an open ID, and narrow the
+        per-species query to them (a picture resolved a moment ago drops out)."""
+        db = getattr(self, "_album_db", None)
+        self._uncertain = (db.uncertain_pictures() if (db is not None and self._uncertain_only)
+                           else {})
+        if self._collection is not None:
+            self._collection.set_master_scope(
+                set(self._uncertain) if self._uncertain_only else None)
+
+    def _on_uncertain_toggled(self, checked: bool):
+        self._uncertain_only = checked
+        if checked and self._jpg_btn.isChecked():
+            # an open ID often has no JPG yet — don't hide exactly those
+            self._jpg_btn.blockSignals(True)
+            self._jpg_btn.setChecked(False)
+            self._jpg_btn.blockSignals(False)
+            self._jpg_only = False
+        self._refresh_uncertain()
+        if checked and not self._uncertain:
+            self._status.setText("No uncertain identifications in the master.")
+        current = self._species_combo.currentData()
+        self._populate_species_combo(restore_selection=current)
 
     def _on_jpg_only_toggled(self, checked: bool):
         # No pre-extraction needed: the provider loads RAW previews lazily and

@@ -322,6 +322,7 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
         self.warnings_only = False
         self.no_gps_only = False
         self.no_species_only = False
+        self.uncertain_only = False
         self.show_all = False
         self.species_only = False
         self._warn_mode = "warnings"   # which set the ⚠ button shows (see _warnings_menu)
@@ -443,6 +444,25 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
         self.no_gps_btn.clicked.connect(self.on_no_gps_toggled)
         controls_layout.addWidget(self.no_gps_btn)
 
+        # Uncertain — the identifications still open: a group ("Oplurus sp."), a
+        # probable / possible ID, an old "? name". A place to work through the
+        # hard cases with a field guide (engine/species_count.py, phase 3).
+        self.uncertain_btn = QPushButton("?")
+        self.uncertain_btn.setFixedSize(24, 24)
+        self.uncertain_btn.setCheckable(True)
+        self.uncertain_btn.setToolTip(
+            "Show only uncertain identifications: a group (sp.), a probable or "
+            "possible ID, or an old \"? name\"")
+        self.uncertain_btn.setStyleSheet("""
+            QPushButton { border: 2px solid #8E44AD; border-radius: 4px; background: transparent;
+                          padding: 0; font-weight: bold; }
+            QPushButton:checked { background: #D7BDE2; color: #16241f; }
+            QPushButton:disabled { border-color: #CCCCCC; color: #BBBBBB; }
+        """)
+        self.uncertain_btn.clicked.connect(self.on_uncertain_toggled)
+        self.uncertain_btn.setEnabled(hasattr(self._collection, "uncertain_keys"))
+        controls_layout.addWidget(self.uncertain_btn)
+
         # Map — plot the currently shown pictures (all species) on a slippy map,
         # with the travel path. Needs a collection that can report GPS.
         self.map_btn = QPushButton("🗺 Map")
@@ -528,6 +548,7 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
         self._filter_group.setExclusive(True)
         self._filter_group.addButton(self.warnings_btn)
         self._filter_group.addButton(self.no_gps_btn)
+        self._filter_group.addButton(self.uncertain_btn)
         self._filter_group.addButton(self.all_btn)
         self._filter_group.addButton(self.species_btn)
 
@@ -787,6 +808,8 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
             keys &= set(coll.warning_keys())
         elif f == "no_gps":
             keys &= set(coll.no_gps_keys())
+        elif f == "uncertain" and hasattr(coll, "uncertain_keys"):
+            keys &= set(coll.uncertain_keys())
         # else "all"/None → keep the whole base, then narrow by overlays below
         if self._jpg_only and hasattr(coll, "jpg_keys"):
             keys &= set(coll.jpg_keys())
@@ -891,6 +914,7 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
         self.warnings_only = (name == "warnings")
         self.no_gps_only = (name == "no_gps")
         self.no_species_only = (name == "no_species")
+        self.uncertain_only = (name == "uncertain")
         self.species_only = (name == "species")
         self.show_all = (name == "all")
         self._apply_filters()
@@ -932,6 +956,16 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
     def on_no_gps_toggled(self):
         if self.no_gps_btn.isChecked():
             self._set_radio("no_gps")
+
+    def on_uncertain_toggled(self):
+        if self.uncertain_btn.isChecked():
+            self._set_radio("uncertain")
+
+    def _uncertain_count(self) -> int:
+        if not hasattr(self._collection, "uncertain_keys"):
+            return 0
+        base = set(self._base_keys())
+        return len([k for k in self._collection.uncertain_keys() if k in base])
 
     def on_species_toggled(self):
         if self.species_btn.isChecked():
@@ -1138,6 +1172,8 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
             radio = ""
             if self._active_filter == "no_gps":
                 radio = f"{self._no_gps_count()} missing GPS"
+            elif self._active_filter == "uncertain":
+                radio = f"{self._uncertain_count()} uncertain"
             elif self._active_filter == "no_species":
                 radio = f"{self._no_species_count()} with no species yet"
             elif self._active_filter == "all":
@@ -1152,6 +1188,8 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
             radio = f"{n} with no species yet"
         elif self._active_filter == "no_gps":
             radio = f"{self._no_gps_count()} missing GPS"
+        elif self._active_filter == "uncertain":
+            radio = f"{self._uncertain_count()} uncertain"
         elif self._active_filter == "species":
             radio = f"{self._species_count()} with a species"
         elif self._active_filter == "all":
@@ -1459,6 +1497,9 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
                                    "Every picture has a species (or a flagged name).")
         elif self.no_gps_only:
             QMessageBox.information(self, "No Missing GPS", "All pictures have GPS coordinates.")
+        elif self.uncertain_only:
+            QMessageBox.information(self, "Nothing uncertain",
+                                    "Every identification here is certain.")
         elif self.species_only:
             QMessageBox.information(self, "No Species", "No pictures have a species yet — tag them first.")
         else:

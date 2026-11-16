@@ -652,6 +652,30 @@ class MasterDB:
             by_day.setdefault(day, []).append(self._picture_row_to_dict(r))
         return by_day
 
+    def uncertain_pictures(self) -> dict[str, dict]:
+        """{UPN: {"sci", "family"}} of every master picture whose identification is
+        still open — a group ("oplurus sp"), a probable / possible ID or a
+        "? name" (engine/species_count.is_uncertain_id). For the Master Species
+        Viewer's "Uncertain only" review and the master health count."""
+        from engine.species_count import is_uncertain_id
+        con = self._connect()
+        try:
+            rows = con.execute(
+                'SELECT "UniquePictureName" AS upn, TRIM("WetSoortNaam") AS sci, '
+                '"subject" AS subject, "certainty" AS certainty, '
+                '"TargetPath" AS path FROM pictures '
+                'WHERE "TargetPath" NOT LIKE "topics/%"').fetchall()
+        except sqlite3.OperationalError:
+            return {}
+        out = {}
+        for r in rows:
+            if (r["certainty"] or "").strip().lower() in ("probable", "possible")                     or is_uncertain_id(r["subject"] or "", r["sci"] or ""):
+                # the species folder's parent is its family: .../opluridae/oplurus sp/
+                parts = [p for p in (r["path"] or "").replace("\\", "/").split("/") if p]
+                out[r["upn"]] = {"sci": r["sci"] or "",
+                                 "family": parts[-2] if len(parts) >= 2 else ""}
+        return out
+
     def species_picker_rows(self) -> list[dict]:
         """Distinct species that actually have master pictures, for the Master
         Species Viewer's selector. Derived from the pictures table (always

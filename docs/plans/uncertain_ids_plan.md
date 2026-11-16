@@ -120,7 +120,7 @@ two group tests in `tests/test_master_move_jpg.py`.*
 
 ### Phase 2: Certainty
 
-*Built 16 Nov 2026, awaiting test. Tests: `tests/test_certainty.py`.*
+*Done 16 Nov 2026 (6b9c616), tested in the QA master. Tests: `tests/test_certainty.py`.*
 
 - **Decided (option A):** a species row's `iSpeciesCollectionCount` means
   "counts as a species": 1 with at least one picture that counts, else 0, the
@@ -153,6 +153,24 @@ two group tests in `tests/test_master_move_jpg.py`.*
 
 ### Phase 3: The "Uncertain" review view
 
+*Built 16 Nov 2026, awaiting test. Tests: the phase 3 part of `tests/test_certainty.py`.*
+
+- **Trip day:** a purple **?** button in the Image Viewer beside 📍 (No GPS):
+  groups, probable / possible IDs and old "? names" (`is_uncertain_id`).
+- **Master:** **Uncertain only** in the Master Species Viewer. The species list
+  narrows to species with an open ID, labelled and sorted by family
+  ("chamaeleonidae · furcifer sp."); the cards to those pictures
+  (`MasterDB.uncertain_pictures`). It turns JPG only off, since an open ID
+  often has no JPG yet. Resolve from the card menu: Move to another species…,
+  or Sex / age / plumage / certainty…. A resolved picture drops out on the next
+  redraw.
+- **The visible invariant:** the master consistency check warns when a species
+  row counts without a certain picture (or the other way round), and names the fix: Master ▸ Maintain Master
+  Database ▸ Recount Species Counters….
+  No count of open IDs. A mixed tally of groups, cf. and "?" tells you nothing
+  (decided 16 Nov).
+- Not built: a count column in the trip overview.
+
 Like the No-GPS filter: a place to work through the hard cases with a field guide, or
 once clear pictures turn up.
 
@@ -174,9 +192,8 @@ later. Four guards keep it safe:
   sidecar and one column. Files stay where they are, and nothing is re-pointed. Only
   changing the *name* moves files.
 - **Always reversible.** Every move has an undo, and it's tested both ways.
-- **A visible invariant.** Master health reports how many group, complex and uncertain
-  pictures there are, and checks that none of them counted. A number that moves the
-  wrong way is a bug signal, not a fact.
+- **A visible invariant.** Master health checks that no group, complex or uncertain
+  picture counts, and that every certain one does. A wrong count is a bug signal.
 
 ### Phase 4: Retire "?"
 

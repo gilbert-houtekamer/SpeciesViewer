@@ -121,3 +121,42 @@ def test_album_table_does_not_number_a_probable_only_species():
                              {"WetSoortNaam": "c d", "certainty": "probable"}]}
     _days, rows = species_table(sc, by_day)
     assert {r["Scientific"]: r["Nr"] for r in rows} == {"a b": 1, "c d": ""}
+
+
+# ── phase 3: the Uncertain review ─────────────────────────────────────────────
+
+def test_is_uncertain_id():
+    from engine.species_count import is_uncertain_id
+    assert is_uncertain_id("oplurus sp.")
+    assert is_uncertain_id("", "oplurus sp")
+    assert is_uncertain_id("sterna hirundo, probable")
+    assert is_uncertain_id("['sterna hirundo', 'female', '?']")
+    assert is_uncertain_id("? phacelia")
+    assert not is_uncertain_id("sterna hirundo, adult", "sterna hirundo")
+    assert not is_uncertain_id("", "")
+
+
+def test_master_lists_open_ids_with_their_family(master):
+    root, db = master
+    assert db.uncertain_pictures() == {}
+    _set_certainty(db, "p4", "probable")
+    mm.move_picture_to_species(db, root, "p3", {"sci": "larus sp"})
+    assert db.uncertain_pictures() == {
+        "p4": {"sci": "sterna hirundo", "family": "sternidae"},
+        "p3": {"sci": "larus sp", "family": "laridae"}}
+    _set_certainty(db, "p4", "")                       # resolved: it drops out
+    assert set(db.uncertain_pictures()) == {"p3"}
+
+
+def test_health_flags_a_wrong_count(master):
+    root, db = master
+    from db import master_health
+    _set_certainty(db, "p4", "probable")
+    rep = master_health.check(db, root)
+    assert not any("count wrongly" in f.what for f in rep.findings)
+    # a row that counts without a certain picture is a bug signal
+    con = db._connect()
+    with con:
+        db._set_species_fields(con, "sterna hirundo", {"iSpeciesCollectionCount": 1})
+    rep = master_health.check(db, root)
+    assert any("1 species row(s) count wrongly" in f.what for f in rep.findings)

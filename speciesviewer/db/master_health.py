@@ -254,6 +254,38 @@ def _check_locked(db, con, act, rep: "Report", t0: float) -> "Report":
             "warn", f"{bad_map} JPGmap entr(ies) point at a file that is not tracked",
             "these would publish as broken images"))
 
+    # 5. The counting rule (engine/species_count.py): a species row counts exactly
+    #    when it has a certain picture. Anything else is a bug signal, healed by
+    #    Recount.
+    from engine.species_count import counts_as_species
+    counting: dict[str, int] = {}
+    for sci, cert, path in con.execute(
+            'SELECT TRIM("WetSoortNaam"), "certainty", "TargetPath" FROM pictures'):
+        sci = (sci or "").strip().lower()
+        if not sci or (path or "").startswith("topics/"):
+            continue
+        if counts_as_species(sci, cert):
+            counting[sci] = counting.get(sci, 0) + 1
+    wrong_on = wrong_off = 0
+    for sci, n in con.execute(
+            'SELECT "ScientificName", "iSpeciesCollectionCount" FROM species '
+            'WHERE "Level" = "Level.SPECIES" AND "TargetPath" NOT LIKE "topics/%"'):
+        has = counting.get((sci or "").strip().lower(), 0) > 0
+        try:
+            n = int(n or 0)
+        except (TypeError, ValueError):
+            n = 0
+        if n > 0 and not has:
+            wrong_on += 1
+        elif n == 0 and has:
+            wrong_off += 1
+    if wrong_on or wrong_off:
+        rep.findings.append(Finding(
+            "warn", f"{wrong_on + wrong_off} species row(s) count wrongly",
+            f"{wrong_on} count as a species without a certain picture, {wrong_off} have one "
+            f"but don't count. To fix: Master ▸ Maintain Master Database ▸ "
+            f"Recount Species Counters…"))
+
     rep.seconds = time.time() - t0
     return rep
 
