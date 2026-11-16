@@ -20,6 +20,7 @@ global config
 
 from engine import COLUMN_NAMES, SELECTED_FIELDS
 from engine.specieslib import Level
+from engine.species_count import counts_as_species
 import engine.projectlib
 import engine.breadcrumb
 from utils.exiftool_path import exe as exiftool_exe
@@ -1784,7 +1785,7 @@ def addSpeciesToSummaryPost(MyProject, speciesname, selected_species, excluded=N
             if int(species['iPictureThisRunCount']) > 0:            # brute force scan
                 if species['Level'] == Level.SPECIES:
                     if MyProject.Blog.getSelectedSpeciesGroup() in species['TargetPath'] and \
-                    (MyProject.Blog.getOnlyNewSpecies() and int(species['iSpeciesThisRunCount']) > 0) or (not MyProject.Blog.OnlyNewSpecies):
+                    (MyProject.Blog.getOnlyNewSpecies() and int(species['iSpeciesThisRunCount']) > 0 and counts_as_species(leaf)) or (not MyProject.Blog.OnlyNewSpecies):
                         if MyProject.Blog.getMinimumScore() <= species['currentHighestRating']:                 # Last is BUGBUG if high score is from past??
                             # picture species and time
                             collectBestJPGs(MyProject, leaf, selected_species)

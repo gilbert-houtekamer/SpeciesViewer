@@ -562,6 +562,24 @@ class MasterCardMenuMixin:
             row["Rate"] = str(new_rate)
         return new_rate
 
+    def _group_target(self, typed: str) -> dict | None:
+        """A group name the list doesn't have yet ("ananas sp."): file it in the
+        master's species list (family from a relative, else GBIF) and return it
+        as a new Move target. None for anything else."""
+        from engine.species_count import is_group
+        if not is_group(typed) or self._master_db is None:
+            return None
+        from db.master_mutate import file_group
+        try:
+            name = file_group(self._master_root, typed)
+        except Exception as e:
+            logger.warning(f"Could not add '{typed}' to the species list: {e}")
+            return None
+        if not name:
+            return None
+        return next((t for t in self.master_species_targets()
+                     if (t.get("sci") or "").strip().lower() == name), None)
+
     def _ask_master_species(self, upn_key: str, targets: list[dict]) -> dict | None:
         """Searchable picker over the whole master species list (species.csv) — the
         master's Move targets are any species ever seen, not just those with pictures.
@@ -611,8 +629,18 @@ class MasterCardMenuMixin:
         chosen = combo.currentText().strip()
         row = name_to_row.get(chosen.casefold())
         if row is None:
-            QMessageBox.warning(self, "Unknown species",
-                                f"“{chosen}” isn’t in your species list — pick one "
-                                f"from the list.")
+            row = self._group_target(chosen)
+        if row is None:
+            from engine.species_count import group_base
+            if group_base(chosen):
+                QMessageBox.warning(
+                    self, "Unknown group",
+                    f"No family found for “{chosen}”: your species list has no "
+                    f"{group_base(chosen).capitalize()} species, and GBIF doesn’t know "
+                    f"the name (or can’t be reached). Check the spelling.")
+            else:
+                QMessageBox.warning(self, "Unknown species",
+                                    f"“{chosen}” isn’t in your species list — pick one "
+                                    f"from the list.")
             return None
         return row

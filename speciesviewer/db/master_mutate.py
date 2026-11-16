@@ -610,6 +610,33 @@ def _read_collection(master_root: Path) -> dict[str, dict]:
                 for r in csv.DictReader(fh, delimiter=";")}
 
 
+def file_group(master_root, typed: str) -> str:
+    """File a group name ("ananas sp.") in the master's species list when the
+    list doesn't have it yet, and return its stored name ("ananas sp"); "" when
+    `typed` is no group or no family can be found for it (engine/species_count.py).
+
+    Its family comes from a relative already in the list, else from GBIF. Only
+    the new rows are APPENDED (the list's own append path), so the list is never
+    rewritten."""
+    from engine.species_count import group_base, group_name
+    from engine.speciesclassification import SpeciesClassification
+    if not group_base(typed):
+        return ""
+    path = Path(master_root) / "metadata" / "active" / "speciescollection.csv"
+    if not path.exists():
+        return ""
+    name = group_name(group_base(typed))
+    if name in _read_collection(Path(master_root)):
+        return name
+    sc = SpeciesClassification(None)
+    sc.readSpeciesCollection(str(path))
+    filed = sc.addGroup(typed)
+    if filed:
+        sc.appendSpeciesCollection(str(path), [filed])
+        logger.info(f"'{typed}' is added to the master's species list as '{filed}'.")
+    return filed
+
+
 def collection_species_targets(db, master_root) -> list[dict]:
     """Move targets the master has never had: species in the full species list
     that have a way up to the master's tree, as {"sci","nl","en",

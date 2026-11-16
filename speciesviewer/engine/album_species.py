@@ -19,6 +19,7 @@ from pathlib import Path
 
 from engine.specieslib import Level
 from engine.subspecies import species_of
+from engine.species_count import counts_as_species
 
 COLOUR_COLUMNS = ["Red", "Yellow", "Green", "Blue", "Purple", "No colour"]
 _NOT_KEPT = {"Blue", "Purple"}          # marked for deletion: not counted in Pics
@@ -80,8 +81,10 @@ def species_table(sc_dict, by_day: dict):
             continue
         group = "Birds" if _is_bird(sc_dict, rec) else "Other"
         whole = species_of(sc_dict, sci_l)
-        repeat = whole in counted
-        counted.add(whole)
+        # a group ("oplurus sp") is listed but not numbered (engine/species_count.py)
+        repeat = whole in counted or not counts_as_species(sci_l)
+        if not repeat:
+            counted.add(whole)
         if not repeat:
             nr[group] += 1
         sci = rec.get("ScientificName") or sci_l

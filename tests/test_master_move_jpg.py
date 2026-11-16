@@ -112,7 +112,10 @@ def master(tmp_path, monkeypatch):
               "DutchName": "schaarbekken"},
              {"Level": "Level.SPECIES", "ScientificName": "rynchops niger", "Up": "rynchopidae",
               "DutchName": "amerikaanse schaarbek", "EnglishName": "black skimmer"},
-             {"Level": "Level.SPECIES", "ScientificName": "? meeuw", "Up": "laridae"}]
+             {"Level": "Level.SPECIES", "ScientificName": "? meeuw", "Up": "laridae"},
+             # a group (uncertain IDs phase 1): a place for pictures, never a species
+             {"Level": "Level.SPECIES", "ScientificName": "larus sp", "Up": "laridae",
+              "DutchName": "larus sp.", "EnglishName": "larus sp."}]
     _write_csv(active / "speciescollection.csv",
                ["Level", "ScientificName", "DutchName", "EnglishName", "Up", "Leaves"], coll)
 
@@ -249,10 +252,12 @@ def test_keyword_keeps_qualifiers_and_undo_puts_it_back(master):
 def test_new_to_master_species_and_family(master):
     root, db = master
     targets = {t["sci"] for t in mm.collection_species_targets(db, root)}
-    assert targets == {"rynchops niger"}          # not the placeholder, not known ones
+    # not the placeholder, not known ones; a group is a target like a species
+    assert targets == {"rynchops niger", "larus sp"}
 
     before, disk_before = _state(db), _disk(root)
-    target = next(t for t in mm.collection_species_targets(db, root))
+    target = next(t for t in mm.collection_species_targets(db, root)
+                  if t["sci"] == "rynchops niger")
     r = mm.move_picture_to_species(db, root, "p1", target)
     new_path = "biota/aves/rynchopidae/rynchops niger/"
     assert r["new_species"] == ["rynchopidae", "rynchops niger"]
@@ -333,3 +338,55 @@ def test_a_group_to_a_new_species_moves_and_undoes_together(master):
 
 def _sorted_leaves(rows):
     return [{**r, "Leaves": sorted(json.loads(r["Leaves"] or "[]"))} for r in rows]
+
+
+def test_moving_into_a_group_takes_a_species_off_the_count(master):
+    """Resolving the other way round ("I'm not sure after all"): the last
+    picture of larus argentatus goes to "larus sp". laridae and aves lose a
+    species; the group never adds one. The undo puts the count back."""
+    root, db = master
+    before = _state(db)
+    r = mm.move_picture_to_species(db, root, "p3", {"sci": "larus sp"})
+    assert r["new_species"] == ["larus sp"]
+    assert _species(db, "larus argentatus") is None
+    assert _species(db, "laridae")["iSpeciesCollectionCount"] == 1
+    assert _species(db, "aves")["iSpeciesCollectionCount"] == 2
+    grp = _species(db, "larus sp")
+    assert grp["iPictureCollectionCount"] == 1
+    assert grp["TargetPath"].rstrip("/") == "biota/aves/laridae/larus sp"
+    assert (root / "biota/aves/laridae/larus sp/p3.jpg").exists()
+
+    mm.undo_move(db, root, r["batch"])
+    assert _sorted_leaves(_state(db)[0]) == _sorted_leaves(before[0])
+    assert _state(db)[1:] == before[1:]
+
+
+def test_resolving_a_group_to_a_new_species_adds_one(master):
+    """The normal resolve: the group's picture becomes a species. Moving out of
+    a group never takes a species off; a species that gets its first picture
+    adds one."""
+    root, db = master
+    mm.move_picture_to_species(db, root, "p3", {"sci": "larus sp"})
+    mm.move_picture_to_species(db, root, "p3", {"sci": "rynchops niger"})
+    assert _species(db, "larus sp") is None
+    assert _species(db, "laridae")["iSpeciesCollectionCount"] == 1
+    assert _species(db, "rynchopidae")["iSpeciesCollectionCount"] == 1
+    assert _species(db, "aves")["iSpeciesCollectionCount"] == 3
+
+
+def test_a_typed_group_is_filed_in_the_species_list_and_becomes_a_target(master):
+    """ "sterna sp." typed in the Move picker: the master's list has no such row
+    yet. It is APPENDED under the family of sterna hirundo (no GBIF needed), and
+    then offered as a new target like any species."""
+    root, db = master
+    coll = root / "metadata" / "active" / "speciescollection.csv"
+    rows_before = coll.read_text(encoding="utf-8").splitlines()
+    assert mm.file_group(root, "Sterna sp.") == "sterna sp"
+    rows_after = coll.read_text(encoding="utf-8").splitlines()
+    assert rows_after[:len(rows_before)] == rows_before      # appended, not rewritten
+    assert any(r.startswith("Level.SPECIES;sterna sp;") for r in rows_after)
+    assert mm.file_group(root, "sterna sp") == "sterna sp"   # a second time: no new row
+    assert len(coll.read_text(encoding="utf-8").splitlines()) == len(rows_after)
+    targets = {t["sci"] for t in mm.collection_species_targets(db, root)}
+    assert "sterna sp" in targets
+    assert mm.file_group(root, "sterna hirundo") == ""        # no group: nothing filed

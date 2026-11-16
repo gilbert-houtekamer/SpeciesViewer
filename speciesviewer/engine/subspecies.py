@@ -11,10 +11,16 @@ children. Every level above just adds up families, as before.
 
 INVARIANT: on a list without subspecies nothing changes — every group then
 has one member and its counters pass through untouched.
+
+A name that does not count as a species at all (a group such as "oplurus sp",
+a "? name" placeholder — engine/species_count.py) adds nothing here, so every
+level above it never counts it either.
 """
 from __future__ import annotations
 
 import csv
+
+from engine.species_count import counts_as_species
 
 
 def species_of(sc_dict, name: str) -> str:
@@ -30,6 +36,8 @@ def fold_species_flags(sc_dict, children) -> tuple[int, int]:
     A child that is no species group of more than one passes through as is."""
     groups: dict[str, list] = {}
     for name, coll, new in children:
+        if not counts_as_species(name):
+            continue
         groups.setdefault(species_of(sc_dict, name), []).append((int(coll or 0), int(new or 0)))
     coll_total = new_total = 0
     for members in groups.values():
@@ -44,8 +52,9 @@ def fold_species_flags(sc_dict, children) -> tuple[int, int]:
 
 
 def species_names(sc_dict, names) -> set[str]:
-    """The species a set of names counts as (for comparing lifer baselines)."""
-    return {species_of(sc_dict, n) for n in names}
+    """The species a set of names counts as (for comparing lifer baselines).
+    A group or placeholder counts as no species."""
+    return {species_of(sc_dict, n) for n in names if counts_as_species(n)}
 
 
 def read_subspecies(speciescollection_csv) -> dict:

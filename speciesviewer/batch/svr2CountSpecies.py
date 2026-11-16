@@ -25,6 +25,7 @@ import engine.specieslib
 import engine.speciesclassification
 from engine.specieslib import Level
 from engine.subspecies import species_names, species_of
+from engine.species_count import counts_as_species
 import engine.triplib
 import engine.species_baseline
 import engine.topics
@@ -204,9 +205,13 @@ def scanSpecies(sc, speciesname, report):
                 # A species and its subspecies count once (engine/subspecies.py):
                 # the second line of a group is listed but not numbered again.
                 group = species_of(sc.sc_dict, scientific)
-                repeat = group in counted_groups
-                counted_groups.add(group)
-                known = scientific in reference_names or group in reference_names
+                # A group ("oplurus sp") is listed but never numbered or new:
+                # only a certain species counts (engine/species_count.py).
+                counts = counts_as_species(scientific)
+                repeat = group in counted_groups or not counts
+                if counts:
+                    counted_groups.add(group)
+                known = scientific in reference_names or group in reference_names or not counts
                 data_line = ('   ' if repeat else str(counter).rjust(3)) + ' ' + english.ljust(32) + dutch.ljust(40)
                 row_nr = '' if repeat else counter
                 row_new = ''

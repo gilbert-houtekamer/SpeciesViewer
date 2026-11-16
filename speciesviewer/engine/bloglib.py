@@ -16,6 +16,7 @@ from engine.websupport import getTemplateOutputString
 import engine.translatelib
 from engine.handling import parseListFromCSV
 from engine.specieslib import Level
+from engine.species_count import counts_as_species
 
 logger = logging.getLogger("speciesviewer")
 
@@ -533,7 +534,7 @@ class Blog:
             if int(species['iPictureThisRunCount']) > 0:            # brute force scan
                 if species['Level'] == Level.SPECIES:
                     if speciesname in species['TargetPath'] and \
-                    (self.getOnlyNewSpecies() and int(species['iSpeciesThisRunCount']) > 0) or (not self.OnlyNewSpecies) and \
+                    (self.getOnlyNewSpecies() and int(species['iSpeciesThisRunCount']) > 0 and counts_as_species(leaf)) or (not self.OnlyNewSpecies) and \
                     minimumrating <= species['currentHighestRating']:                 # Last is BUGBUG if high score is from past??
                         count += 1
                 else:

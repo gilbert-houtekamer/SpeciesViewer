@@ -20,6 +20,7 @@ from datetime import datetime
 from pathlib import Path
 
 from engine.statemachine import StateMachine
+from engine.species_count import counts_as_species
 
 logger = logging.getLogger("speciesviewer")
 
@@ -350,7 +351,7 @@ def load_master_index(master_repo):
                 wsn = row[si].strip()
                 if not wsn:
                     continue
-                if not wsn.startswith("?"):
+                if counts_as_species(wsn):       # no group, no "? name"
                     species.add(wsn.lower())
                 d = _norm_date(row[di]) if di < len(row) else None
                 if not d:

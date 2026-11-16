@@ -41,7 +41,7 @@ Each phase can ship and be tested on its own.
 
 ### Phase 0: Move a master picture that has JPGs to another species
 
-*Built 16 Nov 2026, awaiting test. It also covers a target the master has never had,
+*Done 16 Nov 2026 (5bb4dd1), tested in the QA master. It also covers a target the master has never had,
 "Master ▸ Undo Last Species Move…", and a keyword that keeps its sex/age/plumage words.
 Tests: `tests/test_master_move_jpg.py`.*
 
@@ -82,6 +82,29 @@ first.** It can also follow phase 1, because the trip side doesn't need it: in a
 changing a name is just a keyword edit.
 
 ### Phase 1: Group names ("Oplurus sp.")
+
+*Built 16 Nov 2026, awaiting test. Tests: `tests/test_species_groups.py` and the
+two group tests in `tests/test_master_move_jpg.py`.*
+
+- **The rule:** `engine/species_count.py`, `counts_as_species(name)`. A group
+  and a "? name" placeholder never count.
+- **Stored without the dot:** the row is `oplurus sp`, its Dutch and English
+  names read `oplurus sp.`. The name is also a folder, and Windows drops a
+  trailing dot from a folder while macOS and the web server keep it. You can
+  type sp, sp., spec., spp.
+- **Filing:** `SpeciesClassification.addGroup`. The family comes from a
+  relative in the list (offline), else from GBIF. No group above a family.
+  On a converted list it gets a Sequence halfway to the next genus.
+- **The audit came out smaller than feared:** most counters already pass through
+  `engine/subspecies.py` (`fold_species_flags`, `species_names`). Teaching those
+  two the rule covers the trip rollup, Freeze's totals, master Recount and the
+  website's numbers. Switched by hand: Count Species (trip and album: listed,
+  not numbered, never New), the lifer baseline, the master's live counts on a
+  move or delete, the trip registry's species set, and the "only new species"
+  blog filters.
+- **Visible change:** an existing "? name" placeholder no longer counts either,
+  so a master Recount may show families one species lower. That is the rule,
+  not a bug.
 
 - A name ending in " sp." is recognised as a group. The genus or family is looked up
   **locally** from a relative already in the species list, so it works offline. GBIF is

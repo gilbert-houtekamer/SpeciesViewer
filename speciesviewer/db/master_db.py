@@ -47,6 +47,8 @@ from engine.handling import resolve_path
 # cache has used for the same reason.
 from engine.exifcache import _replace_with_retry
 
+from engine.species_count import counts_as_species
+
 logger = logging.getLogger("speciesviewer")
 
 
@@ -1094,7 +1096,9 @@ class MasterDB:
         emptied = (n_left == 0)
         # the species COUNT drops only when the whole group (species + its
         # subspecies) is left without pictures
-        group_emptied = emptied and self._group_picture_count(con, sciname) - 1 <= 0
+        # A group ("oplurus sp") never counted, so it never un-counts.
+        group_emptied = (emptied and counts_as_species(sciname)
+                         and self._group_picture_count(con, sciname) - 1 <= 0)
 
         # ancestor chain (pre-delete snapshot)
         chain = []
@@ -1362,9 +1366,12 @@ class MasterDB:
         # The species COUNT follows the group (species + its subspecies): a
         # move inside one group (carrion crow -> hooded crow) changes no count.
         same_group = self._species_group(source_sci) == self._species_group(target_sci)
+        # A group ("oplurus sp", engine/species_count.py) is no species: moving
+        # into or out of one changes no species count.
         source_group_empties = (source_empties and not same_group
+                                and counts_as_species(source_sci)
                                 and self._group_picture_count(con, source_sci) - 1 <= 0)
-        target_group_was_empty = (not same_group
+        target_group_was_empty = (not same_group and counts_as_species(target_sci)
                                   and self._group_picture_count(con, target_sci) == 0)
 
         # iSpeciesCollectionCount changes only on the ANCESTORS when a species

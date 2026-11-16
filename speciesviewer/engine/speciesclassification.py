@@ -11,6 +11,9 @@ import engine.projectlib
 
 from enum import Enum, auto
 
+from engine.species_count import (counts_as_species, group_base, group_label,
+                                  group_name, is_group)
+
 logger = logging.getLogger("speciesviewer")
 
 # Column order of speciescollection.csv. One definition, used by the full
@@ -681,6 +684,126 @@ class SpeciesClassification:
 
         return gbif['canonicalName'].lower()
 
+    # ── groups: "oplurus sp." (uncertain IDs phase 1, engine/species_count.py) ──
+    def _is_level(self, row, level):
+        return row is not None and row.get('Level') in (level, str(level))
+
+    def _group_parent(self, base):
+        """The family a group of `base` files under, from the list alone: `base`
+        itself when it is a family, else the family of a species of genus
+        `base` we already have. "" when neither is known (or `base` is an
+        order or class: no group is made that high)."""
+        row = self.sc_dict.get(base)
+        if row is not None:
+            return base if self._is_level(row, Level.FAMILY) else ""
+        ups = {}
+        prefix = base + " "
+        for n, r in self.sc_dict.items():
+            if (n.startswith(prefix) and r.get('Up') and counts_as_species(n)
+                    and self._is_level(r, Level.SPECIES)):
+                ups[r['Up']] = ups.get(r['Up'], 0) + 1
+        return max(ups, key=ups.get) if ups else ""
+
+    def _group_parent_gbif(self, base, name):
+        """Ask GBIF which family `base` (a genus or family) belongs to, and add
+        the chain down to the group row `name`. "" when GBIF does not know it
+        exactly, or when the class is one GBIF may not add to (AviList, MDD)."""
+        if base in _NAMES_NOT_FOUND:
+            return ""
+        try:
+            gbif = _flatten_name_backbone(species.name_backbone(scientificName=base,
+                                                                timeout=GBIF_TIMEOUT))
+            family = (gbif.get('family') or "").lower()
+            if (gbif.get('matchType') != 'EXACT' or not family
+                    or base not in (family, (gbif.get('genus') or "").lower())):
+                # A name two taxa share stops the matcher: "Furcifer" is the
+                # chameleons AND an old synonym of a deer genus, so it answers
+                # only "Chordata". Take the one ACCEPTED genus/family instead.
+                gbif = self._gbif_accepted_taxon(base)
+                family = (gbif.get('family') or "").lower()
+            if not family:
+                _NAMES_NOT_FOUND.add(base)
+                return ""
+            # addSpecies files canonicalName at species level under the family;
+            # without a speciesKey it asks no vernacular names for it.
+            gbif = {k: v for k, v in gbif.items() if k not in ('species', 'speciesKey')}
+            gbif['canonicalName'] = name
+            return family if self.addSpecies(gbif) else ""
+        except Exception as e:
+            self._gbif_lookup_errors = getattr(self, "_gbif_lookup_errors", 0) + 1
+            logger.warning(f"GBIF lookup failed for the group '{base}' ({type(e).__name__}: {e}).")
+            _NAMES_NOT_FOUND.add(base)
+            return ""
+
+    @staticmethod
+    def _gbif_accepted_taxon(base):
+        """The lineage (flat, as addSpecies reads it) of the ONE accepted genus or
+        family GBIF has under exactly this name; {} when there is none or more
+        than one."""
+        hits = [h for h in species.name_suggest(q=base, timeout=GBIF_TIMEOUT) or []
+                if (h.get('canonicalName') or "").lower() == base
+                and h.get('rank') in ('GENUS', 'FAMILY') and h.get('status') == 'ACCEPTED']
+        if len(hits) != 1:
+            return {}
+        u = species.name_usage(key=hits[0]['key'], timeout=GBIF_TIMEOUT)
+        flat = {'matchType': 'EXACT'}
+        for rank in ('kingdom', 'phylum', 'class', 'order', 'family', 'genus'):
+            if u.get(rank):
+                flat[rank] = u[rank]
+                if u.get(rank + 'Key'):
+                    flat[rank + 'Key'] = u[rank + 'Key']
+        return flat
+
+    def _group_sequence(self, parent, base):
+        """A sort number that puts the group after its named relatives: halfway
+        to the next genus, or after everything for a family group. None when
+        the siblings carry no Sequence (an unconverted list sorts by name, and
+        "oplurus sp" already sorts among its relatives there)."""
+        from engine.taxon_order import sequence_of
+        sibs = [(sequence_of(self.sc_dict.get(n)), n)
+                for n in self.sc_dict.get(parent, {}).get('Leaves', [])]
+        sibs = [(q, n) for q, n in sibs if q is not None]
+        if not sibs:
+            return None
+        top_all = max(q for q, _n in sibs)
+        if base == parent:
+            return top_all + 1
+        rel = [q for q, n in sibs if n.split()[0] == base and counts_as_species(n)]
+        if not rel:
+            return top_all + 1
+        top = max(rel)
+        above = [q for q, _n in sibs if q > top]
+        return (top + min(above)) / 2 if above else top + 1
+
+    def addGroup(self, subject, ask_gbif=True):
+        """File a group name ("oplurus sp.", "libellulidae sp.") as a species-level
+        row under its family and return its stored name ("oplurus sp"); "" when
+        its family cannot be found. It never counts as a species
+        (engine/species_count.py); it does get a folder and a species page."""
+        base = group_base(subject)
+        if not base:
+            return ""
+        name = group_name(base)
+        if name in self.sc_dict:
+            return name
+        parent = self._group_parent(base)
+        if not parent and ask_gbif:
+            parent = self._group_parent_gbif(base, name)
+        if not parent:
+            logger.info(f"'{subject}': no species of '{base}' in the list and GBIF does "
+                        f"not know it, so there is no family to file the group under.")
+            return ""
+        label = group_label(base)
+        self.addSpeciesLevel(Level.SPECIES, name, label, label, parent)
+        self.dutch_dict.setdefault(label, name)
+        self.english_dict.setdefault(label, name)
+        if self.converted:
+            seq = self._group_sequence(parent, base)
+            if seq is not None:
+                self.sc_dict[name]['Sequence'] = f"{seq:g}"
+        logger.info(f"'{subject}' is filed as the group '{name}' under {parent}.")
+        return name
+
     # look for names in all three tables
     # add some logic to massage species
     @staticmethod
@@ -704,6 +827,10 @@ class SpeciesClassification:
             return self.english_dict[subject]
         elif subject in getattr(self, "alias_dict", {}):
             return self.alias_dict[subject]
+        elif LookUpInGBIF and is_group(subject):
+            # "oplurus sp.": filed under the family of a relative we know, so it
+            # works offline; GBIF only when no relative is in the list.
+            return self.addGroup(subject, ask_gbif=not getattr(self, "_gbif_offline", False))
         elif LookUpInGBIF and not getattr(self, "_gbif_offline", False) and (',' not in subject):
             # Normalize subspecies qualifiers before lookup
             normalized = self._normalize_subspecies(subject)

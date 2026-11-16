@@ -35,6 +35,7 @@ import sys
 from datetime import datetime
 
 from engine import topics
+from engine.species_count import counts_as_species
 
 logger = logging.getLogger("speciesviewer")
 
@@ -83,6 +84,8 @@ def collect_species_from_csv(path):
             continue
         if topics.is_topic_node(records, raw_name):
             topic_rows += 1
+            continue
+        if not counts_as_species(name):          # a group: "oplurus sp"
             continue
         raw_count = row.get("iPictureCollectionCount")
         if raw_count is not None and str(raw_count).strip().isdigit():
@@ -138,6 +141,8 @@ def collect_species_before(master_repo, before_date, sc_records=None):
                     continue
                 if sc_records and topics.is_topic_node(sc_records, name):
                     topic_rows += 1
+                    continue
+                if not counts_as_species(name):  # a group: "oplurus sp"
                     continue
                 names.add(name.lower())
     except Exception as e:
