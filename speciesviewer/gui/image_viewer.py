@@ -1804,7 +1804,7 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
         # "Set species…" re-types the determination. It works in the trip viewer
         # (SpeciesInfoPanel, fpr present) and the culling grid (can_edit_species). But a
         # master picture's species is settled and NOT re-typed from an album (an actual
-        # re-file goes through the master menu's "Move to existing species…"). What IS
+        # re-file goes through the master menu's "Move to another species…"). What IS
         # editable there is the FORM — sex / age / plumage — a property of the photo, so
         # it takes this slot in the album, in place of the dead "Set species…".
         act_species = act_qualifiers = None

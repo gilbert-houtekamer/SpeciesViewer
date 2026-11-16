@@ -67,9 +67,14 @@ class MasterCardOpsMixin:
                 and self._master_db is not None and not self.master_upn_has_jpg(key))
 
     def master_upn_moveable(self, key: str) -> bool:
-        """Movable to another species under the same gate as delete — no JPG (the
-        JPG best-pick move isn't implemented)."""
-        return self.master_upn_deletable(key)
+        """Movable to another species whenever master writes are enabled — with or
+        without a JPG. A move trashes nothing, so the delete rule "never trash a
+        JPG" does not apply; the database re-derives both species' best-picks."""
+        return (key in self._master_keys and not self.master_read_only
+                and self._master_db is not None)
+
+    def master_files(self, key: str) -> list[str]:
+        return list(self._master_upn.get(key, {}).get("Files", []) or [])
 
     def master_nonjpg_files(self, key: str) -> list[str]:
         files = self._master_upn.get(key, {}).get("Files", []) or []
@@ -97,15 +102,29 @@ class MasterCardOpsMixin:
         return add_upn_files(self._master_db, self._master_root, key)
 
     def master_species_targets(self) -> list[dict]:
-        """Every species in the master (species.csv mirror) as a Move-to target:
+        """Every Move-to target: each species in the master (species.csv
+        mirror), then each species of the full species list the master has
+        never had ({"new": True}, no folder yet — the move creates it).
         [{"sci","nl","en","target_path"}]. Empty when no master DB is attached."""
         if self._master_db is None:
             return []
-        return self._master_db.all_species_rows()
+        from db.master_mutate import collection_species_targets
+        try:
+            extra = collection_species_targets(self._master_db, self._master_root)
+        except Exception as e:                       # the master list still works
+            logger.warning(f"Move targets: full species list unreadable: {e}")
+            extra = []
+        return self._master_db.all_species_rows() + extra
 
-    def move_master_picture(self, key: str, target: dict) -> dict:
+    def move_master_picture(self, key: str, target: dict, group: str = "") -> dict:
         from db.master_mutate import move_picture_to_species
-        return move_picture_to_species(self._master_db, self._master_root, key, target)
+        return move_picture_to_species(self._master_db, self._master_root, key, target,
+                                       group=group)
+
+    def master_species_label(self, key: str) -> str:
+        """The picture's species as the user reads it (Dutch, else scientific)."""
+        row = self._master_upn.get(key, {})
+        return (row.get("NLSoortNaam") or row.get("WetSoortNaam") or "").strip()
 
     # ── best-JPG pin ──────────────────────────────────────────────────────────
     def master_jpgs(self, key: str) -> list[dict]:
@@ -224,13 +243,16 @@ class MasterCardMenuMixin:
             rebuild()
 
     # ── menu building ─────────────────────────────────────────────────────────
-    def _build_master_menu(self, menu, upn_key: str, *, ops=None) -> dict:
+    def _build_master_menu(self, menu, upn_key: str, *, ops=None, keys=None) -> dict:
         """Populate `menu` with the master card actions and return {QAction: handler}.
 
         `ops` limits which actions appear (default: all). Returns {} when the master is
         read-only — the caller decides whether to show a disabled hint. This lets the
         same menu be shown standalone (Master Species Viewer / Rating Editor) or appended
-        to a viewer's own card menu (the album)."""
+        to a viewer's own card menu (the album).
+
+        `keys`: the selection the menu was opened on (default: just `upn_key`).
+        Move acts on all of it; the other master actions stay per picture."""
         col = self._collection
         if col is None or col.master_read_only:
             return {}
@@ -241,8 +263,11 @@ class MasterCardMenuMixin:
         # it — the same block order the Trip and Album card menus use, so the
         # menu does not reshuffle as you move between the three viewers.
         if "move" in want and col.master_upn_moveable(upn_key):
-            a = menu.addAction("Move to existing species…")
-            handlers[a] = lambda: self._do_master_move(upn_key)
+            move_keys = [k for k in (keys or [upn_key]) if col.master_upn_moveable(k)]
+            n = len(move_keys)
+            a = menu.addAction("Move to another species…"
+                               + (f"  ({n} pictures)" if n > 1 else ""))
+            handlers[a] = lambda: self._do_master_move(upn_key, move_keys)
 
         if "qualifiers" in want:
             a = menu.addAction("Sex / age / plumage…")
@@ -410,10 +435,15 @@ class MasterCardMenuMixin:
         self._master_status(f"Deleted {fname} (moved to .trash).")
         self._after_master_change()
 
-    def _do_master_move(self, upn_key: str):
+    def _do_master_move(self, upn_key: str, keys=None):
+        """Move one picture, or the whole selection, to another species. Each
+        picture is its own durable move; together they form one group, so
+        Master ▸ Undo Last Species Move puts them all back at once."""
         from PyQt6.QtWidgets import QMessageBox
         from db.master_mutate import MasterMutateError
-        targets = self._collection.master_species_targets()
+        col = self._collection
+        keys = [k for k in (keys or [upn_key])] or [upn_key]
+        targets = col.master_species_targets()
         if not targets:
             QMessageBox.information(self, "Move to species",
                                     "No master species list is available.")
@@ -421,32 +451,66 @@ class MasterCardMenuMixin:
         target = self._ask_master_species(upn_key, targets)
         if not target:
             return
-        # Confirm before relocating real master files on disk.
-        n_files = len(self._collection.master_nonjpg_files(upn_key))
+        # Confirm before relocating real master files on disk — and say exactly
+        # what goes where (the first few names; the rest as a number).
+        files = [f for k in keys for f in col.master_files(k)]
+        n_jpg = sum(1 for f in files if f.lower().endswith((".jpg", ".jpeg")))
         tname = target.get("nl") or target.get("sci")
-        src = getattr(self, "_current_display", "") or "its current species"
+        srcs = sorted({col.master_species_label(k) for k in keys} - {""})
+        src = srcs[0] if len(srcs) == 1 else "their species"
+        what = "this picture" if len(keys) == 1 else f"these {len(keys)} pictures"
+        shown = ", ".join(files[:6]) + (f", and {len(files) - 6} more" if len(files) > 6 else "")
+        jpg_note = (f"\n\nThe JPGs move as well. The best picture of both species is "
+                    f"worked out again; the website follows at the next master "
+                    f"website rebuild." if n_jpg else "")
+        new_note = (f"\n\n“{tname}” has no pictures in the master yet. It is added to "
+                    f"the master's species list, with a folder of its own."
+                    if target.get("new") else "")
         if QMessageBox.question(
                 self, "Move to species",
-                f"Move this picture from “{src}” to “{tname}”?\n\n"
-                f"{n_files} file(s) will be relocated into the {tname} folder, the "
-                f"species keyword rewritten, and the master database updated. "
-                f"This is reversible (files are snapshotted).",
+                f"Move {what} from “{src}” to “{tname}”?\n\n"
+                f"All {len(files)} file(s) move into the {tname} folder: "
+                f"{shown}. Nothing is deleted.{jpg_note}{new_note}\n\n"
+                f"Master ▸ Undo Last Species Move puts "
+                f"{'it' if len(keys) == 1 else 'them all'} back.",
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
                 QMessageBox.StandardButton.No) != QMessageBox.StandardButton.Yes:
             return
-        try:
-            res = self._collection.move_master_picture(upn_key, target)
-        except MasterMutateError as e:
-            QMessageBox.warning(self, "Move blocked", str(e))
-            return
-        except Exception as e:
-            logger.error(f"Master move {upn_key} failed: {e}", exc_info=True)
-            QMessageBox.warning(self, "Move failed", str(e))
-            return
-        self._master_status(
-            f"Moved to {res['target']} — {len(res['moved'])} file(s) relocated; "
-            f"species counts updated.")
-        self._after_master_change()
+
+        import time as _time
+        group = f"group_{int(_time.time() * 1000)}"
+        moved, blocked, kw_failed = [], [], []
+        for k in keys:
+            try:
+                res = col.move_master_picture(k, target, group=group)
+            except MasterMutateError as e:
+                blocked.append(f"{k}: {e}")
+                continue
+            except Exception as e:
+                logger.error(f"Master move {k} failed: {e}", exc_info=True)
+                blocked.append(f"{k}: {e}")
+                continue
+            moved.append(res)
+            kw_failed += res.get("keyword_failed") or []
+        if blocked:
+            QMessageBox.warning(
+                self, "Move to species",
+                (f"{len(moved)} of {len(keys)} picture(s) moved. " if moved else "")
+                + "These were not moved:\n\n" + "\n".join(blocked[:10])
+                + (f"\n… and {len(blocked) - 10} more" if len(blocked) > 10 else ""))
+        if kw_failed:
+            QMessageBox.warning(
+                self, "Move to species",
+                f"The pictures moved, but the new name could not be written into "
+                f"{len(kw_failed)} file(s): {', '.join(kw_failed[:10])}. "
+                f"The master itself is correct. Those files still carry the old name in their "
+                f"keywords.")
+        if moved:
+            n_files = sum(len(r["moved"]) for r in moved)
+            self._master_status(
+                f"Moved {len(moved)} picture(s) to {moved[0]['target']} — {n_files} "
+                f"file(s) relocated; species counts updated.")
+            self._after_master_change()
 
     def _do_master_add(self, upn_key: str):
         from PyQt6.QtWidgets import QMessageBox
@@ -507,18 +571,23 @@ class MasterCardMenuMixin:
         from PyQt6.QtCore import Qt
         name_to_row: dict[str, dict] = {}
         names: list[str] = []
-        for row in targets:
-            for k in ("nl", "en", "sci"):
+        NEW = "  (no pictures in the master yet)"
+        for row in targets:                     # master species first: they win a
+            for k in ("nl", "en", "sci"):       # name that both lists know
                 v = (row.get(k) or "").strip()
                 if v:
                     name_to_row.setdefault(v.casefold(), row)
-                    names.append(v)
+                    if row.get("new"):
+                        name_to_row.setdefault((v + NEW).casefold(), row)
+                        v = v + NEW if name_to_row[v.casefold()] is row else ""
+                    if v:
+                        names.append(v)
         names = sorted(set(names), key=str.casefold)
         dlg = QDialog(self)
-        dlg.setWindowTitle("Move to existing species")
+        dlg.setWindowTitle("Move to another species")
         dlg.setMinimumWidth(440)
         lay = QVBoxLayout(dlg)
-        lay.addWidget(QLabel("Move this picture to (any species ever seen):"))
+        lay.addWidget(QLabel("Move this picture to (any species in your species list):"))
         combo = QComboBox()
         combo.setEditable(True)
         combo.addItems(names)
@@ -543,7 +612,7 @@ class MasterCardMenuMixin:
         row = name_to_row.get(chosen.casefold())
         if row is None:
             QMessageBox.warning(self, "Unknown species",
-                                f"“{chosen}” isn’t a master species — pick one "
+                                f"“{chosen}” isn’t in your species list — pick one "
                                 f"from the list.")
             return None
         return row

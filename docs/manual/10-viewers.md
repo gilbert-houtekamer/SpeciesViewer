@@ -408,7 +408,7 @@ one shared implementation, so the same menu appears wherever it applies.
 
 | Action | Does |
 |---|---|
-| **Move to existing species…** | Reassign this picture to another species |
+| **Move to another species…** | Reassign this picture to another species — all its files move, its JPGs too, and it keeps its sex / age / plumage words. The species may be one with no pictures in the master yet: it is added from your species list. **Master ▸ Undo Last Species Move** puts it back. |
 | **Sex / age / plumage…** | Set the picture's qualifiers |
 | **Add new files (scan folder)…** | Pick up renders that appeared beside the picture |
 | **Choose the website picture** | Pin which file represents the species, or let the code choose (biggest wins) |

@@ -1983,6 +1983,19 @@ def build_menu_spec(main_window):
                 tooltip="Distribution map — pick 1–4 species and see their GPS points",
                 showsubdirectory=False),
             "Species Without a Website Picture…": no_display_item,
+            # A species move (card menu ▸ Move to another species) is reversible
+            # here, newest first. Grey when there is nothing to undo.
+            "Undo Last Species Move…": MenuSpec(
+                callback=lambda: __import__(
+                    "gui.master_move_undo", fromlist=["undo_last_move"]
+                ).undo_last_move(main_window),
+                title="Undo Last Species Move…",
+                enabled=lambda: __import__(
+                    "gui.master_move_undo", fromlist=["has_move_to_undo"]
+                ).has_move_to_undo(),
+                tooltip="Put the picture you last moved to another species back "
+                        "where it was",
+                showsubdirectory=False),
             f"{MenuSpec.separator()}_master_maint": None,
             "Maintain Master Database": maintain_master_menu,
             # A master delete only moves files to <master>/.trash (restorable);

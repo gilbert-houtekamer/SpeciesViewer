@@ -145,15 +145,19 @@ def _upload_species_pictures(MyProject, config, sftp, toweb, target_path, progre
     cachedUpload makes the unchanged ones free."""
     web_dir = os.path.join(MyProject.getBiotaDir(), target_path)
     wanted = _pictures_the_page_links(web_dir, target_path)
-    before = sftp.FTPmisses
+    # Counted from cachedUpload's own answer (False = sent), which the server
+    # (Sftp) and this computer (LocalSite) both give — FTPmisses exists only on Sftp,
+    # and reading it crashed every regenerate to a local website.
+    sent = 0
     for base in wanted:
         src = _master_source(MyProject, config, target_path, base)
         if not src:
             logger.warning(f"regenerate: the page links {base!r} but it is nowhere on "
                            f"disk — it will render as a broken image.")
             continue
-        sftp.cachedUpload(src, toweb.rstrip("/") + "/" + base, preserve_mtime=True)
-    sent = sftp.FTPmisses - before
+        if sftp.cachedUpload(src, toweb.rstrip("/") + "/" + base,
+                             preserve_mtime=True) is False:
+            sent += 1
     logger.info(f"regenerate: page links {len(wanted)} picture(s); uploaded {sent} "
                 f"new/changed, the rest already on the server.")
     if progress_cb and sent:

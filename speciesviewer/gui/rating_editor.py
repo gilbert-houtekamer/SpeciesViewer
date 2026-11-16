@@ -3830,12 +3830,13 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
             """Append this block's master actions (no-op outside album mode)."""
             if is_master and self._album_mode:
                 master_handlers.update(
-                    self._build_master_menu(menu, upn_key, ops=set(ops)))
+                    self._build_master_menu(menu, upn_key, ops=set(ops),
+                                            keys=keys_for_action))
 
         act_species = act_move = act_rate = act_addfiles = act_create_jpg = None
         act_exposure = None
         # 1 — naming. In a trip these are the viewer's own; in an album naming
-        # is the master's job (Move to existing species, gated on the JPG rule),
+        # is the master's job (Move to existing species — JPGs move along),
         # and "Set species" has no album equivalent: it would persist through
         # per-day CSVs an album does not own.
         if not self._view_read_only and not self._album_mode:

@@ -596,32 +596,140 @@ def _read_exif_row(path: Path, master_root: Path, rel: str, upn: str) -> dict:
 
 # ── move to another species ─────────────────────────────────────────────────────
 
-def move_picture_to_species(db, master_root, upn: str, target: dict) -> dict:
-    """Reassign a no-JPG master picture to `target` species: relocate its files
-    into the target species folder, rewrite the species keyword on the XMP
-    sidecar, update the DB picture + file rows, and snapshot the pre-move state
-    for undo. Refuses JPG-bearing UPNs — the website best-pick JPG move isn't
-    implemented (mirrors the delete JPG-protection invariant).
+# ── species the master has never had ──────────────────────────────────────────
+
+def _read_collection(master_root: Path) -> dict[str, dict]:
+    """The master's FULL species list (speciescollection.csv: every name SV
+    knows, with its Up), keyed by lower-case scientific name."""
+    import csv
+    p = Path(master_root) / "metadata" / "active" / "speciescollection.csv"
+    if not p.exists():
+        return {}
+    with open(p, "r", encoding="utf-8-sig", errors="replace", newline="") as fh:
+        return {(r.get("ScientificName") or "").strip().lower(): r
+                for r in csv.DictReader(fh, delimiter=";")}
+
+
+def collection_species_targets(db, master_root) -> list[dict]:
+    """Move targets the master has never had: species in the full species list
+    that have a way up to the master's tree, as {"sci","nl","en",
+    "target_path": "", "new": True}. Placeholders ("? name") and topic leaves
+    are not species and are left out."""
+    known = {r["sci"].lower() for r in db.all_species_rows()}
+    con = db._connect()
+    tree = {(r[0] or "").lower(): (r[1] or "") for r in con.execute(
+        'SELECT "ScientificName", "TargetPath" FROM species')}
+    coll = _read_collection(Path(master_root))
+    out = []
+    for name, r in coll.items():
+        if (r.get("Level") or "").strip() != "Level.SPECIES":
+            continue
+        if not name or name in known or name.startswith("?"):
+            continue
+        cur, seen = name, set()
+        while cur and cur not in tree and cur in coll and cur not in seen:
+            seen.add(cur)
+            cur = (coll[cur].get("Up") or "").strip().lower()
+        if cur not in tree or tree[cur].startswith("topics"):
+            continue
+        out.append({"sci": (r.get("ScientificName") or "").strip(),
+                    "nl": (r.get("DutchName") or "").strip(),
+                    "en": (r.get("EnglishName") or "").strip(),
+                    "target_path": "", "new": True})
+    return out
+
+
+def new_species_rows(db, master_root, sci: str) -> list[dict]:
+    """Species-table rows for `sci` and every group above it the master lacks,
+    TOP FIRST, taken from the full species list — the same rows the Recount
+    adds for a picture re-filed by hand (engine/master_recount.py). TargetPath
+    is the parent's plus the name, as everywhere in the tree. Raises when the
+    name is unknown or has no way up to the master's tree."""
+    from engine.csv_columns import SPECIES_FIELDS
+    master_root = Path(master_root)
+    coll = _read_collection(master_root)
+    chain, cur = [], (sci or "").strip().lower()
+    while cur and db.species_row(cur) is None:
+        src = coll.get(cur)
+        if src is None or src in chain:
+            raise MasterMutateError(
+                f"{sci} isn't in the species list, or has no way up to the master's "
+                f"tree — nothing was moved.")
+        chain.append(src)
+        cur = (src.get("Up") or "").strip().lower()
+    if not chain:
+        return []
+    if not cur:
+        raise MasterMutateError(f"{sci} has no way up to the master's tree.")
+    parent_path = (db.species_row(cur) or {}).get("target_path", "")
+    if not parent_path:
+        raise MasterMutateError(f"The master's {cur} has no folder.")
+    rows = []
+    for i, src in enumerate(reversed(chain)):          # top group first
+        name = (src.get("ScientificName") or "").strip()
+        row = {f: "" for f in SPECIES_FIELDS}
+        for f in ("Level", "ScientificName", "DutchName", "EnglishName", "Up"):
+            row[f] = (src.get(f) or "").strip()
+        parent_path = parent_path.rstrip("/") + "/" + name + "/"
+        row["TargetPath"] = parent_path
+        below = list(reversed(chain))[i + 1:i + 2]
+        row["Leaves"] = [(below[0].get("ScientificName") or "").strip()] if below else []
+        row["JPGmap"] = []
+        for f in SPECIES_FIELDS:
+            if f.startswith("i") or f == "currentHighestRating":
+                row[f] = 0
+        if i == len(chain) - 1:
+            row["iSpeciesCollectionCount"] = 1     # the species itself: it gets a picture
+        rows.append(row)
+    return rows
+
+
+def move_picture_to_species(db, master_root, upn: str, target: dict, *,
+                            group: str = "") -> dict:
+    """Reassign a master picture to `target` species: relocate ALL its files
+    (RAW, sidecars, video, JPGs, -small) into the target species folder,
+    rewrite the species keyword on the XMP sidecar, update the DB picture +
+    file rows, and snapshot the pre-move state for undo.
+
+    A picture with JPGs moves too (backlog 4.7 phase 0): the DB write re-derives
+    both species' JPG counters, best-picks and JPGmaps in the same durable
+    write (MasterDB._species_move_jpg_updates). Nothing is trashed — every
+    byte only changes folder — so the delete rule "a JPG is never trashed"
+    is untouched. The website follows at the next master rebuild.
+
+    INVARIANT: never overwrite. A file name already taken in the target folder
+    refuses the whole move before anything is written (renaming instead would
+    leave the picture's Files list naming a file that isn't there).
 
     `target` = {"sci","nl","en","target_path"} from the master species table
-    (db.species_row / db.all_species_rows). Species-count rollups are reconciled
-    by a subsequent Recount (like delete/add). Returns a summary dict.
+    (db.species_row / db.all_species_rows). `group` ties the moves of one
+    multi-picture action together, so one undo puts them all back (default:
+    the move is a group of its own). Returns a summary dict.
     """
     master_root = Path(master_root)
     picture, files = _collect_files(db, upn)
-    if any(_is_jpg(fr) for fr in files.values()):
-        raise MasterMutateError(
-            f"{upn!r} contains a JPG — JPG-bearing pictures can't be moved "
-            f"(the website best-pick move isn't implemented).")
+    has_jpg = any(_is_jpg(fr) for fr in files.values())
 
     target_sci = (target.get("sci") or "").strip()
     target_rel = (target.get("target_path") or "").strip()
     if not target_sci:
         raise MasterMutateError("No target species given.")
+    # A species the master has never had: its row (and any missing group above
+    # it) comes from the full species list, inserted in the same durable write.
+    # (Several pictures to one new species: the first move creates it, and the
+    # others find it known — their folder then comes from the master's row.)
+    new_rows = []
+    known = db.species_row(target_sci)
+    if known is None:
+        new_rows = new_species_rows(db, master_root, target_sci)
+        target_rel = new_rows[-1]["TargetPath"]
+        target_sci = new_rows[-1]["ScientificName"]
+    elif not target_rel:
+        target_rel = known.get("target_path", "")
     if not target_rel:
         raise MasterMutateError(
             f"Target species {target_sci!r} has no folder (TargetPath) in the "
-            f"master yet — file a picture there via the pipeline first.")
+            f"master — nothing was moved.")
 
     def _norm(p: str) -> str:
         return (p or "").strip().rstrip("/\\").replace("\\", "/").lower()
@@ -631,17 +739,21 @@ def move_picture_to_species(db, master_root, upn: str, target: dict) -> dict:
         raise MasterMutateError(f"This picture is already filed under {target_sci}.")
 
     dest_dir = master_root / target_rel
-    dest_dir.mkdir(parents=True, exist_ok=True)
 
     day = date.today().isoformat()
     batch = f"{day}_{int(time.time()*1000)}"
     snapshot = {"op": "move_species", "upn": upn, "picture": picture,
                 "files": list(files.values()), "src_rel": src_rel,
-                "target_rel": target_rel}
+                "target_rel": target_rel, "target_sci": target_sci,
+                "group": group or batch,
+                "new_species": [r["ScientificName"] for r in new_rows],
+                # if this move empties the source species its row goes; undo
+                # needs it back (names, folder, place in the tree)
+                "source_species_row": _species_full_row(db, picture.get("WetSoortNaam", ""))}
 
-    from engine.exif_writer import exiftool_write
-    from engine.filepicture import format_subject_for_xmp
-    correct_for_xmp = format_subject_for_xmp(target_sci)
+    # The new keyword keeps the picture's sex / age / plumage words — they are a
+    # property of the PHOTO, not of the name ("jan-van-gent, adult, breeding").
+    new_subject = _subject_with_name(picture.get("subject", ""), target_sci)
 
     # Plan the per-file source→dest moves up front WITHOUT touching disk, so the
     # DB write can go first (below). NB the files table has no TargetPath column —
@@ -652,34 +764,37 @@ def move_picture_to_species(db, master_root, upn: str, target: dict) -> dict:
         src = _abs_path(master_root, picture, fr)
         dest = dest_dir / fname
         if src and src.exists() and dest.exists() and _norm(str(dest)) != _norm(str(src)):
-            # Cross-species same-name collision is unlikely (names carry the UPN)
-            # but never overwrite: suffix the incoming file if the name is taken.
-            stem, suf = dest.stem, dest.suffix
-            n = 1
-            while dest.exists():
-                dest = dest.with_name(f"{stem}__{n}{suf}")
-                n += 1
+            # Unlikely (names carry the UPN), but never overwrite — and never
+            # rename either: the picture's Files list names the file.
+            raise MasterMutateError(
+                f"{target_sci} already has a file named {fname} — nothing was moved.")
         plan.append((fname, src, dest))
         file_updates[fname] = {
             "File:FileName": dest.name,
             "File:Directory": str(dest_dir),
             "WindowsFileName": str(dest),
         }
+        if _carries_keyword(fname):
+            file_updates[fname]["XMP:Subject"] = new_subject
 
     picture_fields = {
         "WetSoortNaam": target_sci,
         "NLSoortNaam": target.get("nl") or "",
         "EngSoortNaam": target.get("en") or "",
-        "subject": target_sci,
+        "subject": new_subject,
         "TargetPath": target_rel,
-        "BestJPGPathName": "",   # no JPG on a moveable picture
+        # The picture's JPG folder is its species folder; a picture without a
+        # JPG has none.
+        "BestJPGPathName": target_rel if has_jpg else "",
     }
 
     # DB-FIRST: apply the reassignment before moving any bytes. If the DB write
     # fails (e.g. a bad column), it self-cleans its jsonl intent and raises here —
     # and no files have been touched, so nothing is left inconsistent.
+    dest_dir.mkdir(parents=True, exist_ok=True)
     _write_snapshot(master_root, batch, snapshot)
-    db.apply_move_species(upn, picture_fields=picture_fields, file_updates=file_updates)
+    db.apply_move_species(upn, picture_fields=picture_fields, file_updates=file_updates,
+                          new_species=new_rows)
 
     # Then relocate the files + rewrite the sidecar keyword. A failure here is
     # rare (disk/permission); the snapshot + partial manifest keep it recoverable.
@@ -695,25 +810,90 @@ def move_picture_to_species(db, master_root, upn: str, target: dict) -> dict:
         else:
             logger.warning(f"move_picture_to_species: {fname} not on disk; DB path "
                            f"updated anyway.")
-        # Keep the sidecar keyword in step (the DB WetSoortNaam stays the
-        # authority; this just avoids a stale subject if the file is re-read).
-        if dest.exists() and dest.suffix.lower() == ".xmp":
-            try:
-                exiftool_write(dest, [f"-XMP:Subject={correct_for_xmp}"])
-            except Exception as e:
-                logger.warning(f"move: subject rewrite failed for {dest.name}: {e}")
 
     _append_manifest(master_root, manifest_rows)
+    # Keep the keyword in step on the sidecar AND the JPGs — the same files the
+    # Sex/age/plumage editor writes. A refused write is reported, never silent.
+    failed = _write_keyword([dest for _, _, dest in plan], new_subject)
     logger.info(f"Moved master picture {upn} → {target_sci} "
                 f"({len(moved)} files relocated, batch {batch}).")
-    return {"upn": upn, "target": target_sci, "moved": moved, "batch": batch}
+    return {"upn": upn, "target": target_sci, "moved": moved, "batch": batch,
+            "new_species": [r["ScientificName"] for r in new_rows],
+            "keyword_failed": failed}
+
+
+def _species_full_row(db, sci: str) -> dict | None:
+    """The whole species-table row for `sci` (lists as lists), or None."""
+    row = db._connect().execute(
+        'SELECT * FROM species WHERE LOWER("ScientificName")=?',
+        ((sci or "").strip().lower(),)).fetchone()
+    if row is None:
+        return None
+    d = dict(row)
+    for col in ("Leaves", "JPGmap"):
+        try:
+            d[col] = json.loads(d[col]) if d[col] else []
+        except (TypeError, ValueError):
+            d[col] = []
+    return d
+
+
+def _emptied(row: dict) -> dict:
+    """A saved species row as it is before any picture arrives: collection
+    counters, best-pick and JPGmap empty (the move-back fills them); names,
+    folder, place in the tree and the pipeline's own counters kept."""
+    r = dict(row)
+    for f in ("iPictureCollectionCount", "iPicturesWithJPGsCollection",
+              "currentHighestRating"):
+        r[f] = 0
+    r["iSpeciesCollectionCount"] = 1        # the species itself, as new_species_rows
+    for f in ("BestJPG", "BestUPN", "BestJPGPathName"):
+        r[f] = ""
+    r["JPGmap"] = []
+    return r
+
+
+def _subject_with_name(old_subject: str, name: str) -> str:
+    """`old_subject` with its species name replaced by `name`, keeping the
+    words after it: ("jan-van-gent, adult, breeding", "sula") → "sula, adult,
+    breeding"."""
+    from engine.filepicture import format_subject_for_xmp
+    old = format_subject_for_xmp(old_subject or "")
+    tail = old.split(",", 1)[1] if "," in old else ""
+    return name + ("," + tail if tail.strip() else "")
+
+
+def _carries_keyword(fname: str) -> bool:
+    return Path(fname).suffix.lower() in (".xmp", ".jpg", ".jpeg")
+
+
+def _write_keyword(paths, subject: str) -> list[str]:
+    """Write `subject` as the XMP:Subject of every sidecar/JPG among `paths`.
+    Returns the names of files where the write failed (exiftool_write checks the
+    result itself — a refused write raises, it never passes as done)."""
+    from engine.exif_writer import exiftool_write
+    failed = []
+    for p in paths:
+        p = Path(p)
+        if not (_carries_keyword(p.name) and p.exists()):
+            continue
+        try:
+            exiftool_write(p, [f"-XMP:Subject={subject}"])
+        except Exception as e:
+            logger.error(f"move: keyword write failed for {p.name}: {e}")
+            failed.append(p.name)
+    return failed
 
 
 def undo_move(db, master_root, batch: str) -> dict:
-    """Reverse a move batch: relocate the files back to their original folder and
-    restore the picture/file species fields from the snapshot. Best-effort like
-    undo_delete — a Recount reconciles species counts. (Not wired to a GUI button
-    yet; the snapshot + manifest make a move recoverable.)"""
+    """Reverse a move batch: relocate the files back to their original folder,
+    restore the picture/file fields and the original keyword (sidecar + JPGs)
+    from the snapshot, and remove the species rows the move created. The
+    snapshot is then marked undone, so last_move_batch() moves on to the one
+    before.
+
+    Refuses when the picture is no longer where the move put it (moved again,
+    or deleted) — undoing then would overwrite a later change."""
     import csv
     master_root = Path(master_root)
     sp = _snapshot_path(master_root, batch)
@@ -722,10 +902,19 @@ def undo_move(db, master_root, batch: str) -> dict:
     snap = json.loads(sp.read_text(encoding="utf-8"))
     if snap.get("op") != "move_species":
         raise MasterMutateError(f"Batch {batch} is not a move.")
+    if snap.get("undone"):
+        raise MasterMutateError("This move has already been undone.")
     upn = snap["upn"]
     src_rel = snap.get("src_rel", "")
     picture = snap.get("picture", {})
     files = snap.get("files", [])
+    now = db.picture(upn)
+    target_sci = snap.get("target_sci", "")
+    if now is None or (target_sci and (now.get("WetSoortNaam") or "").strip().lower()
+                       != target_sci.strip().lower()):
+        raise MasterMutateError(
+            "This picture has changed since the move (moved again or deleted), "
+            "so the move can't be undone — nothing was changed.")
 
     restored = []
     mp = _manifest_path(master_root)
@@ -757,9 +946,76 @@ def undo_move(db, master_root, batch: str) -> dict:
                 "File:Directory": fr.get("File:Directory", str(master_root / src_rel)),
                 "WindowsFileName": fr.get("WindowsFileName", ""),
             }
-    db.apply_move_species(upn, picture_fields=picture_fields, file_updates=file_updates)
+            if _carries_keyword(fname):
+                file_updates[fname]["XMP:Subject"] = fr.get("XMP:Subject", "")
+    # The move may have emptied the original species, and then its row went.
+    # Put it back from the snapshot with empty counters; the move-back fills
+    # them, exactly as a move to a new species does.
+    back_rows = []
+    orig_sci = picture.get("WetSoortNaam", "")
+    if orig_sci and db.species_row(orig_sci) is None:
+        saved = snap.get("source_species_row")
+        if saved and db.species_row(saved.get("Up", "")) is not None:
+            back_rows = [_emptied(saved)]
+        else:
+            back_rows = new_species_rows(db, master_root, orig_sci)
+    # prefer_moved: on a rating tie the picture wins its old best-pick back, so
+    # the species pages look as they did before the move. drop_if_empty: the
+    # rows the move created, bottom first.
+    db.apply_move_species(upn, picture_fields=picture_fields, file_updates=file_updates,
+                          prefer_moved=True, new_species=back_rows,
+                          drop_if_empty=list(reversed(snap.get("new_species") or [])))
+    from engine.filepicture import format_subject_for_xmp
+    failed = _write_keyword(restored, format_subject_for_xmp(picture.get("subject", "")))
+    snap["undone"] = datetime.now().isoformat(timespec="seconds")
+    sp.write_text(json.dumps(snap, ensure_ascii=False, indent=1), encoding="utf-8")
     logger.info(f"Undid move batch {batch}: {len(restored)} files restored to {src_rel}.")
-    return {"batch": batch, "restored": restored}
+    return {"batch": batch, "restored": restored, "keyword_failed": failed}
+
+
+def last_move_batch(master_root) -> dict | None:
+    """The most recent move action that is not undone yet — or None. One action
+    can have moved several pictures (one `group`); then all of them come back
+    together. Returns {"batch" (newest), "batches" (newest first), "upns",
+    "from", "to", "when", "files"}.
+
+    Moves undo newest first: each undo marks its snapshot, and the next call
+    offers the action before it."""
+    snaps = trash_root(master_root) / "snapshots"
+    if not snaps.is_dir():
+        return None
+    found: list[tuple[str, dict]] = []
+    for sp in sorted(snaps.glob("*.json"), reverse=True):
+        try:
+            # Cheap first look (this gates a menu): a move snapshot names its op
+            # first, and most snapshots are deletes.
+            with open(sp, encoding="utf-8") as fh:
+                if '"move_species"' not in fh.read(120):
+                    continue
+            snap = json.loads(sp.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        if snap.get("op") != "move_species" or snap.get("undone"):
+            continue
+        group = snap.get("group") or sp.stem
+        if found and group != (found[0][1].get("group") or found[0][0]):
+            break                                  # the action before: not this time
+        found.append((sp.stem, snap))
+    if not found:
+        return None
+    newest, snap = found[0]
+    try:
+        when = datetime.fromtimestamp(int(newest.rsplit("_", 1)[1]) / 1000)
+    except (IndexError, ValueError, OSError):
+        when = None
+    froms = sorted({s.get("picture", {}).get("WetSoortNaam", "") for _, s in found})
+    return {"batch": newest, "batches": [b for b, _ in found],
+            "upns": [s.get("upn", "") for _, s in found],
+            "from": ", ".join(froms),
+            "to": snap.get("target_sci", "") or snap.get("target_rel", ""),
+            "when": when,
+            "files": [f.get("File:FileName", "") for _, s in found
+                      for f in s.get("files", [])]}
 
 
 # ── undo / snapshots ───────────────────────────────────────────────────────────

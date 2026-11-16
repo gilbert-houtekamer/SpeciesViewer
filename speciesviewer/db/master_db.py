@@ -945,6 +945,50 @@ class MasterDB:
             f'VALUES ({_FILE_PLACEHOLDERS})', vals)
 
     @staticmethod
+    def _insert_species_row(con: sqlite3.Connection, row: dict) -> None:
+        vals = []
+        for c in SPECIES_FIELDS:
+            v = row.get(c, "")
+            if c in _SPEC_LIST_COLS:
+                vals.append(v if isinstance(v, str) else json.dumps(v or []))
+            elif c in _SPEC_NUM_COLS:
+                vals.append(_coerce_int(v))
+            else:
+                vals.append(v)
+        con.execute(
+            f'INSERT OR REPLACE INTO species ({_SPEC_COLS_SQL}) '
+            f'VALUES ({_SPEC_PLACEHOLDERS})', vals)
+
+    @staticmethod
+    def _drop_empty_row(con: sqlite3.Connection, name: str, updates: dict,
+                        deleted: list) -> None:
+        """Fold "remove species row `name` if it is left without pictures" into a
+        pending (updates, deleted) pair: the row goes, and so does its entry in
+        its parent's Leaves. Judged on the counts AFTER `updates`, so a caller
+        dropping bottom-up (species, then its family) sees each level empty."""
+        if name in deleted:
+            return
+        row = con.execute('SELECT * FROM species WHERE "ScientificName"=?',
+                          (name,)).fetchone()
+        if row is None:
+            return
+        n = updates.get(name, {}).get("iPictureCollectionCount",
+                                      _coerce_int(row["iPictureCollectionCount"]))
+        if _coerce_int(n) > 0:
+            return
+        deleted.append(name)
+        updates.pop(name, None)
+        parent = row["Up"] or ""
+        prow = con.execute('SELECT "Leaves" FROM species WHERE "ScientificName"=?',
+                           (parent,)).fetchone()
+        if prow is None:
+            return
+        leaves = updates.get(parent, {}).get("Leaves")
+        if leaves is None:
+            leaves = json.loads(prow["Leaves"]) if prow["Leaves"] else []
+        updates.setdefault(parent, {})["Leaves"] = [x for x in leaves if x != name]
+
+    @staticmethod
     def _insert_picture_row(con: sqlite3.Connection, row: dict) -> None:
         vals = []
         for c in PICTURE_FIELDS:
@@ -1282,10 +1326,10 @@ class MasterDB:
         Both taxonomy chains are diffed against the SAME pre-move snapshot and the
         per-node deltas summed, so any ancestor the two chains share nets to zero
         (the total picture count under, say, Aves doesn't change when a picture
-        moves between two birds). No JPG is involved (moves of JPG-bearing
-        pictures are refused), so BestJPG / …WithJPGs / currentHighestRating stay
-        invariant — only iPictureCollectionCount (all nodes) and, on a species
-        emptying/un-emptying, iSpeciesCollectionCount + the parent's Leaves.
+        moves between two birds). This half covers the picture counts only:
+        iPictureCollectionCount (all nodes) and, on a species emptying/
+        un-emptying, iSpeciesCollectionCount + the parent's Leaves. When the
+        picture has a JPG, _species_move_jpg_updates adds the JPG half.
 
         MUST be called BEFORE the picture row is reassigned (it counts pictures
         under each species to detect emptying)."""
@@ -1372,6 +1416,90 @@ class MasterDB:
             updates.pop(sname, None)
 
         return updates, deleted
+
+    def _species_move_jpg_updates(self, con: sqlite3.Connection, prow,
+                                  target_sci: str, target_rel: str, *,
+                                  prefer_moved: bool = False) -> dict:
+        """The JPG half of a move: what changes in the species table when a
+        picture WITH a JPG goes from its species to `target_sci`. Computed from
+        the pre-move snapshot, like _species_move_updates, and merged into it.
+
+        Three kinds of node, because the two taxonomy chains share their top:
+
+        * Only above the SOURCE: the picture leaves. iPicturesWithJPGsCollection
+          drops, and a node whose best-pick IS this picture recomputes without it
+          (the _species_dropjpg_updates rule).
+        * Only above the TARGET: the picture arrives. The counter rises, and the
+          picture takes the best-pick where its rating leads (the
+          _species_addjpg_updates rule — a tie keeps the incumbent, unless
+          `prefer_moved`, which undo uses to win its old place back).
+        * SHARED (the genus, family, … both species sit under): the picture stays
+          in the subtree, so nothing counts differently. Only its folder moved — a
+          best-pick naming it gets the new BestJPGPathName.
+
+        Plus both species' JPGmaps, which the species pages render from: the
+        source's without this picture, the target's with its best JPG."""
+        upn = prow["UniquePictureName"]
+        source_sci = (prow["WetSoortNaam"] or "").strip()
+        src_chain = self._species_chain(con, source_sci)
+        tgt_chain = self._species_chain(con, target_sci)
+        if not tgt_chain:
+            return {}                    # same rule as _species_move_updates
+        src_names = {r["ScientificName"] for r in src_chain}
+        tgt_names = {r["ScientificName"] for r in tgt_chain}
+
+        # The picture's public face, by the ONE rule (honours a human's pin).
+        rows = con.execute(
+            'SELECT "File:FileName" AS fname, "ImageSize" AS size FROM files'
+            ' WHERE "UniquePictureName"=? AND LOWER("WindowsExtension") IN ("jpg","jpeg")',
+            (upn,)).fetchall()
+        pick: dict = {}
+        sizes: dict = {}
+        for r in rows:
+            _offer_jpg(pick, upn, r["fname"], r["size"] or "", prow["BestJPGPinned"] or "")
+            sizes[r["fname"]] = r["size"] or ""
+        best_fname = pick[upn][-1] if upn in pick else ""
+        rate = _coerce_rate(prow["Rate"]) or 0
+
+        updates: dict[str, dict] = {}
+        for a in src_chain:
+            name = a["ScientificName"]
+            points_here = (a["BestUPN"] or "") == upn
+            if name in tgt_names:
+                if points_here:
+                    updates[name] = {"BestJPGPathName": target_rel}
+                continue
+            u = {"iPicturesWithJPGsCollection": max(
+                _coerce_int(a["iPicturesWithJPGsCollection"]) - 1, 0)}
+            if points_here:
+                new_pick = self._recompute_best_pick(con, name, exclude_upns={upn})
+                u.update(new_pick or {"BestJPG": "", "BestUPN": "",
+                                      "BestJPGPathName": "",
+                                      "currentHighestRating": 0})
+            updates[name] = u
+        for a in tgt_chain:
+            name = a["ScientificName"]
+            if name in src_names:
+                continue
+            u = {"iPicturesWithJPGsCollection":
+                 _coerce_int(a["iPicturesWithJPGsCollection"]) + 1}
+            if best_fname:
+                cur = _coerce_int(a["currentHighestRating"])
+                if (rate > cur or not (a["BestJPG"] or "")
+                        or (prefer_moved and rate == cur)):
+                    u.update({"BestJPG": best_fname, "BestUPN": upn,
+                              "BestJPGPathName": target_rel,
+                              "currentHighestRating": rate})
+            updates[name] = u
+
+        if src_chain:
+            updates.setdefault(src_chain[0]["ScientificName"], {})["JPGmap"] = \
+                self._species_jpgmap(con, source_sci, exclude={upn})
+        if best_fname:
+            updates.setdefault(tgt_chain[0]["ScientificName"], {})["JPGmap"] = \
+                self._species_jpgmap(con, target_sci,
+                                     override={upn: (best_fname, sizes.get(best_fname, ""))})
+        return updates
 
     @staticmethod
     def _species_jpgmap(con: sqlite3.Connection, sci: str, *,
@@ -2299,29 +2427,88 @@ class MasterDB:
         return True
 
     def apply_move_species(self, upn: str, *, picture_fields: dict,
-                           file_updates: dict | None = None) -> None:
+                           file_updates: dict | None = None,
+                           prefer_moved: bool = False,
+                           new_species: list[dict] | None = None,
+                           drop_if_empty: list[str] | None = None) -> None:
         """Durably reassign a master picture to another species. This is a plain
         generic field update — the picture's species names + TargetPath, and each
         file's path fields — so the generic _replay_sections handles crash
-        recovery (no new replay op). Species-count rollups are DEFERRED to a
-        Recount, exactly like apply_add_file / apply_restore: the two taxonomy
-        chains and species row create/remove are the hard part and Recount
-        reconciles them exactly. jsonl intent first (fsync), then SQLite, then
-        nudge the checkpoint worker."""
+        recovery (no new replay op). The picture counts of both taxonomy chains
+        roll in the same write (_species_move_updates); when the picture has a
+        JPG, so do the JPG counters, best-picks and JPGmaps
+        (_species_move_jpg_updates). jsonl intent first (fsync), then SQLite,
+        then nudge the checkpoint worker.
+
+        `new_species`: species-table rows (top group first) for a target the
+        master has never had — inserted in the SAME journal entry, so a crash
+        leaves either the whole move or none of it. The topmost row joins its
+        (existing) parent's Leaves.
+
+        `prefer_moved` and `drop_if_empty` are for UNDO: on a rating tie the
+        moved picture wins its old best-pick back, and rows the move created
+        (`drop_if_empty`, bottom first) go again once they hold no picture — so
+        a move followed by its undo leaves the species table as it was."""
         file_updates = file_updates or {}
+        new_species = new_species or []
         con = self._connect()
         # Roll the species counts BEFORE the picture row is reassigned (the count
         # helper detects a species emptying/un-emptying by counting its pictures).
         prow = con.execute(
-            'SELECT "WetSoortNaam" FROM pictures WHERE "UniquePictureName"=?',
+            'SELECT * FROM pictures WHERE "UniquePictureName"=?',
             (upn,)).fetchone()
         source_sci = (prow["WetSoortNaam"] if prow else "") or ""
         target_sci = picture_fields.get("WetSoortNaam", "") or ""
-        spec_updates, spec_deleted = self._species_move_updates(
-            con, source_sci, target_sci)
+
+        def _rollups():
+            updates, deleted = self._species_move_updates(con, source_sci, target_sci)
+            if prow is not None and self._upn_has_jpg(con, upn):
+                jpg_updates = self._species_move_jpg_updates(
+                    con, prow, target_sci,
+                    picture_fields.get("TargetPath", "") or "",
+                    prefer_moved=prefer_moved)
+                for name, fields in jpg_updates.items():
+                    if name not in deleted:
+                        updates.setdefault(name, {}).update(fields)
+            if new_species:
+                top = new_species[0]
+                parent = top.get("Up", "")
+                prow_p = con.execute('SELECT "Leaves" FROM species WHERE "ScientificName"=?',
+                                     (parent,)).fetchone()
+                leaves = updates.get(parent, {}).get("Leaves")
+                if leaves is None:
+                    leaves = json.loads(prow_p["Leaves"]) if prow_p and prow_p["Leaves"] else []
+                if top["ScientificName"] not in leaves:
+                    updates.setdefault(parent, {})["Leaves"] = list(leaves) + [top["ScientificName"]]
+            for name in drop_if_empty or []:
+                self._drop_empty_row(con, name, updates, deleted)
+            return updates, deleted
+
+        if new_species:
+            # The rollups read the species chains from the database, so the new
+            # rows have to be there while they are worked out — inserted inside a
+            # transaction that is then rolled back. The real insert follows, after
+            # the journal entry (intent first, as everywhere).
+            box: dict = {}
+
+            class _DryRun(Exception):
+                pass
+            try:
+                with con:
+                    for r in new_species:
+                        self._insert_species_row(con, r)
+                    box["r"] = _rollups()
+                    raise _DryRun
+            except _DryRun:
+                pass
+            spec_updates, spec_deleted = box["r"]
+        else:
+            spec_updates, spec_deleted = _rollups()
+
         entry = {"op": "move_species", "ts": time.time(), "upn": upn,
                  "pictures": {upn: picture_fields},
                  "files": file_updates,
+                 "species_insert": {r["ScientificName"]: r for r in new_species},
                  "species": spec_updates,
                  "species_delete": spec_deleted}
         with self._append_lock:
@@ -2329,6 +2516,8 @@ class MasterDB:
             self._append_jsonl(entry)
         try:
             with con:
+                for r in new_species:
+                    self._insert_species_row(con, r)
                 self._set_picture_fields(con, upn, picture_fields)
                 for fn, fields in file_updates.items():
                     self._set_file_fields(con, fn, fields)
@@ -2434,7 +2623,8 @@ class MasterDB:
         if (e.get("files") or e.get("files_insert") or e.get("files_delete")) \
                 and ts <= files_mtime:
             return True
-        if (e.get("species") or e.get("species_delete")) and ts <= spec_mtime:
+        if (e.get("species") or e.get("species_insert") or e.get("species_delete")) \
+                and ts <= spec_mtime:
             return True
         return False
 
@@ -2477,10 +2667,13 @@ class MasterDB:
                 logger.warning(f"master checkpoint: dropping stale files op "
                                f"{e.get('op')} for {e.get('upn')}")
 
+        sins = e.get("species_insert") or {}
         sset = e.get("species") or {}
         sdel = e.get("species_delete") or []
-        if sset or sdel:
+        if sins or sset or sdel:
             if ts > spec_mtime:
+                for sci, row in sins.items():      # first: the updates may name them
+                    self._insert_species_row(con, row)
                 for sci, fields in sset.items():
                     self._set_species_fields(con, sci, fields)
                 self._delete_species(con, sdel)

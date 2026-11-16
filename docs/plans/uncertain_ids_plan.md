@@ -41,6 +41,10 @@ Each phase can ship and be tested on its own.
 
 ### Phase 0: Move a master picture that has JPGs to another species
 
+*Built 16 Nov 2026, awaiting test. It also covers a target the master has never had,
+"Master ▸ Undo Last Species Move…", and a keyword that keeps its sex/age/plumage words.
+Tests: `tests/test_master_move_jpg.py`.*
+
 Today "Move to existing species…" refuses any master picture with a JPG, because
 moving the best-JPG pick isn't built. Splits were re-filed by hand: move the files,
 then Refresh, then Recount. Resolving "Oplurus sp." to a species needs the real

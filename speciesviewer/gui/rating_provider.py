@@ -481,21 +481,40 @@ class RatingEditorCollection(PictureCollection):
         return delete_picture(self._master_db, self._master_root, key)
 
     def master_upn_moveable(self, key: str) -> bool:
-        """A master picture can be moved to another species only when master
-        writes are enabled and it has no JPG — same gate as delete (the JPG
-        best-pick move isn't implemented)."""
-        return self.master_upn_deletable(key)
+        """A master picture can be moved to another species whenever master
+        writes are enabled — with or without a JPG. A move trashes nothing, so
+        the delete rule "never trash a JPG" does not apply; the database
+        re-derives both species' best-picks."""
+        return (key in self._master_keys and not self._master_read_only
+                and self._master_db is not None)
+
+    def master_files(self, key: str) -> list[str]:
+        return list(self._master_upn.get(key, {}).get("Files", []) or [])
 
     def master_species_targets(self) -> list[dict]:
-        """Every species in the master (species.csv mirror) as a Move-to target:
+        """Every Move-to target: each species in the master (species.csv
+        mirror), then each species of the full species list the master has
+        never had ({"new": True}, no folder yet — the move creates it).
         [{"sci","nl","en","target_path"}]. Empty when no master DB is attached."""
         if self._master_db is None:
             return []
-        return self._master_db.all_species_rows()
+        from db.master_mutate import collection_species_targets
+        try:
+            extra = collection_species_targets(self._master_db, self._master_root)
+        except Exception as e:                       # the master list still works
+            logger.warning(f"Move targets: full species list unreadable: {e}")
+            extra = []
+        return self._master_db.all_species_rows() + extra
 
-    def move_master_picture(self, key: str, target: dict) -> dict:
+    def move_master_picture(self, key: str, target: dict, group: str = "") -> dict:
         from db.master_mutate import move_picture_to_species
-        return move_picture_to_species(self._master_db, self._master_root, key, target)
+        return move_picture_to_species(self._master_db, self._master_root, key, target,
+                                       group=group)
+
+    def master_species_label(self, key: str) -> str:
+        """The picture's species as the user reads it (Dutch, else scientific)."""
+        row = self._master_upn.get(key, {})
+        return (row.get("NLSoortNaam") or row.get("WetSoortNaam") or "").strip()
 
     def resync_master_metadata(self, keys) -> list[dict]:
         """Re-read XMP:Rating / XMP:Label from disk for these master pictures.
