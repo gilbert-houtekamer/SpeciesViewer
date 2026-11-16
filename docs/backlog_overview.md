@@ -48,13 +48,13 @@ Madagascar starts 28 Oct: everything here is for **after the trip**.
 | 4.4 | **Wikipedia beside the species** — a link (or summary) on the species page and in the app, EN and NL. Link free; quoting needs attribution (CC BY-SA). | 6 |
 | 4.5 | **Aliases elsewhere** — reading a tour operator's list, the waarneming.nl import, search by a remembered name. | 6 |
 | 4.6 | **Another language *instead of* Dutch** — English stays; the second language becomes the user's own (French, German, …), so the program suits every user. Design together with the species list (ch. 6). | 24 |
-| 4.7 | **Identified to genus or family only** (“? oplurus”) — file the placeholder under its family so it gets a place in the species order and a page, but **never counts** as a species. Parked 3 Nov (Madagascar); decide at home. | 6 |
+| 4.7 | **Uncertain identifications** — “Oplurus sp.” groups, certainty (probable “cf.” / possible “?”), complexes defined in SV, an Uncertain review view; only a certain species counts. Retires the “? name” kludge. Agreed 16 Nov; plan in `docs/plans/uncertain_ids_plan.md` (6 phases, phase 0 = move a master picture that has JPGs). | 6 |
 
 ## 5. Refactors
 
 | # | What | Size |
 |---|------|------|
-| 5.1 | **Split `gui/trip_process.py`** — Read-SD-card dialog moved out to `gui/sdcard_read.py` (16 Nov; 6,989 → 4,737 lines). Further splits only if working in it hurts. | done — awaiting test |
+| 5.1 | ~~Split `gui/trip_process.py`~~ — **done 16 Nov**: Read-SD-card dialog moved out to `gui/sdcard_read.py` (6,989 → 4,737 lines). | M |
 | 5.2 | Mac: the default PhotoLab path is a Windows `.exe`; `projectlib.py` lowercases whole paths for website output (wrong on a case-sensitive disk); relativise the master's stored paths. | M — waits for the Mac |
 | 5.3 | `rating_editor.py` (4,756) and `map_view.py` (3,264) — leave unless working in them hurts. | watch only |
 
