@@ -20,7 +20,7 @@ def test_all_present_after_copy_and_after_a_reread(tmp_path):
 
 
 def test_complete_sentence(tmp_path):
-    from gui.trip_process import ReadSDCardDialog
+    from gui.sdcard_read import ReadSDCardDialog
     say = ReadSDCardDialog._complete_txt
     assert "All 3 picture(s)" in say({"expected": 3, "present": 3})
     assert "Only 2 of the 3" in say({"expected": 3, "present": 2})

@@ -54,7 +54,7 @@ Madagascar starts 28 Oct: everything here is for **after the trip**.
 
 | # | What | Size |
 |---|------|------|
-| 5.1 | **Split `gui/trip_process.py`** — 6,728 lines; first move the Read-SD-card dialog out. The only open item left in ch. 19. | M |
+| 5.1 | **Split `gui/trip_process.py`** — Read-SD-card dialog moved out to `gui/sdcard_read.py` (16 Nov; 6,989 → 4,737 lines). Further splits only if working in it hurts. | done — awaiting test |
 | 5.2 | Mac: the default PhotoLab path is a Windows `.exe`; `projectlib.py` lowercases whole paths for website output (wrong on a case-sensitive disk); relativise the master's stored paths. | M — waits for the Mac |
 | 5.3 | `rating_editor.py` (4,756) and `map_view.py` (3,264) — leave unless working in them hurts. | watch only |
 

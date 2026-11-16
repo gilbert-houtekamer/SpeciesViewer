@@ -415,7 +415,7 @@ class PicturesStep(QWidget):
         self.changed.emit()
 
     def _read(self):
-        from gui.trip_process import ReadSDCardDialog
+        from gui.sdcard_read import ReadSDCardDialog
         spec = getattr(self._main, "menu_spec", {}) or {}
         holder = None
         for group in spec.values():

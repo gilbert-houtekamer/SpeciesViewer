@@ -359,7 +359,7 @@ def auto_geotag_entries(entries_by_day: dict[str, list[dict]], files_by_key: dic
     the Read dialog's automatic per-day tracklog pass. `entries_by_day`:
     `{day ('YYYY-MM-DD'): [{"key":, "date":, "has_gps":, "cur_alt":}, …]}` —
     grouped by the caller from the copy-time day-folder decision (see
-    gui/trip_process.py), NOT re-derived here from raw DateTimeOriginal.
+    gui/sdcard_read.py), NOT re-derived here from raw DateTimeOriginal.
 
     For each day: find its log(s) (find_day_tracklogs — every file whose name
     starts with the day's stem); if found, load and clean the merged track,

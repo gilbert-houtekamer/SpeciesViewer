@@ -444,7 +444,7 @@ def _scan_day_folder(folder: str):
     """(FilesSource, auto-detected log paths) for one day folder, or a str
     saying why there is nothing to geotag. No Qt — runs off the GUI thread."""
     from pathlib import Path
-    from gui.trip_process import _PL_RAW_EXTS
+    from gui.sdcard_read import _PL_RAW_EXTS
     from utils.raw_extensions import SELF_DESCRIBING
     from gui.geolocate import batch_datetime_gps
     from engine.tracklog_geotag import FilesSource, find_day_tracklogs

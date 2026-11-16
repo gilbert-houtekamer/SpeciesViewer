@@ -233,7 +233,7 @@ def read_card_into_unfiled(main_window):
     usable while it runs."""
     if not ensure_currentpictures_root(main_window):
         return
-    from gui.trip_process import ReadSDCardDialog
+    from gui.sdcard_read import ReadSDCardDialog
     if not main_window._try_start_background_op("Read SD-card or Folder"):
         return
     dlg = ReadSDCardDialog(main_window, None, unfiled_mode=True)

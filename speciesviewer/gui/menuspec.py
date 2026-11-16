@@ -5,7 +5,8 @@ logger = logging.getLogger("speciesviewer")
 
 from PyQt6.QtWidgets import QMessageBox
 from gui.menu import MenuSpec  # assuming class is defined elsewhere
-from gui.trip_process import (ReadSDCardDialog, ReadDirDialog, ReadSummarizeDialog, TripCreationDialog,
+from gui.sdcard_read import ReadSDCardDialog
+from gui.trip_process import (ReadDirDialog, ReadSummarizeDialog, TripCreationDialog,
         PublishDayDialog,
         WritePicturesDialog, CreateBlogDialog, FreezeDialog, WriteCommitDialog,
         CountSpeciesDialog, RedoTripBlogsDialog, RedoTripRepoDialog, MergeTripDialog,
