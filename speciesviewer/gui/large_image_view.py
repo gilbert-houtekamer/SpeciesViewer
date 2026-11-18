@@ -1204,6 +1204,19 @@ class LargeImageView(QDialog):
         self._makejpg_btn.clicked.connect(self._on_create_jpg)
         self._makejpg_btn.setVisible(hasattr(self._collection, "create_blog_jpg"))
         top_bar_row.addWidget(self._makejpg_btn)
+        # Rescan — a master picture only: pick up the JPG (+ .dop) PhotoLab just
+        # exported beside the RAW, without hunting for it in the right-click menu.
+        self._rescan_btn = QToolButton()
+        self._rescan_btn.setAutoRaise(True)
+        self._rescan_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._rescan_btn.setStyleSheet("font-size: 10px; padding: 1px 5px;")
+        self._rescan_btn.setText("↻ Rescan")
+        self._rescan_btn.setToolTip(
+            "Look in this picture's folder for files made since (a PhotoLab export "
+            "and its .dop) and add them to the master.")
+        self._rescan_btn.clicked.connect(self._on_rescan_master)
+        self._rescan_btn.setVisible(False)
+        top_bar_row.addWidget(self._rescan_btn)
         # Headline / Description — the same shared editor the grid right-click
         # opens, for when the panel's fields are scrolled off / collapsed.
         self._hd_btn = QToolButton()
@@ -2253,6 +2266,23 @@ class LargeImageView(QDialog):
                 QApplication.restoreOverrideCursor()
             st = res.get("status")
         created = [res["jpg"]] if st == "created" else []
+        if st == "created":
+            # Re-decode here + in the host grid to the freshly-cropped JPG.
+            self.refresh_external(key, reload_image=True)
+            self.picture_changed.emit(key)
+            self.picture_image_changed.emit(key)
+        if st == "created" and res.get("sci"):
+            # A master picture: the new JPG is its website photo now, so the
+            # species page is the natural next step. No website = the usual note.
+            from gui.species_page_refresh import rebuild_species_pages
+            w, h = res.get("size") or (0, 0)
+            asked = rebuild_species_pages(
+                self, [res["sci"]], getattr(self._collection, "_master_db", None),
+                ask=f"Made {Path(res['jpg']).name} ({w}×{h}). It is now this "
+                    f"picture's photo on the website.\n\n"
+                    "Update the page of {names} now?")
+            if asked:
+                return
         from gui.create_jpg_result import show_create_jpg_result
         show_create_jpg_result(
             self, created,
@@ -2260,11 +2290,45 @@ class LargeImageView(QDialog):
             no_raw=1 if st == "no_raw" else 0,
             already_jpg=1 if st == "already_jpg" else 0,
             failed=1 if st == "failed" else 0)
-        if st == "created":
-            # Re-decode here + in the host grid to the freshly-cropped JPG.
-            self.refresh_external(key, reload_image=True)
-            self.picture_changed.emit(key)
-            self.picture_image_changed.emit(key)
+
+    def _on_rescan_master(self):
+        """↻ Rescan: add what appeared beside this master picture (a PhotoLab
+        export), show it, and offer to update the species page."""
+        if self._item is None or not hasattr(self._collection, "rescan_master_picture"):
+            return
+        from PyQt6.QtWidgets import QApplication, QMessageBox
+        key = self._item.key
+        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+        try:
+            res = self._collection.rescan_master_picture(key)
+        except Exception as e:
+            QApplication.restoreOverrideCursor()
+            logger.error(f"Rescan {key} failed: {e}", exc_info=True)
+            QMessageBox.warning(self, "Rescan", f"The folder could not be scanned: {e}")
+            return
+        QApplication.restoreOverrideCursor()
+        added, resized = res.get("added") or [], res.get("resized", 0)
+        if not added and not resized:
+            QMessageBox.information(self, "Rescan",
+                                    "Nothing new beside this picture.")
+            return
+        self.refresh_external(key, reload_image=True)
+        self.picture_changed.emit(key)
+        self.picture_image_changed.emit(key)
+        bits = []
+        if added:
+            bits.append("Added: " + ", ".join(added) + ".")
+        if resized:
+            bits.append(f"{resized} JPG(s) changed size and were updated.")
+        new_jpg = resized or any(n.lower().endswith((".jpg", ".jpeg")) for n in added)
+        if new_jpg and res.get("sci"):
+            from gui.species_page_refresh import rebuild_species_pages
+            if rebuild_species_pages(
+                    self, [res["sci"]], getattr(self._collection, "_master_db", None),
+                    ask=" ".join(bits).replace("{", "{{").replace("}", "}}")
+                        + "\n\nUpdate the page of {names} on the website now?"):
+                return
+        QMessageBox.information(self, "Rescan", "\n".join(bits))
 
     def _ask_replace_jpg(self, jpg) -> str | None:
         """Replace / New file name / Cancel for an existing JPG -> "overwrite",
@@ -2771,6 +2835,14 @@ class LargeImageView(QDialog):
             "Open the HEIC in DxO PhotoLab" if is_heic(pl_src) else
             "Open the RAW file in the associated viewer")
         self._crop_btn.setEnabled(getattr(item, "can_set_crop", False))
+        # A master picture only when the master is writable here (same rule as
+        # its stars) — the button used to look ready and then do nothing.
+        self._makejpg_btn.setEnabled(not getattr(item, "from_master", False)
+                                     or getattr(item, "can_edit_rating", False))
+        self._rescan_btn.setVisible(
+            hasattr(self._collection, "rescan_master_picture")
+            and getattr(item, "from_master", False)
+            and getattr(item, "can_edit_rating", False))
 
         # EXIF
         exif = item.exif

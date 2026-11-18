@@ -75,6 +75,7 @@ class RatingEditorItem(PictureItem):
         self.frozen = collection.is_frozen_day(upn_key)
         editable = (not collection.view_read_only) and (not self.frozen) and \
                    ((not self._master) or (not collection.master_read_only))
+        self._editable = editable
         self.can_edit_rating = editable
         self.can_edit_color = editable
         # Description (the website story) writes back for trip pictures via the
@@ -88,6 +89,14 @@ class RatingEditorItem(PictureItem):
 
     @property
     def from_master(self) -> bool:
+        return self._master
+
+    @property
+    def discard_allowed(self) -> bool:
+        """Blue/Purple stay live on a master picture WITH a JPG: blue delete can
+        remove it (the "Also move the pictures with a JPG" box), so marking it
+        is a real choice. A trip picture here keeps the old greying — the trip's
+        colour delete still never removes its JPG pictures."""
         return self._master
 
     @property
@@ -118,11 +127,12 @@ class RatingEditorItem(PictureItem):
     @property
     def can_set_crop(self) -> bool:
         """A crop suggestion is written to the RAW's DxO .dop / Lightroom .xmp for
-        PhotoLab to open with, so it needs a writable trip picture that has a RAW.
-        Master reference cards and the read-only Album viewer stay look-only.
+        PhotoLab to open with, so it needs an editable picture that has a RAW —
+        the same rule as rating/colour: a master picture when the master is
+        writable on this computer, never a published (frozen) trip day.
         Lazy (one disk stat) so building a species' grid pays nothing — only the
         large viewer, which asks per shown picture, resolves it."""
-        if self._c.view_read_only or self._master or self.frozen:
+        if not self._editable:
             return False
         return self._c.raw_path(self._key) is not None
 
@@ -1599,11 +1609,11 @@ class RatingEditorCollection(PictureCollection):
         self._loader.request(produce, on_ready, target_w=None)
 
     def set_crop(self, upn_key: str, crop: dict):
-        """Write a suggested crop to a TRIP picture's DxO .dop / Lightroom .xmp so
+        """Write a suggested crop to the picture's DxO .dop / Lightroom .xmp so
         the next PhotoLab/Lightroom edit opens with it (creating a sidecar if
         missing). Returns sidecarlib's result dict, or None when there's no RAW.
-        Master cards are read-only here."""
-        if upn_key in self._master_keys:
+        A master picture only when the master is writable here."""
+        if upn_key in self._master_keys and self._master_read_only:
             return None
         raw = self.raw_path(upn_key)
         if not raw:
@@ -1618,9 +1628,9 @@ class RatingEditorCollection(PictureCollection):
 
     def set_exposure(self, upn_key: str, exposure: float):
         """Write a suggested exposure (EV) to a TRIP picture's DxO .dop /
-        Lightroom .xmp — the exposure mirror of set_crop. Master cards are
-        read-only here. Returns sidecarlib's result dict, or None."""
-        if upn_key in self._master_keys:
+        Lightroom .xmp — the exposure mirror of set_crop (same master rule).
+        Returns sidecarlib's result dict, or None."""
+        if upn_key in self._master_keys and self._master_read_only:
             return None
         raw = self.raw_path(upn_key)
         if not raw:
@@ -1675,9 +1685,9 @@ class RatingEditorCollection(PictureCollection):
         Returns {'status': 'created'|'skipped'|'no_raw'|'failed', ...}. Skips a
         picture that already has a tracked JPG (camera / DxO) so nothing is
         clobbered; our own bake is untracked, so a re-run overwrites it (e.g.
-        after re-cropping). Master reference cards are read-only here."""
+        after re-cropping). A master picture goes its own way: _create_master_jpg."""
         if upn_key in self._master_keys:
-            return {"status": "skipped"}
+            return self._create_master_jpg(upn_key)
         # A HEIC/PNG is as valid a source as a RAW (see preview_extract.bake_blog_jpg);
         # without the fallback Create JPG refused every phone picture as "no_raw".
         raw = self.raw_path(upn_key) or self.self_describing_path(upn_key)
@@ -1721,6 +1731,85 @@ class RatingEditorCollection(PictureCollection):
                     f"{'cropped' if crop else 'full frame'}).")
         return {"status": "created", "jpg": str(out), "size": baked_size,
                 "cropped": bool(crop)}
+
+    def _create_master_jpg(self, upn_key: str) -> dict:
+        """Make JPG for a MASTER picture: bake beside the RAW in its species
+        folder, add it to the master, and pin it as the picture's website JPG.
+
+        INVARIANT: never replaces a file. <name>.jpg may be the camera's own JPG
+        — a source picture — and the master cannot tell it from an earlier Make
+        JPG, so when it exists the new one is <name>-JPG-2.jpg (-3, …): a name
+        both the master ("belongs to this picture") and the pipeline (cuts at
+        "-jpg") keep with the same picture.
+
+        Pinned, because the bake is the camera's embedded preview: often smaller
+        than a DxO render, so "biggest wins" would never show the crop the person
+        just made on purpose. The pin can be undone in "Use this JPG on the
+        website". Returns create_blog_jpg's dict, plus "sci" for the page."""
+        if self._master_read_only or self._master_db is None:
+            return {"status": "skipped"}
+        raw = self.raw_path(upn_key) or self.self_describing_path(upn_key)
+        if raw is None:
+            j = self.jpg_path(upn_key)
+            return ({"status": "already_jpg", "jpg": str(j)} if j is not None
+                    else {"status": "no_raw"})
+        out = raw.with_suffix(".jpg")
+        n = 2
+        while out.exists():
+            out = raw.with_name(f"{raw.stem}-JPG-{n}.jpg")
+            n += 1
+        from gui.preview_extract import bake_blog_jpg
+        from gui.picture_provider import crop_for
+        xmp = raw.with_suffix(".xmp")
+        crop = crop_for(raw, xmp if xmp.exists() else None)
+        try:
+            baked_size = bake_blog_jpg(raw, out, crop)
+        except Exception as e:
+            logger.warning(f"Make JPG (master) failed for {raw.name}: {e}")
+            return {"status": "failed", "reason": str(e)}
+        try:
+            self.add_master_files(upn_key)          # the JPG joins the master
+        except Exception as e:
+            logger.error(f"Make JPG: {out.name} was written but could not be added "
+                         f"to the master: {e}", exc_info=True)
+            return {"status": "failed",
+                    "reason": f"{out.name} was made but not added to the master: {e}"}
+        if not self.pin_master_jpg(upn_key, out.name):
+            logger.warning(f"Make JPG: could not make {out.name} the website JPG.")
+        self._sync_master_row(upn_key)
+        self._crop_flag_cache.pop(upn_key, None)
+        self._jpg_stale_cache.pop(upn_key, None)
+        logger.info(f"Master JPG created → {out.name} "
+                    f"({baked_size[0]}×{baked_size[1]}, "
+                    f"{'cropped' if crop else 'full frame'}), now the website JPG.")
+        return {"status": "created", "jpg": str(out), "size": baked_size,
+                "cropped": bool(crop), "sci": self.master_sci(upn_key)}
+
+    def _sync_master_row(self, upn_key: str) -> None:
+        """Bring the in-memory master row + file rows (what cards and the Editor
+        render from) in step with the DB after files were added."""
+        fresh = self._master_db.picture(upn_key) or {}
+        row = self._master_upn.get(upn_key)
+        if row is not None:
+            for col in ("Files", "BestJPG", "JPGSize", "BestJPGPinned"):
+                if col in fresh:
+                    row[col] = fresh[col]
+        self._master_files.update(self._master_db.files_for_upns([upn_key]))
+
+    def rescan_master_picture(self, upn_key: str) -> dict:
+        """Pick up what appeared beside a master picture (a PhotoLab export + its
+        .dop) or changed size (a re-export over the same name). Returns
+        {"added": [names], "resized": n, "sci": …}."""
+        if upn_key not in self._master_keys or self._master_read_only \
+                or self._master_db is None:
+            return {"added": [], "resized": 0, "sci": ""}
+        res = self.add_master_files(upn_key) or {}
+        resized = self.resync_master_jpgs(upn_key) or []
+        self._sync_master_row(upn_key)
+        self._crop_flag_cache.pop(upn_key, None)
+        self._jpg_stale_cache.pop(upn_key, None)
+        return {"added": list(res.get("added") or []), "resized": len(resized),
+                "sci": self.master_sci(upn_key)}
 
     # ── write-back (rating/colour), with per-day CSV routing ──────────────
     def apply(self, upn_key: str, *, new_stars: int | None = None,

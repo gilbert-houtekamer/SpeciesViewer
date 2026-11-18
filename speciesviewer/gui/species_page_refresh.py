@@ -77,7 +77,7 @@ def rebuild_species_pages(parent, scis, master_db, *, ask: str = "") -> str:
         return "The website could not be reached, so its pages were not updated."
 
     from engine.regenerate_species import regenerate_species_page
-    done, failed = [], []
+    done, failed, urls = [], [], []
     prog = QProgressDialog("Updating the website…", None, 0, len(todo), parent)
     prog.setWindowTitle("Update the website")
     prog.setWindowModality(Qt.WindowModality.WindowModal)
@@ -103,6 +103,7 @@ def rebuild_species_pages(parent, scis, master_db, *, ask: str = "") -> str:
                 res = {"ok": False, "error": str(e)}
             if res.get("ok"):
                 done.append(names[sci])
+                urls += list(res.get("urls") or [])
             else:
                 failed.append(f"{names[sci]}: {res.get('error', 'see the log')}")
         prog.setValue(len(todo))
@@ -121,7 +122,27 @@ def rebuild_species_pages(parent, scis, master_db, *, ask: str = "") -> str:
                        "page was not rebuilt; the old page stays on the website:\n\n"
                        + _listing(gone))
         QMessageBox.warning(parent, "Update the website", "\n\n".join(msg))
+    if done:
+        _show_links(parent, done, urls)
     if not done:
         return "The website pages were not updated."
     return (f"Updated the website page of {done[0]}." if len(done) == 1
             else f"Updated the website pages of {len(done)} species.")
+
+
+def _show_links(parent, done: list[str], urls: list[str]) -> None:
+    """The finished pages as clickable links — the same box as ↻ Web, because
+    the person checks the result anyway."""
+    from urllib.parse import quote
+    from utils import site_config
+    base = site_config.site_base()
+    links = [f'<a href="{base + quote(u, safe="/")}">{base + u}</a>' for u in urls]
+    what = (f"the page of {done[0]} was" if len(done) == 1
+            else f"the pages of {len(done)} species were")
+    box = QMessageBox(parent)
+    box.setWindowTitle("Update the website")
+    box.setIcon(QMessageBox.Icon.Information)
+    box.setTextFormat(Qt.TextFormat.RichText)
+    box.setText(f"Done — {what} rebuilt and uploaded.<br><br>" + "<br>".join(links))
+    box.setTextInteractionFlags(Qt.TextInteractionFlag.TextBrowserInteraction)
+    box.exec()

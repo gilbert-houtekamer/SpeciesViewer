@@ -326,7 +326,9 @@ detail in [viewer_keybindings.md](../viewer_keybindings.md); in summary:
 | **Fit** tab | The embedded preview, fitted to the window |
 | **Camera JPEG** tab | The JPEG the camera itself wrote inside the RAW — on the Nikons full size, and it appears instantly. `f` toggles Fit ⇄ this tab, and a double-click on the Fit image lands here. |
 | **100%** tab | Decoded from the RAW at full sensor resolution — the embedded preview is only ~3200×2400. Lazily decoded, then cached. Click the tab to open it; its label shows the configured render scale. |
-| **✂ Crop** | Rough-cut a crop to hand to PhotoLab / Lightroom as a starting point. Aspect locked to the camera's nominal ratio. |
+| **✂ Crop** | Rough-cut a crop to hand to PhotoLab / Lightroom as a starting point. Aspect locked to the camera's nominal ratio. Also on master pictures, when the master may be changed on this computer. |
+| **🖼 Make JPG** | A JPG beside the RAW from the camera's preview + the crop. On a **master** picture it is added to the master straight away and becomes the picture's website photo (change that under *Use this JPG on the website*); then you are asked to update the species page. It never replaces a file: when `<name>.jpg` exists, the new one is `<name>-JPG-2.jpg`. |
+| **↻ Rescan** | Master pictures only. After an export from PhotoLab: adds the new JPG (and its `.dop`) to the master, shows it, and offers to update the species page. |
 | Navigation | `←` / `→` / `Space` / mouse wheel |
 | **Right-click** | On the image, the panel or a filmstrip picture: **the same menu as the grid you opened the Editor from**, acting on the selection (or on that one picture). See below. |
 
@@ -432,9 +434,8 @@ one shared implementation, so the same menu appears wherever it applies.
 
 Two guards you will meet:
 
-- *"Delete blocked — picture has a JPG (protected)"* — this menu does not delete
-  a picture with a JPG. Use **Delete JPG**, or Blue delete with the JPG box
-  ticked.
+- *"Has a JPG — remove it with blue delete"* — this menu does not delete a
+  picture with a JPG; Blue delete with the JPG box ticked does.
 - *"Master is read-only — enable in Repository Settings"* — this machine is not
   permitted to write the master.
 

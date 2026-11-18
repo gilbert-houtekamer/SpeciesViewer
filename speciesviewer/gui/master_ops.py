@@ -323,7 +323,7 @@ class MasterCardMenuMixin:
                                        self._do_master_delete_file(upn_key, f))
         elif "delete" in want and col.master_upn_has_jpg(upn_key):
             menu.addSeparator()
-            info = menu.addAction("Delete / Move blocked — picture has a JPG (protected)")
+            info = menu.addAction("Has a JPG — remove it with blue delete")
             info.setEnabled(False)
         return handlers
 
