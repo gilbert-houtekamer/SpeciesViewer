@@ -141,6 +141,34 @@ def _parse_capture_dt(s: str):
             return None
 
 
+# Two shots further apart than this are a different outing (you drove on).
+OUTING_GAP_MIN = 30
+
+
+def outing_run(keyed_times: list, key: str, gap_min: int = OUTING_GAP_MIN) -> list:
+    """The pictures shot in one go around `key`: walk out both ways through
+    `keyed_times` [(key, datetime | None), …] (capture order) while each step to
+    the next picture is at most `gap_min` minutes. A picture without a capture
+    time is an outing of its own. Returns keys in capture order."""
+    import datetime
+    keys = [k for k, _ in keyed_times]
+    if key not in keys:
+        return []
+    times = dict(keyed_times)
+    if times.get(key) is None:
+        return [key]
+    dated = sorted(((t, k) for k, t in keyed_times if t is not None),
+                   key=lambda p: (p[0], p[1]))
+    order = [k for _, k in dated]
+    i = j = order.index(key)
+    gap = datetime.timedelta(minutes=gap_min)
+    while i > 0 and times[order[i]] - times[order[i - 1]] <= gap:
+        i -= 1
+    while j < len(order) - 1 and times[order[j + 1]] - times[order[j]] <= gap:
+        j += 1
+    return order[i:j + 1]
+
+
 def _haversine_m(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     """Great-circle distance in metres between two (lat, lon) points. Used to
     judge how tightly a no-GPS picture's time-neighbours cluster — a tight cluster
@@ -2052,6 +2080,19 @@ class NoGpsTray(QWidget):
         from, the way a right-click acts from the cell under the pointer."""
         return self._current_key if self._current_key in self._cells else None
 
+    def select_keys(self, keys, current=None):
+        """Make exactly `keys` the selection (the "Select this outing" action),
+        expanding the tray and scrolling to `current` so the result is visible."""
+        self._selected = {k for k in keys if k in self._cells}
+        if current in self._cells:
+            self._current_key = current
+        if self._selected and not self._body.isVisible():
+            self._toggle.setChecked(True)
+        self._repaint_selection()
+        cell = self._cells.get(current)
+        if cell is not None:
+            self._body.ensureWidgetVisible(cell)
+
 
 class TripMapView(QDialog):
     """Trip / day map (maps_plan.md Phase 5a) — ALL species on the current viewer
@@ -2509,6 +2550,12 @@ class TripMapView(QDialog):
         find_act = menu.addAction(
             "🔎 Find a place by name…  (n)" if len(sel) == 1 else
             f"🔎 Find a place by name…  (n) (place all {len(sel)} selected)")
+        outing = self._outing_of(key) if has_time else []
+        outing_act = None
+        if len(outing) > 1:
+            outing_act = menu.addAction(
+                f"⏱ Select this outing: {len(outing)} pictures, "
+                f"{self._outing_span(outing)}  (o)")
         zoom_act = menu.addAction("Zoom map to around this time" if has_time
                                   else "Zoom to around this time — no timestamp")
         zoom_act.setEnabled(has_time)   # a screenshot with no capture time can't bracket
@@ -2521,6 +2568,8 @@ class TripMapView(QDialog):
             self._suggest_position(key, est, sel)
         elif chosen == find_act:
             self._find_place(sel)
+        elif outing_act is not None and chosen == outing_act:
+            self._tray.select_keys(outing, current=key)
         elif chosen == zoom_act and has_time:
             self._zoom_to_time(key)
         elif del_act is not None and chosen == del_act:
@@ -2614,6 +2663,12 @@ class TripMapView(QDialog):
             self._peek_tray()
             ev.accept()
             return
+        if (k == Qt.Key.Key_O
+                and not ev.modifiers() & Qt.KeyboardModifier.ControlModifier
+                and not text_input_focused()):
+            self._select_outing()
+            ev.accept()
+            return
         if (k in (Qt.Key.Key_P, Qt.Key.Key_N)
                 and not ev.modifiers() & Qt.KeyboardModifier.ControlModifier
                 and not text_input_focused()):
@@ -2638,6 +2693,49 @@ class TripMapView(QDialog):
             ev.accept()
             return
         super().keyPressEvent(ev)
+
+    def _outing_of(self, key: str) -> list[str]:
+        """The tray pictures shot in one go with `key` (no gap over
+        OUTING_GAP_MIN minutes) — one placement then covers the whole run."""
+        if self._tray is None:
+            return []
+        keyed = []
+        for k in self._tray.tray_keys():
+            try:
+                dt = _parse_capture_dt(self._coll.item_for_key(k).date or "")
+            except Exception:
+                dt = None
+            keyed.append((k, dt))
+        return outing_run(keyed, key)
+
+    def _outing_span(self, keys: list[str]) -> str:
+        """"20:31–21:05" for a run (the date too when it crosses midnight)."""
+        ts = []
+        for k in (keys[0], keys[-1]):
+            try:
+                ts.append(_parse_capture_dt(self._coll.item_for_key(k).date or ""))
+            except Exception:
+                ts.append(None)
+        a, b = ts
+        if a is None or b is None:
+            return ""
+        if a.date() == b.date():
+            return f"{a:%H:%M}–{b:%H:%M}"
+        return f"{a:%d %b %H:%M}–{b:%d %b %H:%M}"
+
+    def _select_outing(self):
+        """`o` — select the outing of the last-clicked tray picture."""
+        if self._tray is None:
+            return
+        cur = self._tray.current_key()
+        if cur is None:
+            QMessageBox.information(
+                self, "Select this outing",
+                "Click a picture in the no-GPS strip first.")
+            return
+        run = self._outing_of(cur)
+        if run:
+            self._tray.select_keys(run, current=cur)
 
     def _tray_selection(self, key: str) -> list[str]:
         """The tray pictures a menu action should act on: the whole current

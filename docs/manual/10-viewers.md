@@ -156,7 +156,7 @@ by body — useful on a trip shot with two.
 
 | Button | Does |
 |---|---|
-| **Map…** | Plot the *shown* pictures of this species on a map. In the **Master** Species Viewer, when pictures in view have no GPS (and the master may be changed on this computer), you can **place** them: a tray holds the pictures without GPS — drag one onto the map, or right-click it → *Find a place by name…*. When the species also has GPS points, Map… first asks which of the two maps you want. A place you set can be dragged again later; a camera's own coordinate never moves. |
+| **Map…** | Plot the *shown* pictures of this species on a map. In the **Master** Species Viewer, when pictures in view have no GPS (and the master may be changed on this computer), you can **place** them: a tray holds the pictures without GPS — drag one onto the map, or right-click it → *Find a place by name…* (it starts with the place already written on the picture). Right-click → *Select this outing* (or **o**) selects every picture shot in the same run (no gap over 30 minutes), so one placement covers them all. When the species also has GPS points, Map… first asks which of the two maps you want. A place you set can be dragged again later; a camera's own coordinate never moves. |
 | **✦ Species…** | Open this species' page in the Biota Browser (hero, grouped photos, siblings) |
 | **↻** | *(master-backed)* Re-read this species from the master and repaint |
 | **↻ Web** | *(master-backed)* Rebuild this species' website page and upload it |
