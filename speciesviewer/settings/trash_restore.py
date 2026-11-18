@@ -258,6 +258,8 @@ class RestoreTrashDialog(QDialog):
         QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
         db = MasterDB(self._master_root)
         done, failed = 0, []
+        page_species = set()      # species that got a photo back
+        busy = True
         try:
             db.ensure_fresh()
             # Oldest first, so the log and the manifest read chronologically.
@@ -266,22 +268,33 @@ class RestoreTrashDialog(QDialog):
                 try:
                     res = undo_delete(db, self._master_root, r["batch"])
                     done += len(res["restored"])
+                    if res.get("had_jpg") and res.get("sci"):
+                        page_species.add(res["sci"])
                 except Exception as e:
                     failed.append(f"{', '.join(r['upns']) or r['batch']}: {e}")
-        finally:
-            db.close()
             QApplication.restoreOverrideCursor()
+            busy = False
 
-        self._thumbs.clear()
-        self._reload()
-        tail = ("\n\nPer-species counts are rebuilt by Count Species — worth "
-                "running if this put back more than a single picture.")
-        if failed:
-            QMessageBox.warning(
-                self, "Restore images",
-                f"Put back {done} file(s), but {len(failed)} picture(s) failed:\n\n"
-                + "\n".join(failed[:5]) + tail)
-        else:
-            QMessageBox.information(
-                self, "Restore images",
-                f"Put back {done} file(s)." + tail)
+            self._thumbs.clear()
+            self._reload()
+            tail = ("\n\nIf a species had lost all its pictures, run Count Species "
+                    "to bring its numbers back.")
+            if failed:
+                QMessageBox.warning(
+                    self, "Restore images",
+                    f"Put back {done} file(s), but {len(failed)} picture(s) failed:\n\n"
+                    + "\n".join(failed[:5]) + tail)
+            else:
+                QMessageBox.information(
+                    self, "Restore images",
+                    f"Put back {done} file(s)." + tail)
+            if page_species:
+                from gui.species_page_refresh import rebuild_species_pages
+                rebuild_species_pages(
+                    self, page_species, db,
+                    ask="Photos are back for these species:\n\n{names}\n\n"
+                        "Update their pages on the website now?")
+        finally:
+            if busy:
+                QApplication.restoreOverrideCursor()
+            db.close()

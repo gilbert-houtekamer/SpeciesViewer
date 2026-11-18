@@ -14,9 +14,14 @@ that performs a *reversible* master mutation, coordinating three layers:
      thanks to the no-JPG invariant, only shifts plain picture counts). Add's
      species-level rollups are left to the Recount backstop.
 
-Default invariant — **a JPG is never trashed.** A UPN that contains any `.jpg`/
-`.jpeg` is not deletable (the JPG may be referenced elsewhere, e.g. a blog).
-Deletes therefore target redundant RAW-only pictures and stray non-JPG files.
+Default invariant — **a JPG is not trashed unless the person asked for it.** A UPN
+that contains any `.jpg`/`.jpeg` is refused by default. Deleting one is opt-in
+(`allow_jpg=True`): the colour-delete's "also pictures with a JPG" tick box, and
+the delete_jpg() carve-out below. That is safe because nothing published reads a
+master JPG in place: trip and album blogs copy their pictures at build time, and
+the web server never loses a file (uploads only add). What does follow the master
+is the species page — so the caller rebuilds it (gui/species_page_refresh.py).
+A deleted JPG goes to `.trash` and a restore puts its species rollups back.
 
 The one carve-out is `delete_jpg()`, which exists because a JPG can be in the
 master that is *not a photograph of the species at all* — a banner strip cropped
@@ -1137,8 +1142,9 @@ def last_delete_batch(master_root) -> dict | None:
 
 def undo_delete(db, master_root, batch: str) -> dict:
     """Reverse a delete batch: move the trashed files back and re-insert the
-    snapshotted picture/file rows into the DB. (Species counts are then best
-    repaired with a Recount; the common single-delete case is exact.)"""
+    snapshotted picture/file rows into the DB, with the species rollups the
+    delete moved (MasterDB.apply_restore). Only a delete that emptied its
+    species still needs Count Species: its species row is gone."""
     master_root = Path(master_root)
     sp = _snapshot_path(master_root, batch)
     if not sp.exists():
@@ -1161,9 +1167,10 @@ def undo_delete(db, master_root, batch: str) -> dict:
                 restored.append(str(orig))
 
     db.apply_restore(snap["picture"], snap["files"])
-    logger.info(f"Undid delete batch {batch}: {len(restored)} files restored. "
-                f"Run 'Recount master species' to refresh rollups.")
-    return {"batch": batch, "restored": restored}
+    logger.info(f"Undid delete batch {batch}: {len(restored)} files restored.")
+    return {"batch": batch, "restored": restored,
+            "sci": (snap["picture"].get("WetSoortNaam") or "").strip(),
+            "had_jpg": any(_is_jpg(fr) for fr in snap["files"])}
 
 
 # ── purge ──────────────────────────────────────────────────────────────────────

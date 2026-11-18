@@ -1599,54 +1599,117 @@ class DeletePreviewDialog(QDialog):
     pictures will be moved to trash (trip = grey border, master = orange), so a
     destructive trip/master delete is verifiable. The 'Preview pictures before
     deletion' checkbox is shown in both states — untick to skip the thumbnails
-    next time, re-tick to bring them back."""
+    next time, re-tick to bring them back.
+
+    Pictures WITH a JPG (`jpg_keys`, master only) go only when the person ticks
+    the box, off by default; the thumbnails and the Delete button follow it."""
 
     _THUMB_W = 130
+    _COLS = 5
 
-    def __init__(self, parent, collection, keys, *, color, scope, breakdown,
-                 show_thumbnails):
+    def __init__(self, parent, collection, keys, *, color, scope,
+                 show_thumbnails, jpg_keys=(), last_jpg_names=(),
+                 split="", skipped=""):
+        """`keys`: pictures without a JPG — these always go. `split`: where they
+        come from, e.g. "2 from this trip, 1 from the master" ("" = say
+        nothing). `skipped`: pictures left alone and why ("" = none).
+        `last_jpg_names`: species that would have no photo left on their page
+        (named, not blocked)."""
         super().__init__(parent)
         from gui.rating_provider import RatingEditorItem
+        from gui.wait_picture import picture_column
+        from gui.widgets import wrapped
         self.setWindowTitle(f"Delete {color} pictures")
         self.setModal(True)
         self._items = []  # keep item refs alive for the async thumbnail callbacks
+        self._keys = list(keys)
+        self._jpg_keys = list(jpg_keys)
+        n, m = len(self._keys), len(self._jpg_keys)
 
-        lay = QVBoxLayout(self)
-        n = len(keys)
-        header = QLabel(
-            f"<b>{n} {color.lower()} picture{'s' if n != 1 else ''}</b> "
-            f"will be moved to trash — {scope}.")
+        def pics(k):
+            return f"{k} picture{'s' if k != 1 else ''}"
+
+        lay = picture_column(self, "bluebird")
+
+        # What was found — only the parts that are there.
+        c = color.lower()
+        if n and m:
+            found = f"{pics(n)} without a JPG and {m} with a JPG"
+        elif m:
+            found = f"{pics(m)} with a JPG"
+        else:
+            found = pics(n)
+        header = QLabel(f"<b>{found.replace('picture', c + ' picture', 1)}</b>")
         header.setTextFormat(Qt.TextFormat.RichText)
-        header.setWordWrap(True)
         lay.addWidget(header)
-        if breakdown:
-            note = QLabel("    ".join(breakdown))
-            note.setStyleSheet("color:#666;")
+        where = QLabel(scope)
+        where.setStyleSheet("color:#888;")
+        lay.addWidget(where)
+        lay.addSpacing(8)
+
+        if n:
+            are = "are" if n != 1 else "is"
+            lay.addWidget(wrapped(
+                f"The {pics(n)} without a JPG {are} moved to the trash"
+                + (f" ({split})" if split else "") + "."))
+
+        self._jpg_box = None
+        if m:
+            self._jpg_box = QCheckBox(f"Also move the {pics(m)} with a JPG")
+            self._jpg_box.setChecked(False)
+            lay.addWidget(self._jpg_box)
+            text = ("Published blogs keep their own copies. The page of each "
+                    "species involved is rebuilt on the website afterwards.")
+            if last_jpg_names:
+                text += ("\n⚠ No photo is left on the page of: "
+                         + ", ".join(last_jpg_names)
+                         + ". Restore from the master trash puts it back.")
+            note = wrapped(text)
+            note.setContentsMargins(26, 0, 0, 0)     # under the box's text
             lay.addWidget(note)
 
+        if skipped:
+            sk = wrapped(f"Left alone: {skipped}")
+            sk.setStyleSheet("color:#888;")
+            lay.addWidget(sk)
+
+        # (key, cell) for every picture that may show; a JPG picture's cell only
+        # while the box is ticked.
+        self._cells = []
+        self._grid = None
+        self._empty = None
         if show_thumbnails:
-            self.resize(760, 560)
+            self.resize(1000, 600)
             scroll = QScrollArea()
             scroll.setWidgetResizable(True)
             grid_w = QWidget()
-            grid = QGridLayout(grid_w)
-            cols = 5
+            self._grid = QGridLayout(grid_w)
+            self._grid.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft)
             tw = self._THUMB_W
-            for i, key in enumerate(keys):
-                cell = QLabel("…")
+            for key in self._keys + self._jpg_keys:
+                cell = QLabel("…", grid_w)
                 cell.setFixedSize(tw, tw * 2 // 3)
                 cell.setAlignment(Qt.AlignmentFlag.AlignCenter)
                 master = collection.is_master(key) if hasattr(collection, "is_master") else False
                 cell.setStyleSheet(
                     "border:2px solid %s; background:#f4f4f4;"
                     % ("#c07000" if master else "#cccccc"))
-                cell.setToolTip(("master · " if master else "trip · ") + key)
-                grid.addWidget(cell, i // cols, i % cols)
+                tip = ("master · " if master else "trip · ") + key
+                if key in self._jpg_keys:
+                    tip += " · has a JPG"
+                cell.setToolTip(tip)
+                self._cells.append((key, cell))
                 it = RatingEditorItem(collection, key)
                 self._items.append(it)
                 it.request_thumbnail(tw, self._make_cb(cell))
+            # Said in the empty grid while nothing is chosen yet.
+            self._empty = QLabel("Tick the box above to see the pictures with a JPG.",
+                                 grid_w)
+            self._empty.setStyleSheet("color:#888;")
             scroll.setWidget(grid_w)
             lay.addWidget(scroll, 1)
+        else:
+            lay.addStretch(1)       # the lines stay together at the top
 
         self._pref = QCheckBox("Preview pictures before deletion")
         self._pref.setChecked(show_thumbnails)
@@ -1655,13 +1718,41 @@ class DeletePreviewDialog(QDialog):
         row = QHBoxLayout()
         row.addStretch()
         cancel = QPushButton("Cancel")
-        delete = QPushButton(f"Delete {n}")
-        delete.setDefault(True)
+        self._delete = QPushButton()
+        self._delete.setDefault(True)
         row.addWidget(cancel)
-        row.addWidget(delete)
+        row.addWidget(self._delete)
         lay.addLayout(row)
         cancel.clicked.connect(self.reject)
-        delete.clicked.connect(self.accept)
+        self._delete.clicked.connect(self.accept)
+        if self._jpg_box is not None:
+            self._jpg_box.toggled.connect(self._refresh)
+        self._refresh()
+
+    def _refresh(self, *_):
+        """The Delete button and the thumbnails follow the tick box."""
+        jpg = self.include_jpg()
+        n = len(self._keys) + (len(self._jpg_keys) if jpg else 0)
+        self._delete.setText(f"Delete {n}")
+        self._delete.setEnabled(n > 0)
+        if self._grid is not None:
+            jset = set(self._jpg_keys)
+            for _k, cell in self._cells:
+                self._grid.removeWidget(cell)
+            self._grid.removeWidget(self._empty)
+            i = 0
+            for k, cell in self._cells:
+                show = jpg or k not in jset
+                cell.setVisible(show)
+                if show:
+                    self._grid.addWidget(cell, i // self._COLS, i % self._COLS)
+                    i += 1
+            self._empty.setVisible(i == 0)
+            if i == 0:
+                self._grid.addWidget(self._empty, 0, 0, 1, self._COLS)
+
+    def include_jpg(self) -> bool:
+        return self._jpg_box is not None and self._jpg_box.isChecked()
 
     @staticmethod
     def _make_cb(cell):
@@ -2292,13 +2383,10 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
             color, species=species, day=None if self._album_query else day)
         if not trip_keys and not master_keys:
             # A MASTER picture is only visible to this when it survived the JPG
-            # filter — and a picture with a JPG is never deletable. So with "JPG
-            # only" on, a cull over master pictures can find nothing by
-            # construction. Say that instead of a flat "none", which reads as
-            # "there are no blue pictures" when there may be plenty.
-            hint = ("\n\nNote: “JPG only” is on, and a picture that has a JPG is "
-                    "never deleted here — so the ones a cull would remove are "
-                    "exactly the ones now hidden. Switch “JPG only” off to see "
+            # filter. Say so instead of a flat "none", which reads as "there are
+            # no blue pictures" when the hidden ones may be blue.
+            hint = ("\n\nNote: “JPG only” is on, so pictures without a JPG are "
+                    "hidden and not included. Switch “JPG only” off to include "
                     "them."
                     if (self._jpg_only and (self._album_query
                                             or self._tm_radio.isChecked())) else "")
@@ -2313,40 +2401,58 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
                           and not self._collection.is_frozen_day(k)]
         master_deletable = [k for k in master_keys
                             if self._collection.master_upn_deletable(k)]
-        prot = ((len(trip_keys) - len(trip_deletable))
-                + (len(master_keys) - len(master_deletable)))
-        total = len(trip_keys) + len(master_keys)
+        # Master pictures WITH a JPG: deletable only when the person ticks the box
+        # in the confirm dialog. Nothing published reads them in place (blogs copy,
+        # the server keeps its files); the species page is rebuilt afterwards.
+        master_jpg = [k for k in master_keys
+                      if k not in master_deletable
+                      and self._collection.master_upn_deletable(k, allow_jpg=True)]
         deletable = len(trip_deletable) + len(master_deletable)
 
-        lines = [f"{total} {color.lower()} picture{'s' if total != 1 else ''} in {scope}."]
-        if trip_deletable:
-            lines.append(f"Trip → .trash: {len(trip_deletable)}")
-        if master_deletable:
-            lines.append(f"Master → master .trash: {len(master_deletable)}")
-        if prot:
-            why = "have a JPG"
-            if frozen_trip:
-                why += " / committed day (🔒)"
-            if (len(master_keys) - len(master_deletable)) and self._collection.master_read_only:
-                why += " / master read-only"
-            lines.append(f"Skipped ({why}): {prot}")
-        msg = "\n".join(lines)
+        # Left alone, and why — said once, in plain words.
+        def pics(k):
+            return f"{k} picture{'s' if k != 1 else ''}"
+        n_frozen = len(frozen_trip)
+        n_trip_jpg = len(trip_keys) - len(trip_deletable) - n_frozen
+        n_master_ro = len(master_keys) - len(master_deletable) - len(master_jpg)
+        skipped = "; ".join(t for t in (
+            f"{pics(n_frozen)} on a published day (🔒)" if n_frozen else "",
+            f"{pics(n_trip_jpg)} of this trip with a JPG" if n_trip_jpg else "",
+            f"{pics(n_master_ro)} — the master is read-only on this computer"
+            if n_master_ro else "") if t)
 
-        if deletable == 0:
-            QMessageBox.information(self, f"Delete {color}", msg)
+        if deletable == 0 and not master_jpg:
+            QMessageBox.information(
+                self, f"Delete {color}",
+                f"No {color.lower()} picture can be deleted in {scope}."
+                + (f"\n\nLeft alone: {skipped}." if skipped else ""))
             return
 
+        split = (f"{len(trip_deletable)} from this trip, "
+                 f"{len(master_deletable)} from the master"
+                 if trip_deletable and master_deletable else "")
         deletable_keys = trip_deletable + master_deletable
+        last_jpg = []
+        if master_jpg:
+            try:
+                last_jpg = [self._master_species_name(s) for s in
+                            self._collection.master_species_losing_all_jpgs(master_jpg)]
+            except Exception as e:
+                logger.warning(f"Delete {color}: last-photo check failed: {e}")
         show_thumbs = _config.get("ratingeditor", "delete_preview",
                                   fallback="yes").strip().lower() != "no"
         dlg = DeletePreviewDialog(
             self, self._collection, deletable_keys,
-            color=color, scope=scope, breakdown=lines[1:], show_thumbnails=show_thumbs)
+            color=color, scope=scope, show_thumbnails=show_thumbs,
+            jpg_keys=master_jpg, last_jpg_names=last_jpg, split=split,
+            skipped=skipped)
         if dlg.exec() != QDialog.DialogCode.Accepted:
             return
         if dlg.show_preview_pref() != show_thumbs:
             set_setting("ratingeditor", "delete_preview",
                         "yes" if dlg.show_preview_pref() else "no")
+        jpg_set = set(master_jpg) if dlg.include_jpg() else set()
+        master_deletable = master_deletable + [k for k in master_jpg if k in jpg_set]
 
         # Moving files (esp. over a network/Dropbox path) can take a while — a
         # cancelable wait dialog so the app doesn't look stuck, and the user can
@@ -2381,14 +2487,18 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
                 trip_deletable, self._trip_root / ".trash", day_hint=day or "",
                 progress_cb=_tick(0))
         m_deleted = 0
+        page_species = set()      # species whose page lost a photo
         if not progress.wasCanceled():
             master_tick = _tick(len(trip_deletable))
             for i, k in enumerate(list(master_deletable)):
                 if progress.wasCanceled():
                     break
                 try:
-                    self._collection.delete_master_picture(k)
+                    sci = self._collection.master_sci(k)
+                    self._collection.delete_master_picture(k, allow_jpg=k in jpg_set)
                     m_deleted += 1
+                    if k in jpg_set and sci:
+                        page_species.add(sci)
                 except Exception as e:
                     logger.error(f"Master delete {k} failed: {e}")
                 master_tick(i + 1, len(master_deletable))
@@ -2406,6 +2516,21 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
             QApplication.processEvents()
         self._rebuild_cards()
         progress.close()
+        if page_species:
+            from gui.species_page_refresh import rebuild_species_pages
+            db = self._master_db or getattr(self._collection, "_master_db", None)
+            note = rebuild_species_pages(self, page_species, db)
+            if note:
+                self._status.setText(self._status.text() + " " + note)
+
+    def _master_species_name(self, sci: str) -> str:
+        """A species as the user reads it (Dutch, else English, else scientific)."""
+        db = self._master_db or getattr(self._collection, "_master_db", None)
+        try:
+            row = db.species_row(sci) if db is not None else None
+        except Exception:
+            row = None
+        return ((row or {}).get("nl") or (row or {}).get("en") or sci).strip()
 
     # ── Initialisation helpers ────────────────────────────────────────────────
 

@@ -754,6 +754,20 @@ class MasterDB:
                             "country": r["country"]})
         return out
 
+    def jpg_picture_upns(self, sci: str) -> set[str]:
+        """The species' pictures that have a real JPG (thumbnails don't count) —
+        the pictures its website page can show."""
+        con = self._connect()
+        rows = con.execute(
+            'SELECT DISTINCT p."UniquePictureName" AS upn'
+            '  FROM pictures p JOIN files f'
+            '    ON f."UniquePictureName" = p."UniquePictureName"'
+            ' WHERE LOWER(TRIM(p."WetSoortNaam")) = ?'
+            '   AND LOWER(f."WindowsExtension") IN ("jpg","jpeg")'
+            "   AND LOWER(f.\"File:FileName\") NOT LIKE '%-small%'",
+            ((sci or "").strip().lower(),)).fetchall()
+        return {r["upn"] for r in rows}
+
     def species_row(self, sci: str) -> dict | None:
         """Resolve one species (case-insensitive scientific name) to
         {"sci","nl","en","target_path"} — used to look up a Move-to-species
@@ -2647,22 +2661,89 @@ class MasterDB:
 
     def apply_restore(self, picture: dict, files: list[dict]) -> None:
         """Undo support: re-insert a previously-deleted picture row + its file
-        rows (shaped like the query API returns). Species counts are NOT restored
-        here — a Recount reconciles them (the common single-delete case stays
-        exact because the inverse count delta is tiny)."""
+        rows (shaped like the query API returns).
+
+        The species rollups the delete moved come back in the SAME journal entry —
+        the exact inverse of apply_delete_upn: the picture count on the species and
+        its groups, the species count when the group starts counting again, and,
+        for a picture with a JPG, the JPG counter, the best-pick (when it leads)
+        and the species' JPGmap. Without the JPGmap a restored photo is back in
+        the viewer but never on its page — the page renders from that list.
+
+        Exception: a delete that EMPTIED its species removed the species row; there
+        is no row to put numbers in, so that case is still left to Count Species."""
         upn = picture.get("UniquePictureName", "")
+        con = self._connect()
+        spec_updates = self._species_restore_updates(con, picture, files)
         entry = {"op": "restore", "ts": time.time(), "upn": upn,
                  "pictures_insert": {upn: picture},
-                 "files_insert": {fr.get("File:FileName", ""): fr for fr in files}}
+                 "files_insert": {fr.get("File:FileName", ""): fr for fr in files},
+                 "species": spec_updates}
         with self._append_lock:
             entry["seq"] = self._next_seq()
             self._append_jsonl(entry)
-        con = self._connect()
         with con:
             self._insert_picture_row(con, picture)
             for fr in files:
                 self._insert_file_row(con, fr)
+            for s, fields in spec_updates.items():
+                self._set_species_fields(con, s, fields)
         MasterCheckpointWorker.get(self.master_root).notify()
+
+    def _species_restore_updates(self, con: sqlite3.Connection, picture: dict,
+                                 files: list[dict]) -> dict:
+        """Species-table changes for putting ONE deleted picture back, from the
+        pre-insert snapshot (the journal entry is written before the rows land).
+
+        Two shapes: the whole picture comes back (it was deleted), or only some of
+        its files do (Delete JPG / Delete file — the picture row still exists).
+        {} when the picture's species is not in the table."""
+        upn = picture.get("UniquePictureName", "")
+        sci = (picture.get("WetSoortNaam") or "").strip()
+        chain = self._species_chain(con, sci)
+        if not chain:
+            return {}
+        whole = con.execute('SELECT 1 FROM pictures WHERE "UniquePictureName"=?',
+                            (upn,)).fetchone() is None
+        updates: dict[str, dict] = {}
+        if whole:
+            for a in chain:
+                updates[a["ScientificName"]] = {
+                    "iPictureCollectionCount": _coerce_int(a["iPictureCollectionCount"]) + 1}
+            if counts_as_species(sci, picture.get("certainty", "") or ""):
+                for s, fields in self._count_change_updates(con, sci, +1).items():
+                    updates.setdefault(s, {}).update(fields)
+
+        def _jpg(fr) -> bool:
+            return (fr.get("WindowsExtension") or "").lower() in ("jpg", "jpeg")
+
+        back = [fr for fr in files if _jpg(fr)]
+        if not back:
+            return updates
+        # The picture's JPGs once the restore lands: what it still has + what returns.
+        have = [] if whole else [dict(r) for r in con.execute(
+            'SELECT "File:FileName", "ImageSize" FROM files WHERE "UniquePictureName"=?'
+            ' AND LOWER("WindowsExtension") IN ("jpg","jpeg")', (upn,))]
+        pinned = picture.get("BestJPGPinned", "") or ""
+        pick: dict = {}
+        sizes: dict = {}
+        for fr in have + back:
+            fn = fr.get("File:FileName", "")
+            sizes[fn] = fr.get("ImageSize", "") or ""
+            _offer_jpg(pick, upn, fn, sizes[fn], pinned)
+        best = pick[upn][-1] if upn in pick else ""
+        if not best:
+            return updates
+        if not have:              # the picture regains its first JPG
+            rel = (picture.get("TargetPath") or picture.get("BestJPGPathName") or "").strip()
+            for s, fields in self._species_addjpg_updates(
+                    con, sci, upn, best, rel,
+                    _coerce_rate(picture.get("Rate")) or 0).items():
+                updates.setdefault(s, {}).update(fields)
+        for s, fields in self._jpgmap_update(
+                con, sci, override={upn: (best, sizes[best])}).items():
+            updates.setdefault(s, {}).update(fields)
+        return updates
 
     # ── checkpoint (CSV catch-up) ─────────────────────────────────────────────
     def _rewrite_pictures_csv(self, con: sqlite3.Connection, target: Path) -> None:

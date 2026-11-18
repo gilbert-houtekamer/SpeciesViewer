@@ -467,19 +467,40 @@ class RatingEditorCollection(PictureCollection):
         files = self._master_upn.get(key, {}).get("Files", []) or []
         return any(self._master_file_is_jpg(f) for f in files)
 
-    def master_upn_deletable(self, key: str) -> bool:
-        """A master picture is deletable only when writes are enabled and it has
-        no JPG (the hard 'never trash a JPG' invariant)."""
+    def master_upn_deletable(self, key: str, allow_jpg: bool = False) -> bool:
+        """A master picture is deletable when writes are enabled — and, unless the
+        person ticked "also pictures with a JPG" (`allow_jpg`), only when it has
+        no JPG."""
         return (key in self._master_keys and not self._master_read_only
-                and self._master_db is not None and not self.master_upn_has_jpg(key))
+                and self._master_db is not None
+                and (allow_jpg or not self.master_upn_has_jpg(key)))
+
+    def master_sci(self, key: str) -> str:
+        """The master picture's scientific name (whose page shows it)."""
+        return (self._master_upn.get(key, {}).get("WetSoortNaam") or "").strip()
 
     def master_nonjpg_files(self, key: str) -> list[str]:
         files = self._master_upn.get(key, {}).get("Files", []) or []
         return [f for f in files if not self._master_file_is_jpg(f)]
 
-    def delete_master_picture(self, key: str) -> dict:
+    def delete_master_picture(self, key: str, allow_jpg: bool = False) -> dict:
         from db.master_mutate import delete_picture
-        return delete_picture(self._master_db, self._master_root, key)
+        return delete_picture(self._master_db, self._master_root, key,
+                              allow_jpg=allow_jpg)
+
+    def master_species_losing_all_jpgs(self, keys) -> list[str]:
+        """Species (scientific names) that would have NO picture with a JPG left
+        once `keys` are deleted — their page would show no photo."""
+        if self._master_db is None:
+            return []
+        gone = set(keys)
+        by_sci: dict[str, set] = {}
+        for k in gone:
+            s = self.master_sci(k)
+            if s:
+                by_sci.setdefault(s, set()).add(k)
+        return sorted(s for s, ks in by_sci.items()
+                      if self._master_db.jpg_picture_upns(s) <= gone)
 
     def master_upn_moveable(self, key: str) -> bool:
         """A master picture can be moved to another species whenever master

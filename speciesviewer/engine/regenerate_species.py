@@ -35,6 +35,41 @@ def _resolve_leaf(sp, scientific_name):
     return None
 
 
+_OVERLAY = ("JPGmap", "BestJPG", "BestUPN", "BestJPGPathName", "currentHighestRating",
+            "iPictureCollectionCount", "iPicturesWithJPGsCollection")
+
+
+def _overlay_from_db(sp, leaf, master_db) -> None:
+    """Take this species' (and its subspecies') page list and best-pick from the
+    master DB, not from species.csv.
+
+    The page renders from JPGmap. species.csv catches up with the DB a little
+    later (debounced checkpoint), so a page rebuilt right after a delete, a move
+    or a restore read the list from BEFORE it — a restored photo stayed off its
+    page. The DB is the truth the moment a write returns."""
+    from db.master_mutate import _species_full_row
+    names = [leaf] + [k for k, s in sp.species_dict.items()
+                      if (s.get("Up") or "") == leaf]
+    for name in names:
+        try:
+            row = _species_full_row(master_db, name)
+        except Exception as e:
+            logger.warning(f"regenerate: DB species row for {name!r} unreadable: {e}")
+            continue
+        if row is None:
+            continue
+        for col in _OVERLAY:
+            if col not in row or row[col] is None:
+                continue
+            val = row[col]
+            if col.startswith("i") or col == "currentHighestRating":
+                try:
+                    val = int(val)
+                except (TypeError, ValueError):
+                    continue
+            sp.species_dict[name][col] = val
+
+
 WEB_ASSETS = ("leaflet.css", "leaflet.js")   # the occurrence map, self-hosted
 
 
@@ -250,6 +285,7 @@ def regenerate_species_page(scientific_name, master_db, progress_cb=None, upload
     if leaf is None:
         return {"ok": False,
                 "error": f"'{scientific_name}' was not found in the master species list."}
+    _overlay_from_db(sp, leaf, master_db)
     species = sp.species_dict[leaf]
     target_path = species.get("TargetPath", "")
 

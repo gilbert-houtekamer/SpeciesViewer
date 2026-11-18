@@ -202,10 +202,26 @@ Two independent locks hide the editing actions, each with a banner saying so:
 In Trip scope with only *some* days frozen, the actions stay available: they
 operate on the editable pictures and skip the frozen ones.
 
-> **In an album, a cull deletes MASTER pictures.** They are JPG-protected, go to
-> the master's `.trash`, and are undoable — but this is the real collection, not
-> a working copy. The album viewer therefore starts with the delete buttons
-> hidden until a load has confirmed this machine may write.
+> **In an album, a cull deletes MASTER pictures.** They go to the master's
+> `.trash` and are undoable — but this is the real collection, not a working
+> copy. The album viewer therefore starts with the delete buttons hidden until a
+> load has confirmed this machine may write.
+
+**Pictures with a JPG.** Blue/Purple delete leaves master pictures that have a
+JPG alone, unless you tick **Also delete the … pictures that have a JPG** in the
+confirm window (off by default). Use it for a species with many JPGs of the same
+pose. What happens:
+
+- Published blogs — trip and album — keep their own copies and do not change.
+  An album blog you *rebuild* later reads the master, so a deleted picture is no
+  longer in it.
+- The website page of each species involved is rebuilt and uploaded straight
+  away. Without a connection you get a warning naming those species; open each
+  later and press **↻ Web**.
+- Nothing is removed from the website itself: the old picture files stay there.
+- If a species would have no photo left on its page, the confirm window names it.
+- **Restore images** (master trash) puts a picture back with its counts and its
+  place on the species page, and offers to update those pages.
 
 ---
 
@@ -416,8 +432,9 @@ one shared implementation, so the same menu appears wherever it applies.
 
 Two guards you will meet:
 
-- *"Delete / Move blocked — picture has a JPG (protected)"* — a picture already
-  published on the website is not deletable from here.
+- *"Delete blocked — picture has a JPG (protected)"* — this menu does not delete
+  a picture with a JPG. Use **Delete JPG**, or Blue delete with the JPG box
+  ticked.
 - *"Master is read-only — enable in Repository Settings"* — this machine is not
   permitted to write the master.
 
