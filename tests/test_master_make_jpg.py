@@ -23,10 +23,15 @@ class _Col:
         self._master_upn = {k: db.picture(k) for k in PICTURES}
         self._master_files = db.files_for_upns(list(PICTURES))
         self._crop_flag_cache, self._jpg_stale_cache = {}, {}
+        self._view_read_only = False
 
     def __getattr__(self, name):
-        fn = getattr(self._c, name)
-        return fn.__get__(self, type(self))
+        attr = self._c.__dict__.get(name)
+        if attr is None:                       # inherited from the base class
+            attr = getattr(self._c, name)
+        if hasattr(attr, "__get__"):           # method, property, staticmethod
+            return attr.__get__(self, type(self))
+        return attr                            # a class constant
 
 
 @pytest.fixture

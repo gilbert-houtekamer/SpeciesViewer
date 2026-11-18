@@ -1069,11 +1069,45 @@ class RatingEditorCollection(PictureCollection):
         """Where the place name is written: the trip picture's .xmp and JPG(s),
         plus a HEIC/PNG itself (its annotations live inside it). Empty for a
         master reference card and in a view-only (Album) viewer."""
-        if self._view_read_only or upn_key in self._master_keys:
+        if upn_key in self._master_keys:
+            return self._master_location_targets(upn_key)
+        if self._view_read_only:
             return []
         from utils.raw_extensions import SELF_DESCRIBING
         return [str(p) for e, p, _r in self._live_trip_files(upn_key)
                 if e in ("xmp", "jpg", "jpeg") or ("." + e) in SELF_DESCRIBING]
+
+    @property
+    def allow_geotag(self) -> bool:
+        """The map may PLACE master pictures that have no GPS: the master is
+        writable on this computer. The map's own rule still holds — it never
+        moves a coordinate a camera recorded."""
+        return self._master_db is not None and not self._master_read_only
+
+    def _master_location_targets(self, upn_key: str) -> list[str]:
+        """A master picture's .xmp and JPG(s) (+ a HEIC/PNG itself) in its species
+        folder — where GPS and place text go; geolocate mirrors both into the
+        master index. A RAW without a sidecar gets its <stem>.xmp (exiftool
+        creates it; Rescan adds it to the master). [] on a read-only master."""
+        if not self.allow_geotag:
+            return []
+        from utils.raw_extensions import SELF_DESCRIBING
+        row = self._master_upn.get(upn_key) or {}
+        rel = (row.get("TargetPath") or row.get("BestJPGPathName") or "").strip()
+        if self._master_root is None or not rel:
+            return []
+        out = []
+        for fname in self._files(upn_key):
+            ext = Path(fname).suffix.lower()
+            if ext in (".xmp", ".jpg", ".jpeg") or ext in SELF_DESCRIBING:
+                p = self._master_root / rel / fname
+                if p.exists():
+                    out.append(str(p))
+        if not any(t.lower().endswith(".xmp") for t in out):
+            raw = self.raw_path(upn_key)
+            if raw is not None:
+                out.append(str(raw.with_suffix(".xmp")))
+        return out
 
     def read_location(self, upn_key: str) -> dict:
         """Place text for the Editor's LOCATION panel, from the in-memory picture
@@ -1087,7 +1121,8 @@ class RatingEditorCollection(PictureCollection):
 
     def note_locations_written(self, fields_by_key: dict, protect=()) -> None:
         changed = [k for k, f in fields_by_key.items()
-                   if self.note_location_written(k, f, protect, persist=False)]
+                   if self.note_location_written(k, f, protect, persist=False)
+                   and k not in self._master_keys]   # master: no day CSV to save
         if changed:
             self.persist_after_species_change(changed)   # each affected day once
 
@@ -1101,7 +1136,20 @@ class RatingEditorCollection(PictureCollection):
         (a hand-typed Location survives a coarse reverse-geocode). Master
         reference cards are never written (location_targets is empty for them)."""
         if upn_key in self._master_keys:
-            return False
+            # write_location_batch already mirrored the name into the master
+            # index; the in-memory row is what the cards and the Editor show.
+            row = self._master_upn.get(upn_key)
+            if row is None:
+                return False
+            changed = False
+            for f in self._LOC_FIELDS:
+                v = (fields or {}).get(f) or ""
+                if not v or (f in set(protect) and (row.get(f) or "").strip()):
+                    continue
+                if row.get(f) != v:
+                    row[f] = v
+                    changed = True
+            return changed
         from engine.csv_columns import PICTURE_FIELDS, DATA_FILE_FIELDS
         protect = set(protect)
         row = self.fpr.upn.UniquePictureName_dict.get(upn_key)
@@ -1150,8 +1198,16 @@ class RatingEditorCollection(PictureCollection):
 
     def note_gps_written(self, upn_key: str, lat=None, lon=None) -> None:
         """Paste GPS just wrote a hand-placed coordinate into this trip picture's
-        XMP: put it in the picture row (GPSPosition + MANUAL) and save the day."""
+        XMP: put it in the picture row (GPSPosition + MANUAL) and save the day.
+        A master picture: write_gps already mirrored it into the master index;
+        only the in-memory row (what the map and the cards read) follows here."""
         if upn_key in self._master_keys:
+            from gui.geolocate import GPS_MANUAL
+            row = self._master_upn.get(upn_key)
+            if row is not None:
+                if lat is not None and lon is not None:
+                    row["GPSPosition"] = self._gps_text(float(lat), float(lon))
+                row["GPSProcessingMethod"] = GPS_MANUAL
             return
         from gui.geolocate import GPS_MANUAL
         row = self.fpr.upn.UniquePictureName_dict.get(upn_key)
@@ -1165,10 +1221,20 @@ class RatingEditorCollection(PictureCollection):
     def gps_is_derived(self, upn_key: str) -> bool:
         """True when this trip picture's coordinate was placed by a person
         (paste, map, place lookup) — GPSProcessingMethod = MANUAL. A camera's fix
-        and a master reference card are never 'derived' here."""
-        if upn_key in self._master_keys or self._view_read_only:
-            return False
+        and a master reference card are never 'derived' here — unless the master
+        is writable here: then a MANUAL master coordinate may be moved too."""
         from gui.geolocate import GPS_MANUAL
+        if upn_key in self._master_keys:
+            if not self.allow_geotag:
+                return False
+            row = self._master_upn.get(upn_key) or {}
+            if (row.get("GPSProcessingMethod") or "").strip().upper() == GPS_MANUAL:
+                return True
+            return any(((self._master_files.get(f) or {}).get("EXIF:GPSProcessingMethod")
+                        or "").strip().upper() == GPS_MANUAL
+                       for f in self._files(upn_key))
+        if self._view_read_only:
+            return False
         row = self.fpr.upn.UniquePictureName_dict.get(upn_key) or {}
         if (row.get("GPSProcessingMethod") or "").strip().upper() == GPS_MANUAL:
             return True

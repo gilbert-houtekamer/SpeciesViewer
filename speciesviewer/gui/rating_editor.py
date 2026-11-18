@@ -3642,16 +3642,78 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
             return
         points = self._master_db.gps_points_for_species(sci)
         name = self._species_combo.currentData() or sci
-        if not points:
+        # Pictures in view without GPS that this computer may place (the master
+        # is writable): the geotag map can give them one.
+        col = self._collection
+        no_gps = ([k for k in self._order if col.gps_cached(k) is None]
+                  if col is not None and getattr(col, "allow_geotag", False) else [])
+        if not points and not no_gps:
             QMessageBox.information(
                 self, "Map",
                 f"No GPS points for {name}.\n\n"
                 f"About 40% of the master has no GPS — older material predates "
-                f"in-camera GPS. (Map-based backfill is a later phase.)")
+                f"in-camera GPS. Placing pictures on the map needs a master that "
+                f"may be changed on this computer.")
+            return
+        if no_gps and points:
+            from PyQt6.QtWidgets import QMenu
+            from PyQt6.QtGui import QCursor
+            menu = QMenu(self)
+            seen = menu.addAction(f"Where {name} was seen")
+            n = len(no_gps)
+            place = menu.addAction(
+                f"Place the {n} picture{'s' if n != 1 else ''} without GPS…")
+            chosen = menu.exec(QCursor.pos())
+            if chosen is None:
+                return
+            if chosen is place:
+                self._open_geotag_map(name)
+                return
+        elif no_gps:
+            self._open_geotag_map(name)
             return
         from gui.map_view import MapView
         self._map_dlg = MapView(self, self._master_db, sci, name, points)
         self._map_dlg.show()
+
+    def _open_geotag_map(self, name: str):
+        """The map with a tray of the pictures in view that have no GPS: drag one
+        onto the map, or right-click it → "Find a place by name…". Fills gaps
+        only — a coordinate a camera recorded is never moved. GPS and place name
+        go into the picture's sidecar/JPG and the master index."""
+        old = getattr(self, "_map_dlg", None)
+        if old is not None:
+            try:
+                old.close()
+            except RuntimeError:
+                pass
+        from gui.map_view import TripMapView
+        dlg = TripMapView(
+            self, self._collection, list(self._order),
+            title=window_title("Map", name), loader=self._collection._loader,
+            read_only=True, allow_geotag=True)
+        dlg.pictures_geotagged.connect(self._after_geotag)
+        self._map_dlg = dlg
+        dlg.show()
+
+    def _after_geotag(self, keys):
+        """Pictures just got a place: their cards and an open Editor show it."""
+        lv = getattr(self, "_large_view", None)
+        for k in keys or []:
+            card = self._bound.get(k) if hasattr(self, "_bound") else None
+            if card is not None:
+                try:
+                    card.refresh()
+                except (AttributeError, RuntimeError):
+                    pass
+            if lv is not None:
+                try:
+                    lv.refresh_external(k)
+                except RuntimeError:
+                    pass
+        n = len(keys or [])
+        if n:
+            self._status.setText(f"Placed {n} picture{'s' if n != 1 else ''} on the map.")
 
     def _on_show_map(self):
         """Plot the SHOWN pictures of this species on a map — the trip's own GPS

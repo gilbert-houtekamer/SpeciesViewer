@@ -1634,6 +1634,29 @@ _ALBUM_OWN_COLOR = "#ffab00"
 _MIME_UPNS = "application/x-speciesviewer-upns"
 
 
+def place_queries(fields: dict) -> list[str]:
+    """Search texts built from the place already written on a picture, most
+    specific first: "Huguenot Memorial Park, Jacksonville, Florida, United States"
+    → that, then the place + country, then the place alone (OpenStreetMap often
+    misses a full chain but knows the park). A part already inside an earlier
+    one ("Jacksonville" in "…Park, Jacksonville") is not repeated. [] = no text."""
+    f = {k: (str(v or "")).strip() for k, v in (fields or {}).items()}
+    parts: list[str] = []
+    for p in (f.get("Location"), f.get("City") or f.get("Municipality"),
+              f.get("State"), f.get("Country")):
+        if p and not any(p.casefold() in q.casefold() for q in parts):
+            parts.append(p)
+    if not parts:
+        return []
+    out = [", ".join(parts)]
+    country = f.get("Country", "")
+    if f.get("Location") and len(parts) > 2 and country:
+        out.append(f"{parts[0]}, {country}")
+    if f.get("Location") and len(parts) > 1:
+        out.append(parts[0])
+    return list(dict.fromkeys(out))
+
+
 class PlaceSearchDialog(QDialog):
     """Look a place up BY NAME and get its coordinate — forward geocoding.
 
@@ -1643,8 +1666,12 @@ class PlaceSearchDialog(QDialog):
     area is passed as a soft preference, so the same hotel name in another country
     doesn't win over the one you actually stayed in."""
 
-    def __init__(self, parent, *, viewbox=None, initial: str = ""):
+    def __init__(self, parent, *, viewbox=None, initial: str = "",
+                 suggestions: list[str] | None = None):
         super().__init__(parent)
+        self._suggestions = [s for s in (suggestions or []) if s.strip()]
+        if self._suggestions and not initial:
+            initial = self._suggestions[0]
         self.setWindowTitle("Find a place by name")
         self.resize(620, 380)
         self._viewbox = viewbox
@@ -1689,6 +1716,26 @@ class PlaceSearchDialog(QDialog):
 
         self._list.itemSelectionChanged.connect(
             lambda: self._ok.setEnabled(self._list.currentRow() >= 0))
+
+        if self._suggestions:
+            # The picture already names its place: search it straight away.
+            QTimer.singleShot(0, self._search_suggestions)
+
+    def _search_suggestions(self):
+        """Try the place written on the picture, most specific text first, until
+        OpenStreetMap knows one. At most three lookups, a second apart (the
+        service asks for no more than one a second)."""
+        import time
+        for i, q in enumerate(self._suggestions[:3]):
+            if i:
+                time.sleep(1.0)
+            self._field.setText(q)
+            self._search()
+            if self._results:
+                self._status.setText(
+                    f"{self._status.text()}  Searched for the place written on the "
+                    f"picture — change the text to search for something else.")
+                return
 
     def _search(self):
         from gui.geolocate import search_places
@@ -2618,7 +2665,19 @@ class TripMapView(QDialog):
             vb = self._map.visible_bounds()
         except Exception:
             vb = None
-        dlg = PlaceSearchDialog(self, viewbox=vb)
+        # A picture without GPS may still carry its place as text (typed in, or
+        # from an old trip): offer that as the search, so often one click places it.
+        queries: list[str] = []
+        reader = getattr(self._coll, "read_location", None)
+        if reader is not None:
+            for k in keys:
+                try:
+                    queries = place_queries(reader(k))
+                except Exception:
+                    queries = []
+                if queries:
+                    break
+        dlg = PlaceSearchDialog(self, viewbox=vb, suggestions=queries)
         if dlg.exec() != QDialog.DialogCode.Accepted or not dlg.chosen:
             return
         r = dlg.chosen
