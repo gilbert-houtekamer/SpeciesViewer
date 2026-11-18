@@ -156,7 +156,7 @@ by body — useful on a trip shot with two.
 
 | Button | Does |
 |---|---|
-| **Map…** | Plot the *shown* pictures of this species on a map. In the **Master** Species Viewer, when pictures in view have no GPS (and the master may be changed on this computer), you can **place** them: a tray holds the pictures without GPS — drag one onto the map, or right-click it → *Find a place by name…* (it starts with the place already written on the picture). Right-click → *Select this outing* (or **o**) selects every picture shot in the same run (no gap over 30 minutes), so one placement covers them all. When the species also has GPS points, Map… first asks which of the two maps you want. A place you set can be dragged again later; a camera's own coordinate never moves. |
+| **Map…** | Plot the *shown* pictures of this species on a map. In the **Master** Species Viewer, when pictures in view have no GPS (and the master may be changed on this computer), you can **place** them: a tray holds the pictures without GPS — drag one onto the map, or right-click it → *Find a place by name…* (it starts with the place already written on the picture). Right-click → *Select this outing* (or **o**) selects every picture shot in the same run, so one placement covers them all (see [Placing pictures without GPS on the map](#placing-pictures-without-gps-on-the-map)). When the species also has GPS points, Map… first asks which of the two maps you want. A place you set can be dragged again later; a camera's own coordinate never moves. |
 | **✦ Species…** | Open this species' page in the Biota Browser (hero, grouped photos, siblings) |
 | **↻** | *(master-backed)* Re-read this species from the master and repaint |
 | **↻ Web** | *(master-backed)* Rebuild this species' website page and upload it |
@@ -301,6 +301,39 @@ overwritten: if a file with the same name is already there, that picture stays
 where it is. A published day refuses, in both directions. Afterwards this day
 re-reads when you close the viewer, and the other day's **Read & Summarize**
 shows as needed in the trip overview.
+
+### Placing pictures without GPS on the map
+
+A map opened from a trip, an Album or the Master Species Viewer shows a strip
+of the pictures **without GPS** above the map, in the order they were taken.
+Give them a position by dragging them onto the map, or with these actions (in
+the right-click menu of a picture in the strip, or as a key):
+
+| Action | Key | Does |
+|---|---|---|
+| **Suggest a position** | `p` | Guesses the spot from the pictures with GPS taken just before and after. |
+| **Find a place by name…** | `n` | Looks a place up on OpenStreetMap. It starts with the place already written on the picture, if any. |
+| **Select this outing** | `o` | Selects the whole outing the picture belongs to (see below). |
+| Peek | `z` | Shows the pictures large, read-only, to remind you where they were taken. |
+| Select a range | `[` … `]` | Click the first picture, press `[`, click the last, press `]`. |
+
+Each of these acts on all selected pictures. Nothing is written yet: a pin
+appears that you can still drag to the exact spot. Then **Place here** (or
+`Enter`) writes the position, and **Cancel** (or `Esc`) drops it.
+
+**An outing** is a run of pictures taken in one go: each picture was taken at
+most **30 minutes** after the one before it. A longer gap starts a new outing.
+An afternoon on one beach is usually one outing; a drive to the next spot
+usually starts a new one. A picture without a capture time is an outing of its
+own. Placing a whole outing with one pin is right for old pictures, where the
+spot only needs to be roughly correct. When the outing caught pictures from two
+places (a short drive), click the extra ones out of the selection before you
+place.
+
+A position placed by hand can be dragged again later, or removed. GPS the
+camera recorded never moves. In the Master Species Viewer the map only shows
+the pictures of that species; to place several species at once, open the map
+of an Album that covers those days.
 
 ### A workable culling order
 
@@ -465,5 +498,6 @@ likely to need your correction:
   not an observed workflow.
 - **Sex / age / plumage** qualifiers are listed but not explained — they deserve
   their own section once the vocabulary is settled.
-- The **map** views (from both viewers) are mentioned but not documented; they
+- The **map** views (from both viewers) are only partly documented: placing
+  pictures without GPS is, the rest (bubbles, moving, travel path) is not; they
   are arguably a fifth viewer.
