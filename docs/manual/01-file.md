@@ -1,5 +1,40 @@
 # 1. File
 
+## Start here: the Setup Checklist
+
+To begin, you only need **Help ▸ Setup Checklist…**. It opens by itself
+whenever something essential is missing, so also the first time you start
+SpeciesViewer. Fill it in, and you can start working.
+
+The checklist has one row for each thing SpeciesViewer needs, with a mark that
+shows whether it is set. Each row has a button that opens the place to set it.
+The words in it — master, trips, albums, website — are explained in
+[Concepts](00-concepts.md).
+
+- **Needed to start:** the master collection, where the website goes, and
+  exiftool. *On this computer* is a fine choice for the website: nothing is
+  uploaded, and you can change it later.
+- **Needed for their own menus:** the folders for pictures, trips and albums.
+  For an empty row, **Use suggested** makes the folder and uses it in one
+  click.
+- **Optional:** DxO PhotoLab, and the decode quality, which works on its
+  defaults.
+
+**Fill in every row anyway, in one sitting.** For the folders, *Use suggested*
+is one click each, and a menu whose folder is missing stays grey — later you
+would wonder why.
+
+The checklist also answers *"why is this menu grey?"*, so it is worth opening
+again later. Every row is described in
+[Help ▸ Setup Checklist](09-help.md#setup-checklist).
+
+**The rest of this chapter can wait.** It covers the settings you change once
+you know what you want: how pictures look, caches, place names, PhotoLab.
+
+---
+
+## The File menu
+
 The program itself: how it is set up, what it caches, and how to leave. Nothing
 here touches your pictures, with one exception: the master's deleted pictures,
 which the Database tab can restore or delete for good. The cache actions only
@@ -50,8 +85,7 @@ One window, one tab per subject. A tab is built the first time you open it, and
     Google's free translation page, and MyMemory when that one refuses. Every
     translation is kept on this computer, so nothing is translated twice.
 - **Website and publishing** — SpeciesViewer makes a website of your pictures
-  (species pages, blogs). The website is optional: everything else works without
-  one. Choose where it goes:
+  (species pages, blogs). Choose where it goes:
   - **On this computer** — nothing is uploaded. SpeciesViewer shows the website in
     your browser at `http://127.0.0.1:8765/` while it runs. Each master has its
     own. It works without internet; only name lookups, place names and

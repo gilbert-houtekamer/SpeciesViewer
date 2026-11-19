@@ -21,7 +21,7 @@ as you last saw it (chapters 0–4) or as first written (5–10, never reviewed)
 
 | Chapter | New or rewritten |
 |---|---|
-| [Concepts](00-concepts.md) | The website is optional (this computer or a server); several masters; a new section **Species and their names** (order, subspecies, uncertain IDs, local names, landscapes); "yellow panel" became *the panel* and names its four kinds. |
+| [Concepts](00-concepts.md) | **What SpeciesViewer is**, and where it fits next to Photo Mechanic, Lightroom and PhotoLab (new); the website lives on this computer or on a server; what is deleted in the picture folders; several masters; a new section **Species and their names** (order, subspecies, uncertain IDs, local names, landscapes); "yellow panel" became *the panel* and names its four kinds. |
 | [1. File](01-file.md) | **Settings** is one window with tabs — rewritten tab by tab; the Species tab is gone; **Manage caches** has local and upload caches. |
 | [2. Browser](02-browser.md) | The trip website shows only species with a JPG; species-list order, subspecies, country chips. |
 | [3. Days](03-days.md) | **The Days panel** (new); Add to Master's free-space check and *Delete originals after commit*. |

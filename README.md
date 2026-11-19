@@ -48,8 +48,8 @@ lists. There is no database to install, and no database upgrade with a new versi
   an album with its own pages, without copying a single picture.
 - **Browse it all offline.** The Biota browser shows the whole collection by family, genus and
   species, with maps, on your own computer.
-- **A website, if you want one.** Publish to your own web server, or keep the website on your
-  computer only. Publishing is optional; everything else works without it.
+- **A website, on your computer or on the web.** Keep the website on your computer only and
+  look at it in your browser, or publish it to your own web server for everyone.
 - **Works with DxO PhotoLab.** SpeciesViewer reads and writes PhotoLab's sidecar files, so your
   edits and colour labels stay in step, and uses PhotoLab's high-quality JPGs for publishing.
   PhotoLab is not required.

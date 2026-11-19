@@ -1,7 +1,44 @@
 # Concepts
 
+## What SpeciesViewer is
+
+SpeciesViewer is a desktop program for nature photographers who think in
+species, not in folders. It takes you from a full memory card to a lasting
+collection: cull and identify your pictures, keep the best of every species in
+one collection, write up your trips, and show it all as a website — on your own
+computer, or on a web server for everyone.
+
+It works for birds, but just as well for plants, fungi, insects, dragonflies and
+mammals: every picture is tied to a species name, following the scientific
+classification, in English, Dutch or the scientific name.
+
+### Where it fits next to your other programs
+
+Most photo software organises pictures by **folder, date and keyword**. That
+suits most photography, but a nature photographer's real questions are about
+species: *Which species did I see on this trip? Which are new? What is my best
+picture of a Hoopoe, across twenty years? Which species do I still lack a good
+picture of?* Answering those with keywords and folders is handwork.
+SpeciesViewer answers them because the species *is* how it organises.
+
+| Program | What it is best at | How SpeciesViewer relates |
+|---|---|---|
+| **Photo Mechanic** | Fast ingest and culling of a card, captions and keywords | SpeciesViewer also reads cards and culls, but culls *per species*: the names come from a world species list, not from free keywords. |
+| **Lightroom Classic** | A catalog of folders, collections and keywords; developing | A species is one keyword among many there. SpeciesViewer reads and writes the same `.xmp` sidecars, so ratings and colour labels stay in step. |
+| **DxO PhotoLab** | The best JPG from a (noisy) RAW | SpeciesViewer makes plain JPGs itself, but uses PhotoLab's when they exist, and keeps PhotoLab's `.dop` sidecars in step. |
+
+SpeciesViewer does not replace these programs; it adds what they leave out — the
+species, the best picture of each, the counts per trip, the trip written up day
+by day with its maps, and the website built from all of it.
+
+And your collection stays **plain folders and files**: pictures, their
+sidecars, and lists you can open in a spreadsheet. Nothing is locked inside a
+catalog that only SpeciesViewer can read.
+
 > The same story at a lower level — the physical repositories, the copy gates
 > and the delete arrow — is [Appendix C](appendix-c-data-architecture.md).
+
+## How SpeciesViewer is organised
 
 Everything in SpeciesViewer happens inside one of four **scopes**. Almost every
 question of the form *"why can't I click that?"* or *"where did my pictures
@@ -19,9 +56,9 @@ owns. Learn these four and the menus stop being arbitrary.
 | **Master** | `…\naturedb` | **Yes — the permanent store** | Yes — `/nature` | Permanent |
 | **Album** | `…\virttrips\<name>` | None — its pages are built from the master | Yes — `/trips/<slug>` | Permanent, cheap |
 
-"Has a website" means: *if* you set one up. The website is optional — everything
-else works without one — and it can live **on this computer** (shown in your
-browser, nothing uploaded) or **on a web server**. See
+The website is part of SpeciesViewer, not an extra. You choose where it lives:
+**on this computer** — shown in your browser, nothing uploaded, and you look at
+it when you want — or **on a web server**, for everyone. See
 [File ▸ Settings ▸ Global](01-file.md#global).
 
 The single most important sentence in this manual:
@@ -74,8 +111,14 @@ run once per day of the trip, then, across the whole trip:
 ```
 
 A trip is a **safe workspace**. You can cull, organise and lay out a journey
-freely, and nothing you do there can reach the master. When the trip's
-organisation and story are the way you want them, you move its pictures into the
+freely, and nothing you do there can reach the master.
+
+A published day is locked. To change it — a species name, a picture, a blog —
+**reset** the trip: the days are unlocked, your blog texts and the trip's species
+list are kept, and you can make different choices. The website stays as it was
+until you publish the days again.
+
+When the trip's organisation and story are the way you want them, you move its pictures into the
 master; its blogs and species list migrate to an **Album** automatically, keeping
 the same web address, and the working repository — its job done — is retired.
 
@@ -85,8 +128,18 @@ Two roots matter and are easy to confuse:
   website files: the bookkeeping that drives the culling and builds the trip site.
 - The **picture root** (`D:\CurrentPictures\2026\2026 Crete`) — the actual RAW
   files you are culling, one `YYYY-MM-DD` folder per day. It is not part of the
-  repository, but SpeciesViewer does delete files here during culling — the
-  frames you reject.
+  repository.
+
+SpeciesViewer deletes files in the picture root in only two cases:
+
+1. **The frames you reject** while culling. They go to a `.trash` folder beside
+   the day folders, and [Trips ▸ Trash](04-trips.md) can put them back.
+2. **At the very end**, the originals the master holds a confirmed copy of
+   ([Delete Local Files](05-to-master.md)) — never before.
+
+Pictures that show no species — holiday and people pictures — are not copied to
+the master, so they are never deleted: they stay in the picture root. Landscapes
+*are* copied to the master, so the last step deletes them here too.
 
 ## Master
 
@@ -115,15 +168,15 @@ species list, trips and albums, so working in one never touches another. One of
 them is your *main* master; another one shows its name in the window title.
 Switch, create and remove them under [Master ▸ Masters](06-master.md#masters).
 
-## Album (called `virttrip` in the code)
+## Album
 
-An **Album** is a **live date-range query over the master**. It holds an `.ini`
-file, blog texts and a cover picture — and *no pictures of its own*. When its
-website is built, the pages are rendered from the master's files.
+An **Album** is a **saved date range over the master**. It holds its settings,
+blog texts and a cover picture — and *no pictures of its own*. When its website
+is built, the pages are made from the master's pictures in that range.
 
 That is what makes albums cheap and safe: nothing is copied back into the
-master, an album can be deleted and rebuilt, and its content updates itself when
-the underlying master pictures change.
+master, an album can be deleted and rebuilt, and each time its website is built
+it shows the master as it is then.
 
 What an album *does* own is its blog texts and cover picture. Those live in the
 album folder, so deleting the album removes them too — the pictures themselves,
@@ -136,10 +189,8 @@ Albums arrive two ways:
    now generated from the master.
 2. **Retroactively** — pick a date range in the master for a journey that never
    had a trip repository (an old holiday, say) and write it up from scratch.
-
-> **Naming note.** The program says *Album* everywhere; folder names and the
-> settings file still say `virttrip`. Same thing. You will see `virttrips\` on
-> disk and a `[virttrip]` section in your settings file.
+   This is also how outings added with **Days ▸ Add to Master** get blogs and
+   pages: make an album over their dates.
 
 ---
 
@@ -164,6 +215,17 @@ A few rules hold everywhere — in the viewers, the counts and on the website:
 - **A landscape** is not a species: it is marked as a landscape and filed
   separately.
 
+> GH: we need to think about landscapes.  We probably want to copy them to the 
+> master, but I wonder if we should delete them from the CurrentPictures directory.
+> When I make a photobook, I want to use many "vacation pictures" including 
+> the best ones that are labeled as landscape.
+>
+> Claude: today Delete Local Files deletes a local landscape like any picture the
+> master holds, so the photobook would have to take them from the master's
+> landscape folder, apart from the holiday pictures of the same day. Suggestion:
+> Delete Local Files keeps landscapes (a tick, on by default) — the master still
+> has its copy, so nothing is at risk. Added to the backlog as 1.7; decide there.
+
 How to do each of these is in [10. The viewers](10-viewers.md#naming-a-picture).
 
 ---
@@ -176,16 +238,13 @@ action, not a metaphor.
 ```mermaid
 flowchart LR
     CARD[(SD card)]
-    UNF["Unfiled inbox<br/><i>no trip decided yet</i>"]
     DAY["Day<br/><i>a folder, no website</i>"]
     TRIP["Trip<br/><i>working repo + website</i>"]
     MASTER["MASTER<br/><i>the one lasting copy</i>"]
     ALBUM["Album<br/><i>date-range query</i>"]
 
-    CARD --> UNF
     CARD --> TRIP
     CARD --> DAY
-    UNF -- "file under a trip" --> TRIP
     DAY -- "Add to Master" --> MASTER
     TRIP -- "Merge pictures into Master" --> MASTER
     TRIP -- "Retire to Album" --> ALBUM
@@ -212,10 +271,6 @@ The full lifecycle, with the menu that owns each stage:
 | 6. Retire to an album | Trip only | [To Master](05-to-master.md) | The website carries on, now from the master |
 | 7. Reclaim the space | Trip only | [To Master](05-to-master.md) | Delete local files, then the trip repo |
 
-**Unfiled** ([Utilities ▸ Read card into unfiled](08-utilities.md)) sits before
-stage 1: it holds days off a card until you decide whether they become a Day or
-go under a Trip.
-
 Steps 6 and 7 are independent once step 5 is done. Doing 6 first is the calmer
 order: the reporting is in place before anything gets deleted.
 
@@ -232,9 +287,21 @@ are standing over a stack of cards wanting them emptied. Read them all into
 Unfiled now, decide later.
 
 > **SpeciesViewer never deletes an unfiled day.** The inbox has exits, not a
-> bin: file it under a trip, claim it as a Day, or move it yourself.
+> bin: file it under a trip, claim it as a Day, or leave it be.
+
+How to read a card into Unfiled and empty it again is in
+[Utilities](08-utilities.md).
+
 
 ## The main window
+
+> GH: I do not know where the main window belongs, but not here I think.
+> Concepts feel good. Main window talks about the GUI.
+>
+> Claude: agreed. Proposal: move "The main window" and "A note on active" to
+> chapter 1, right after the Setup Checklist — that is the moment the user
+> first meets the window. Days, Trip and Album each already open with their
+> own panel. Left here until you have read those chapters.
 
 The window has three parts:
 

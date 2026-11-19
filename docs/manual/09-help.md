@@ -15,8 +15,10 @@ Three items. Small, but the first two earn their place.
 What SpeciesViewer needs, and what is optional — one row per setting, each with
 a mark and a button that opens the dialog for it. The marks are read from the
 real settings every time, so the window also answers *"why is this menu grey?"*
-long after day one. It opens by itself when the open master has no collection
-yet — the first time you start SpeciesViewer, or in a new master without one.
+long after day one. It opens by itself at start when one of the three rows
+everything depends on is missing — the master collection, where the website
+goes, or exiftool. That happens the first time you start SpeciesViewer, and in
+a new master.
 
 | Row | Needed for | Mark when missing |
 |---|---|---|
@@ -38,8 +40,9 @@ fixed by plugging the drive in, not by pointing somewhere else. In a master
 other than the main one, the suggestions sit in that master's own folder
 (`C:\SpeciesViewer\<master>\trips` and so on).
 
-With only the master collection set up you can already copy days off a card,
-add them to the master and browse it — no website needed.
+The folders for pictures, trips and albums are not needed to start; each only
+unlocks its own menus. The website needs no server either: *on this computer*
+is enough.
 
 ---
 

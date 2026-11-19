@@ -17,7 +17,7 @@ bugs were confusion about *which* repository a step was writing into.
 | **Local working pictures** | `D:\CurrentPictures\<year>\<trip>\<day>` | The live RAW / XMP / JPG / DOP files you cull and edit. The originals. | Working set. Cleared under control once the files are safely in the master (step 6). |
 | **Trip repo** | `…\trips\<trip>db` (e.g. `kretadb`) | The **website species files only** — developed pictures + per-day review metadata & blogs. | **Transient.** Powers the trip website; retired once an album exists. |
 | **Master** | `…\naturedb` | **Every species** across all trips — good and not-so-good — plus the canonical CSVs. | The long-lived, **single copy** of your collection (Dropbox aside). After a merge, this is the copy that remains. |
-| **Album** (virttrip) | `…\virttrips\<trip>` | **No pictures.** Just an `ini`, blogs and a cover — a live date-range *query* over the master. | Reporting after the merge. Its pages are built from the master's own files; nothing is copied back in. |
+| **Album** (virttrip) | `…\virttrips\<trip>` | **No pictures.** Just an `ini`, blogs and a cover — a saved date range over the master. (On disk and in the settings file an album is still called `virttrip`: `virttrips`, `[virttrip]`.) | Reporting after the merge. Its pages are built from the master's own files; nothing is copied back in. |
 
 Plus **per-machine caches** (`%LOCALAPPDATA%\SpeciesViewer\`: EXIF cache, preview
 cache, the master SQLite DB) — never a source of truth, always rebuildable, and

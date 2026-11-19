@@ -22,6 +22,7 @@ to understand than it needs to be.
 | 1.4 | **Look-alike names:** *Delete Trip…* vs *Delete Trip Completely…*; *Count Species* vs *Recount Species Counters*. | S |
 | 1.5 | **Uneven menu wording:** "Manage caches…" next to "Manage Site Publication…"; two Utilities items end in a full stop. | S |
 | 1.6 | **Ungated album items:** Manage Album Publication and Album Species Viewer can be clicked with no album open (open since August). | S |
+| 1.7 | **Keep landscapes on this computer.** Delete Local Files deletes a local landscape once the master holds it; for a photobook you want them beside the day's holiday pictures. Proposal: a tick *Keep landscapes*, on by default — the master keeps its copy, so nothing is at risk. NEEDS DECISION. | S |
 
 ## 2. Built, waiting for a live test
 
