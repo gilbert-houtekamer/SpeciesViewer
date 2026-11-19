@@ -125,6 +125,18 @@ SIDECAR = frozenset({".xmp", ".dop"})
 #: Anything we can display.
 PICTURE = RAW_OR_HEIC | JPEG | OTHER_IMAGE
 
+#: Picture formats we KNOW are pictures but cannot read yet, with the plain name a
+#: person recognises. Never read, never copied — only NAMED, so a card read that
+#: leaves them behind says "these are pictures, keep the card" instead of "not a
+#: picture", which invites formatting the card. .hif: Canon's HEIF stills (backlog
+#: ch.21, not pursued in 2026 — no file to prove support with). .pef / .srw: the
+#: RAWs left out of RAW above on purpose (2026-08-23).
+KNOWN_UNREADABLE = {
+    ".hif": "Canon HEIF",
+    ".pef": "Pentax RAW",
+    ".srw": "Samsung RAW",
+}
+
 # --- video -------------------------------------------------------------------
 # Deliberately its own set, not folded into PICTURE: a video needs a frame grab
 # or a media player, never a plain image decode, so every caller that branches

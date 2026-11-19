@@ -1244,9 +1244,15 @@ class ReadSDCardDialog(QDialog):
                 self.dest_field.field.setText(unfiled_root(year, base=base))
         note = ""
         if ignored:
-            from batch.sv0ReadSDCard import describe_ignored
-            note = (f"  ⚠ Not recognised as pictures, so NOT copied: "
-                    f"{describe_ignored(ignored)}.")
+            from batch.sv0ReadSDCard import (describe_ignored, describe_unreadable,
+                                             split_ignored, UNREADABLE_ADVICE)
+            pics, rest = split_ignored(ignored)
+            if pics:
+                note += (f"  ⚠ {describe_unreadable(pics, self._scanned_source)}: "
+                         f"{UNREADABLE_ADVICE}")
+            if rest:
+                note += (f"  ⚠ Not recognised as pictures, so NOT copied: "
+                         f"{describe_ignored(rest)}.")
         self.status_label.setText(
             f"Found {total} picture(s) across {len(days)} day(s). "
             f"Tick the days to copy, then Read.{note}")

@@ -317,6 +317,22 @@ def _label_of(picture: Path, caches: dict) -> str:
 
 # ── The gate ──────────────────────────────────────────────────────────────────
 
+def unreadable_pictures_on_card(card_root) -> str:
+    """A blocker sentence when the card holds pictures SV cannot read, '' if not.
+    One walk of the card, the same walk the card read uses."""
+    from batch.sv0ReadSDCard import (scan_source, split_ignored,
+                                     describe_unreadable, UNREADABLE_ADVICE)
+    try:
+        _pics, ignored = scan_source(card_root)
+    except OSError:
+        return ""
+    unreadable, _rest = split_ignored(ignored)
+    if not unreadable:
+        return ""
+    return (f"This card also holds {describe_unreadable(unreadable, card_root)}. "
+            f"{UNREADABLE_ADVICE}")
+
+
 def classify_card(card_root, project_root, logger_=None) -> dict:
     """Give every frame on the card a verdict. Copies nothing, writes nothing.
 
@@ -329,6 +345,14 @@ def classify_card(card_root, project_root, logger_=None) -> dict:
               "identity": card_identity(index), "fullness": card_fullness(card_root),
               "files": [], "counts": {}, "days": {}, "blockers": [],
               "roster": bool(index)}
+
+    # Pictures SV cannot read (a Canon .HIF) never entered the ingest record, so
+    # the roster below cannot see them — and plan_delete's "not ours" sweep only
+    # looks at the card's top folder. Without this, a card full of them could be
+    # called safe to format. Blocks every path, the already-emptied one included.
+    unreadable = unreadable_pictures_on_card(card_root)
+    if unreadable:
+        report["blockers"].append(unreadable)
 
     if index is None:
         report["blockers"].append(

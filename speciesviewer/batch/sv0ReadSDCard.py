@@ -50,7 +50,7 @@ from datetime import date, datetime, timedelta
 from pathlib import Path
 
 from utils.disk_space import check_free_space
-from utils.raw_extensions import RAW, SELF_DESCRIBING, is_raw, is_video
+from utils.raw_extensions import RAW, SELF_DESCRIBING, KNOWN_UNREADABLE, is_raw, is_video
 from utils.exiftool_path import exe as exiftool_exe
 from engine.handling import deriveUniquePictureName
 
@@ -163,8 +163,7 @@ def scan_source(source):
         # already culled — the very case _SidecarIndex exists for — copied every
         # deleted picture straight back in. Nothing this project puts behind a
         # dot is ever an ingest source.
-        dirnames[:] = [d for d in dirnames
-                       if not d.startswith(".") and d.lower() not in HOUSEKEEPING_DIRS]
+        _prune_walk(dirnames)
         for name in filenames:
             if name.startswith(".") or name == _CardCache._FILENAME:
                 continue
@@ -190,6 +189,62 @@ def describe_ignored(ignored) -> str:
                      sorted(ignored.items(), key=lambda kv: (-kv[1], kv[0])))
 
 
+def split_ignored(ignored) -> tuple[dict, dict]:
+    """(pictures we cannot read, everything else). The first are PICTURES —
+    a Canon .HIF, a Pentax .PEF — and must never be called "not a picture":
+    that sentence is what makes someone format the card."""
+    pics = {e: n for e, n in ignored.items() if e in KNOWN_UNREADABLE}
+    rest = {e: n for e, n in ignored.items() if e not in KNOWN_UNREADABLE}
+    return pics, rest
+
+
+def _prune_walk(dirnames) -> None:
+    """The walk's pruning rule, shared so every walk of a card skips the same
+    folders: dot-folders (.trash) and what the filesystem itself writes."""
+    dirnames[:] = [d for d in dirnames
+                   if not d.startswith(".") and d.lower() not in HOUSEKEEPING_DIRS]
+
+
+def unreadable_folders(source, exts) -> dict:
+    """{ext: [folder, …]} — where on the card the unreadable pictures sit,
+    relative to the card ('DCIM/101CANON'; '.' for the top). A second walk,
+    but only ever made when there IS something unreadable, which is rare."""
+    where: dict = {}
+    source = Path(source)
+    for dirpath, dirnames, filenames in os.walk(source):
+        _prune_walk(dirnames)
+        for name in filenames:
+            ext = Path(name).suffix.lower()
+            if ext in exts:
+                rel = Path(dirpath).relative_to(source).as_posix()
+                folders = where.setdefault(ext, [])
+                if rel not in folders:
+                    folders.append(rel)
+    return where
+
+
+def describe_unreadable(pics, source=None) -> str:
+    """'12 Canon HEIF (.hif) in DCIM/101CANON' — the name a person knows, the
+    extension, and (given the card) the folder, so copying them another way
+    starts with knowing where to look. At most three folders are named."""
+    where = unreadable_folders(source, set(pics)) if source else {}
+    parts = []
+    for e, n in sorted(pics.items(), key=lambda kv: (-kv[1], kv[0])):
+        text = f"{n} {KNOWN_UNREADABLE[e]} ({e})"
+        folders = sorted(where.get(e) or [])
+        if folders:
+            shown = ", ".join(folders[:3])
+            more = f" and {len(folders) - 3} more folder(s)" if len(folders) > 3 else ""
+            text += f" in {shown}{more}"
+        parts.append(text)
+    return ", ".join(parts)
+
+
+UNREADABLE_ADVICE = ("SpeciesViewer cannot read these pictures yet, so they are "
+                     "NOT copied. Do not format this card until you have copied "
+                     "them another way.")
+
+
 _warned_ignored: set = set()
 
 
@@ -203,9 +258,14 @@ def _warn_ignored(ignored, source, log):
         log.debug(f"Not copied (again): {key[1]}")
         return
     _warned_ignored.add(key)
-    log.warning(f"Not copied: {describe_ignored(ignored)} file(s) (not a picture). "
-                f"If one of them is a picture format of your camera, please report "
-                f"it before you format this card.")
+    pics, rest = split_ignored(ignored)
+    if pics:
+        log.warning(f"⚠ Pictures left on the card: {describe_unreadable(pics, source)}. "
+                    f"{UNREADABLE_ADVICE}")
+    if rest:
+        log.warning(f"Not copied: {describe_ignored(rest)} file(s) (not a picture). "
+                    f"If one of them is a picture format of your camera, please report "
+                    f"it before you format this card.")
 
 
 # ── File hashing ──────────────────────────────────────────────────────────────

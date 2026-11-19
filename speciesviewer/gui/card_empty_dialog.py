@@ -305,7 +305,10 @@ class EmptyCardDialog(QDialog):
                         f"({emptied[-1].get('deleted', '?')} picture(s) deleted).")
         self._identity.setText("<br>".join(bits))
 
-        lines = [ln for ln in ce.format_report(report)][1:]
+        # Blockers are listed once, as bullets, below — not again in the report
+        # lines (a card with no record reports nothing BUT its blockers).
+        shown = set(report.get("blockers") or [])
+        lines = [ln for ln in ce.format_report(report)[1:] if ln not in shown]
 
         # An already-emptied card is neither ready nor blocked: it is done. It
         # gets its own, quiet answer rather than a red refusal.
