@@ -11,9 +11,10 @@
 # "proceed", because refusing to copy on a stat failure would be a worse bug
 # than the one this module exists to catch.
 #
-# Callers: batch/sv0ReadSDCard.copy_card (card read). Intended for the other
-# bulk writers too — freeze, add-to-master, preview build — each of which knows
-# its own planned byte total.
+# Callers: batch/sv0ReadSDCard.copy_card (card read), engine/card_empty (keeper
+# card), gui/work_backup_dialog, batch/sv6Freeze (copy into trip or master —
+# covers Publish Day, Add to Master and Merge). Previews are not checked: they
+# are built one at a time while browsing, and a missing preview loses nothing.
 #
 # report_volumes() is the other half: instead of only refusing at the moment a
 # copy would fail, state the situation once at start-up — every local and

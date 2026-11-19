@@ -61,7 +61,10 @@ def _same_file_on_disk(src, dst):
             == os.path.normcase(os.path.normpath(dst)))
 
 
-def makeSpeciesDirectory(MyProject, leaf):
+def makeSpeciesDirectory(MyProject, leaf, planner=None):
+    # planner: None = copy for real. A list = plan only: append (source, target)
+    # for every copy the real run would make, and touch nothing on disk. The
+    # free-space pre-flight uses it, so plan and copy can never disagree.
     global debugfile, count, copy_failures
     species = MyProject.sp.species_dict[leaf]
     # os.path.join handles a missing trailing separator on the repository
@@ -70,7 +73,8 @@ def makeSpeciesDirectory(MyProject, leaf):
     # copies and the != skip-guard a few lines below.
     directoryname = os.path.join(MyProject.getRepositoryPath(),
                                   species['TargetPath']).lower()
-    os.makedirs(directoryname, exist_ok=True)
+    if planner is None:
+        os.makedirs(directoryname, exist_ok=True)
 
     # find all files in this directory, this is an expensive scan, let's find out how slow it is
     for picture in MyProject.UniquePictureName_dict:
@@ -84,6 +88,10 @@ def makeSpeciesDirectory(MyProject, leaf):
                         MyProject.getRepositoryPath(),
                         MyProject.UniquePictureName_dict[picture]['TargetPath'],
                         MyProject.files_dict[filename]['File:FileName'])
+                    if planner is not None:
+                        if not _same_file_on_disk(sourcefile, targetfile):
+                            planner.append((sourcefile, targetfile))
+                        continue
                     print(f"File {filename:40}: {sourcefile:64} to {targetfile}",
                           file=debugfile)
                     # samefile() catches the cases plain != misses on
@@ -109,6 +117,8 @@ def makeSpeciesDirectory(MyProject, leaf):
                         copy_failures.append((sourcefile, targetfile, "missing or size mismatch"))
                     count += 1
                 except Exception as exc:
+                    if planner is not None:
+                        continue        # the real run records and reports it
                     copy_failures.append((sourcefile, targetfile,
                                           f"{type(exc).__name__}: {exc}"))
                     logger.warning(
@@ -119,7 +129,7 @@ def makeSpeciesDirectory(MyProject, leaf):
     return
 
 # create website based on current count setting, now to test iSpeciesThisRunCount
-def makeDirectories(MyProject, speciesname, all_or_new, copy_gate="jpg"):
+def makeDirectories(MyProject, speciesname, all_or_new, copy_gate="jpg", planner=None):
     # copy_gate selects which counter decides whether a subtree's files are
     # copied into the master:
     #   "pictures" — any picture identified this run (has a species), developed
@@ -136,7 +146,8 @@ def makeDirectories(MyProject, speciesname, all_or_new, copy_gate="jpg"):
     directoryname = os.path.join(MyProject.getRepositoryPath(),
                                   species['TargetPath']).lower()
     try:
-        os.makedirs(directoryname, exist_ok=True)
+        if planner is None:
+            os.makedirs(directoryname, exist_ok=True)
         for leaf in species['Leaves']:
             species = MyProject.sp.species_dict[leaf]
             gate_count = (int(species['iPictureThisRunCount']) if copy_gate == "pictures"
@@ -144,15 +155,49 @@ def makeDirectories(MyProject, speciesname, all_or_new, copy_gate="jpg"):
             if gate_count > 0:
                 if species['Level'] != Level.SPECIES:
                     try:
-                        makeDirectories(MyProject, leaf, all_or_new, copy_gate)
+                        makeDirectories(MyProject, leaf, all_or_new, copy_gate, planner)
                     except Exception as e:
                         logger.info(f"makeDirectories failed ()  {e.strerror} {e.filename}")
                 else: # only species store actual data
-                    makeSpeciesDirectory(MyProject, leaf)
+                    makeSpeciesDirectory(MyProject, leaf, planner)
     except Exception as e:
         print(f"makeDirectories failed: {e.strerror} {e.filename}")
         logger.info(f'Cannot create "{e.filename}": {e.strerror}')
     return
+
+def _check_room_for_copy(MyProject):
+    """None when the files this Freeze is about to copy fit on the repository's
+    disk; otherwise a plain sentence for the user.
+
+    Plans the copy with the very same walk the real copy uses (planner mode),
+    so the byte total is exact. A file that will overwrite an existing copy only
+    counts what it adds. Without this, a full master drive surfaced as hundreds
+    of failed copies halfway through, leaving a half-filled species tree."""
+    from utils.disk_space import check_free_space
+    gate = "pictures" if MyProject.isMasterRepository() else "jpg"
+    plan = []
+    if 'biota' in MyProject.sp.species_dict:
+        makeDirectories(MyProject, 'biota', 'New', copy_gate=gate, planner=plan)
+    if 'topics' in MyProject.sp.species_dict:
+        makeDirectories(MyProject, 'topics', 'New', planner=plan)
+    need = 0
+    for src, dst in plan:
+        try:
+            size = os.path.getsize(src)
+        except OSError:
+            continue                    # the real copy reports a missing source
+        try:
+            size -= os.path.getsize(dst)
+        except OSError:
+            pass                        # new file: counts in full
+        need += max(size, 0)
+    where = "the master" if MyProject.isMasterRepository() else "the trip"
+    problem = check_free_space(MyProject.getRepositoryPath(), need,
+                               what=f"Copying {len(plan)} file(s) into {where}")
+    if problem:
+        return f"{problem} Nothing was copied. Free some space and run this step again."
+    return None
+
 
 def AppendChangedFileData(MyProject, firstNewFile):
     # Rewrite the frozen data_files.csv from scratch with the CURRENT-schema
@@ -464,6 +509,13 @@ def main(args, config):
     # change and append
     AppendChangedFileData(MyProject, RepositoryFileCount)
     AppendChangedPictureData(MyProject, RepositoryPictureCount)
+
+    # Room on the destination BEFORE the first file is copied. The frozen CSVs
+    # above only live in the review folder; raising here keeps Write Commit from
+    # running, exactly like a failed copy does below.
+    space_error = _check_room_for_copy(MyProject)
+    if space_error:
+        raise SVException(space_error)
 
     # copy all files to big file depository based on classification of data
     # logger.info(f"Will copy all files to destination.")
