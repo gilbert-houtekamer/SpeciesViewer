@@ -12,6 +12,10 @@ setup, and one site-wide rebuild.
 | Create PhotoMechanic keyword files for next trip. | |
 | Create Small Master Database | A master |
 | Install Small Master Database | |
+
+> Two items here end in a full stop and read as sentences ("Create an Excel to
+> keep track of birds seen."), unlike every other menu item. Noticed while writing
+> this manual.
 | Rebuild all Albums and the Master website… | |
 
 ---
@@ -36,11 +40,9 @@ the thing that decides where a card is written.
 
 ### Unfiled pictures
 
-Shows the inbox — which now means switching the mode strip to **Unfiled**, where
-the inbox lives as a panel.
-
-It stayed in the menu because it is still how you ask for it by name when the
-mode strip is not where you are looking.
+Shows the inbox: it switches the mode strip to **Unfiled**, where the inbox
+lives as a panel. The menu item is there for when the mode strip is not where
+you are looking.
 
 From the inbox, a day has three non-destructive exits:
 
@@ -112,6 +114,14 @@ Unpacks and configures a Small Master on this machine.
 
 Re-renders and re-uploads the album sites and/or the master site, so that a fix
 to a page template or the rendering code reaches all of them.
+
+Four choices: **Rebuild the albums** — with their species pages (uploads
+pictures; slow the first time, then only what changed) and/or their blogs (text
+only, no pictures moved) — and **Rebuild the master site**. **Show what would be
+rebuilt** lists the albums first; **Rebuild all…** does it. Which album is
+active does not change, and an album that fails is reported while the sweep
+carries on. Translations made along the way are kept, so the next rebuild does
+not ask for them again.
 
 This is the site-wide sweep. Its single-scope siblings are
 [Master ▸ Maintain Master Database ▸ Rebuild Entire Website](06-master.md) and

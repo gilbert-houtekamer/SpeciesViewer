@@ -77,10 +77,9 @@ fallback) and buckets it `jpg_ok` / `raw_fallback` / `black`. Investigating the
   `admin/status/backup/<timestamp>_pre-prune_*` before writing. To undo, copy
   those two files back over `metadata/active/`.
 - After Apply, the per-species counters in `species.csv` are left high — the
-  dropped phantoms were counted in them. Nothing here recomputes them; use the
-  admin recount/audit tooling if the numbers matter. (An earlier version of this
-  note said to run **Count Species** for that: it never did it. Count Species
-  only reads, and writes a report.) The master DB cache (`master.db`) rebuilds
+  dropped phantoms were counted in them. Run **Master ▸ Maintain Master Database
+  ▸ Recount Species Counters…** to bring them in line (it shows what would change
+  and asks first). The master DB cache (`master.db`) rebuilds
   itself on next use.
 
 See also [`configuration_inventory.md`](../configuration_inventory.md) for the file layout

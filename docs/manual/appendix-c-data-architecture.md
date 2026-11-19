@@ -69,6 +69,11 @@ flowchart TB
 > refusing to remove a local unless a size-matched master copy is physically
 > present (`trip_delete_scan.py`). The moral: the delete trusted a list that
 > lied; now it trusts the disk.
+>
+> And before any bulk copy starts — a card read, saving a card's keepers, a work
+> backup, Publish Day, Merge and Add to Master — the free space on the
+> destination is checked against the exact byte total, so a full disk refuses
+> with nothing copied instead of failing halfway (`utils/disk_space.py`).
 
 ---
 
@@ -77,7 +82,9 @@ flowchart TB
 Each of these is a real, distinct operation in the GUI — a genuine sequence.
 
 1. **Ingest.** SD card → `D:\CurrentPictures`. Cull, add GPS place-names, write
-   sidecars. (The 'blue / purple delete' that drops weak shots happens here.)
+   sidecars. (The 'blue / purple delete' that drops weak shots happens here; the
+   pictures go to `<pictures root>\.trash\<day>\`, beside the day folders, and
+   *Trips ▸ Trash (deleted pictures)…* can put them back.)
 2. **Develop.** PhotoLab / Lightroom produce JPG renders, `.dop` and `.xmp`
    alongside the RAWs.
 3. **Trip pipeline (per day).** Read & Summarize → Write Blog →

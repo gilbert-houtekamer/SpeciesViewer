@@ -3,10 +3,9 @@
 The whole "into the master" phase, in one menu: the real merge, then winding the
 trip down once it lives in the master and an album.
 
-These items used to be scattered between the Trips and Master menus. They are
-gathered here because they are one arc — steps 4 to 7 of a trip's life — and
-because they run in a strict order that the menu now enforces by greying out
-whatever is not yet due.
+These items are one arc — stages 5 to 7 of a trip's life (see
+[Concepts](00-concepts.md#how-the-four-fit-together)) — and they run in a strict
+order that the menu enforces by greying out whatever is not yet due.
 
 | Item | Needs |
 |---|---|
@@ -51,8 +50,8 @@ carries a gate line telling you what becomes impossible once you pass it —
 "no edits possible", "no more changes", "changes now happen in the album".
 
 The pipeline cards (Read & Summarize, Write Blog, Publish Day) deliberately do
-*not* fire a batch step: they take you to the Active Trip yellow panel, because
-that is where you choose which day to run. The progress bars still show how many
+*not* run a step: they take you to the [Trip panel](04-trips.md#the-trip-panel),
+because that is where you choose which day to run. The progress bars still show how many
 days each step has reached.
 
 Use the dashboard when you want to see where a trip stands. Use the menu when you
@@ -76,8 +75,8 @@ before it receives pictures of it.
 
 *Needs: at least one day published, and every day that has JPGs published.*
 
-**The real merge.** Opens a four-step dialog with a *Run all* button that chains
-the steps and stops on the first failure.
+**The real merge.** Opens a four-step dialog. **Run** takes the steps in order
+and stops at a step that fails; the next Run continues there.
 
 | Step | Does |
 |---|---|
@@ -98,6 +97,13 @@ the master had no picture of it *before* this trip.
 merge pulls developed files from the trip's frozen metadata *and* undeveloped
 RAWs straight from local, so the master ends up holding every identified species
 file, not just the ones that got a JPG render.
+
+Before step 4 copies anything, it checks that the master's drive has room; if
+not, it stops with nothing copied.
+
+Merging a trip a second time is safe. If the master already holds every file of
+the trip's published pictures, Run says **Nothing to add** and does nothing. A
+trip you continued later (new days published) merges the new pictures.
 
 When it completes, a marker is written to
 `<master>\admin\master_commits.csv` keyed by the trip's picture root. That marker
@@ -160,12 +166,11 @@ You get the full report first, and a per-file detail CSV at
 `<trip>\metadata\trip_delete_dryrun.csv`. The red **"Delete N files"** button is
 the confirmation; there is no other.
 
-> **Why the paranoia.** This step once deleted about 14,000 local originals whose
-> "master copy" existed only as a row in a CSV. Two faults lined up: the freeze
-> wrote master rows for files it had not actually copied, and the delete decided
-> what to remove by reading that list rather than looking at the disk. Both are
-> fixed — the freeze now verifies its copies, and this step trusts the disk, never
-> the list.
+> **Why it looks at the disk, not the lists.** A row in the master's lists says a
+> file *should* be there; only the disk says it *is*. So the merge checks every
+> copy it makes (and refuses to commit a row for a file that did not land), and
+> this step decides what may go by looking at the master's actual files — never
+> by reading a list.
 
 If the report mentions files kept *with a species*, those are identified pictures
 the master does not have. Rescue them with **Add Pictures to Master** before

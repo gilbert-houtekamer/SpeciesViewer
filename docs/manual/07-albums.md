@@ -17,15 +17,43 @@ ingest, freeze or commit. There is only writing it up and publishing it.
 | Make the Blogs Clickable | An active album |
 | Build Album Website | An active album |
 | Manage Album Publication… | |
+| Count Species | An active album |
 | Album Species Viewer | |
 | Sync Placed GPS into the Index… | An active album |
 | Export Album | An active album |
 | Import Album | A master |
-| Delete Album… | An active album |
+| Delete Album… | |
 
 > **Full master required.** Create Album and Find Trips need a real master, not a
 > SmallMaster travelling install — an album is a query, and a partial collection
 > would answer it wrongly.
+
+---
+
+## The Album panel
+
+With the **Album** pill selected, the table on the right shows the active album,
+one row per date that has pictures in the master:
+
+| Column | Shows |
+|---|---|
+| **Date** | The day |
+| **Pictures** | Master pictures of that day |
+| **JPEG Files** | How many have a developed JPG |
+| **GPS** | ✅ all have GPS · 📍 *n* without |
+| **In Blog** | Does this day get a blog? |
+| **Write Blog** | The blog's state — amber: written by SpeciesViewer, not yet reviewed; green: reviewed by you. Double-click to edit |
+| **Build Website** | ✅ when the album's species pages are built and uploaded — the website is built for the whole album, so every row shows the same |
+| **Translations** | 🟢 all texts checked · 🔵 *n* still to check |
+
+Right-click a day for *Edit this day's blog…* and more. Under the table:
+
+- **🗺 Map whole trip** — the album's pictures on one map; place pictures without
+  GPS from its tray.
+- **➕ Add new renders** — finds a JPG you made beside a RAW in the album's
+  dates that the master does not know yet, and adds it after you confirm. Only on
+  a master this computer may write to.
+- **Edit Blogs**, **Write All Blogs**, **Publish Album** — as on the Trip panel.
 
 ---
 
@@ -48,6 +76,15 @@ ago. The master already knows. Use its output to fill in Create Album.
 
 Switches to another album, or changes the open one's picture, banner, dates and
 texts. It loads the album you pick and can only write back into that one.
+
+**The album picture** — *Browse* offers the best picture of each species in the
+album's dates.
+
+**The banner** — the wide strip at the top of the album's web pages. Make one in
+SpeciesViewer: in a day viewer, right-click a picture ▸ **Use as album/trip
+banner…**, then drag the band (or use the arrow keys) over the part you want and
+choose its size. It is cut from the RAW when there is one, so it can be wider
+than the JPG. The previous banner is kept as a dated copy.
 
 ### Create Album
 
@@ -104,6 +141,9 @@ flowchart LR
 *Needs: an active album.*
 
 Generates the album's day blogs from the master's pictures in its date range.
+Album blogs start with a minimum rating of 1 star. In the blog editor, each day
+has a strip *Picture on the blog index* to choose the picture that stands for
+that day.
 
 There is an option to **clear old** blogs first. Use it when rebuilding an album
 that already has pages — otherwise stale pages can survive the rebuild.
@@ -144,6 +184,16 @@ immutable web slug applies here.
 ---
 
 ## Reviewing and editing
+
+### Count Species
+
+*Needs: an active album.*
+
+The trip's species report, made from the master over the album's dates: one row
+per species in the order of the species list, one column per day, the number of
+days and pictures, colour counts, and the **No JPG** line. Where a trip's report
+has *New*, the album's shows the best star rating. Save it as a spreadsheet; it
+is saved in the album's folder.
 
 ### Album Species Viewer
 
@@ -188,6 +238,8 @@ Unpacks an album export on this machine. It needs a master, because the album
 without a master is a query with nothing to query.
 
 ### Delete Album…
+
+*Needs: nothing — it lists every album.*
 
 Lists every album (it opens on the active one). **The master and your pictures
 are untouched** — that is the whole point of an album: it is cheap to delete

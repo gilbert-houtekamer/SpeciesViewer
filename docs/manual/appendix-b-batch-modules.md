@@ -69,6 +69,7 @@ mode**, which points the same code at the master repository instead of the trip.
 | Write Album Blogs | `svv3WriteBlog` |
 | Make the Blogs Clickable | `svv6RedoBlog` |
 | Build Album Website | `svv4BuildWebsite` |
+| Count Species | `svv7CountSpecies` |
 | Export Album | `svv7ExportVirtualTrip` |
 
 **Retire Trip to Album** runs the whole arc in one worker thread:

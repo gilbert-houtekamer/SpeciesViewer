@@ -7,10 +7,32 @@ This is a **reference**, not a tutorial: it answers *"what does this item do,
 and when would I use it"*, not *"how do I publish my first trip"*. Use-case
 walkthroughs are a separate document, still to be written.
 
-> **Status: version 1, written from the code (`gui/menuspec.py`) on 2026-08-25.**
-> Where a description is inferred rather than read off the implementation it is
-> marked *(inferred)*. Corrections welcome — a wrong entry usually means either
-> the manual is wrong or the menu item is misleading, and both are worth knowing.
+> **Status: version 2, brought up to date with the program on 2026-11-19.**
+> Version 1 was written from the code (`gui/menuspec.py`) on 2026-08-25;
+> chapters 0–4 were then revised from your review notes of 27 August. Where a
+> description is inferred rather than read off the implementation it is marked
+> *(inferred)*. Corrections welcome — a wrong entry usually means either the
+> manual is wrong or the menu item is misleading, and both are worth knowing.
+
+## What changed since your August review
+
+For reviewing: what is new or rewritten, chapter by chapter. Everything else is
+as you last saw it (chapters 0–4) or as first written (5–10, never reviewed).
+
+| Chapter | New or rewritten |
+|---|---|
+| [Concepts](00-concepts.md) | The website is optional (this computer or a server); several masters; a new section **Species and their names** (order, subspecies, uncertain IDs, local names, landscapes); "yellow panel" became *the panel* and names its four kinds. |
+| [1. File](01-file.md) | **Settings** is one window with tabs — rewritten tab by tab; the Species tab is gone; **Manage caches** has local and upload caches. |
+| [2. Browser](02-browser.md) | The trip website shows only species with a JPG; species-list order, subspecies, country chips. |
+| [3. Days](03-days.md) | **The Days panel** (new); Add to Master's free-space check and *Delete originals after commit*. |
+| [4. Trips](04-trips.md) | **The Trip panel** (new — every column and sphere); Read SD-card rewritten (day table, time-zone warning, unreadable pictures, "all arrived"); Empty a Card's three steps; Write Blog's configuration; Publish Day (order no longer matters); Count Species; **Trash (deleted pictures)** (new). |
+| [5. To Master](05-to-master.md) | Merge: free-space check, *Nothing to add* on a second merge. |
+| [6. Master](06-master.md) | What only the master Species Viewer does (move species, Uncertain only, crop/Make JPG/Rescan, blue delete with JPGs); Species Map tray; **Undo Last Species Move**, **Empty Master Trash**, **Recount Species Counters** (new); local names. |
+| [7. Albums](07-albums.md) | **The Album panel** (new); album picture and banner; **Count Species** (new). |
+| [8. Utilities](08-utilities.md) | Rebuild all: its four choices. |
+| [9. Help](09-help.md) | The four connection lamps; About's credits. |
+| [10. The viewers](10-viewers.md) | **Naming a picture** (new — local names, groups, probable/possible, landscapes); type-to-search in all three species viewers; the sort that stays put; Add to selection; the purple **?** filter; Quick View. |
+| Appendices A, B, C, E, F | New menu items and gates; free-space guard; certainty column; publishing order no longer matters. |
 
 ## Read this first
 
@@ -30,7 +52,7 @@ walkthroughs are a separate document, still to be written.
 | 6 | [Master](06-master.md) | The master as a collection: species list, viewers, and its upkeep. |
 | 7 | [Albums](07-albums.md) | Date-range views of the master, and their websites. |
 | 8 | [Utilities](08-utilities.md) | Card-to-inbox ingest, external-tool helpers, site-wide rebuilds. |
-| 9 | [Help](09-help.md) | Connection status and version info. |
+| 9 | [Help](09-help.md) | Setup checklist, connection status and version info. |
 
 ## Across the menus
 

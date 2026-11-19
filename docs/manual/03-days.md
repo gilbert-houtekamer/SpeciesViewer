@@ -23,13 +23,27 @@ The whole lane in one line:
 Register (or Copy from card)  →  Review & Rate  →  Add to Master
 ```
 
+## The Days panel
+
+With the **Day** pill selected, the table on the right lists your days, one row
+each. Double-click a cell to act on that day:
+
+| Column | Double-click does |
+|---|---|
+| **Day** | — (hover for the folder; grey when the folder is gone) |
+| **Pictures** | Review & rate this day's pictures |
+| **🛰️** | Geotag from a tracklog — fills missing GPS and altitude from the day's GPS log |
+| **Master** | Add this day to the master. 🔘 ready · ✅ already added (double-click again to add new or re-rated pictures) · ⚪ folder gone |
+| **✖** | Remove from the list; the pictures stay |
+| **Note** | Your own line about the day ("Zwin, high tide, spoonbills") |
+
 ---
 
 ## Register Existing Day…
 
 Point at an existing `YYYY-MM-DD` folder and add it to the Days list. **Nothing
 is copied and nothing is moved** — this only tells the application the folder
-exists so it can appear in the left column and the yellow panel.
+exists so it can appear in the left column and the Days panel.
 
 Use it when the pictures are already on disk: you copied them yourself, or they
 came out of the Unfiled inbox.
@@ -74,7 +88,16 @@ day is treated as an ephemeral micro-trip, its identified species are ingested,
 and its pictures are copied into the master.
 
 This is the Day lane's whole point. Once it has run, the day's keepers are in the
-permanent collection and appear on the master website like anything else.
+permanent collection and appear on the master website like anything else, and
+the day shows ✅ in the Days panel.
+
+Only pictures with a species (or marked as a landscape) are copied; the rest
+stay where they are. Before copying, it checks that the master's drive has room,
+and stops with nothing copied if it has not.
+
+**Delete originals after commit** — tick this box to remove the day's files once
+they are in the master. Only files the master holds an exact copy of are
+deleted; anything else is kept and listed in the log.
 
 ## Remove from List
 

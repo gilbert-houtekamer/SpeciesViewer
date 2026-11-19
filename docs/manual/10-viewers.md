@@ -14,7 +14,7 @@ The keys are documented separately and are not repeated here:
 |---|---|---|---|
 | **Biota Browser** | [Browser](02-browser.md) menu | A taxonomy tree, or one species' page | **No** — read-only |
 | **Species Viewer** | Trips / Master / Albums | One species at a time, across a scope | Yes |
-| **Culling grid** | Day review, yellow panel | One day's pictures, all species | Yes |
+| **Culling grid** | Day review, the Days / Trip / Album panels | One day's pictures, all species | Yes |
 | **Editor** | Double-click any card | One picture, big | Yes |
 
 They share a card, a selection model and a key set, so what you learn in one
@@ -41,6 +41,9 @@ caption, and a row of small signals.
 | ⌗ Crop | The picture carries a crop, from SpeciesViewer, PhotoLab or Lightroom |
 | 🔒 | On a committed (frozen) day — read-only |
 | + JPG | A fresh DxO/Lightroom render is on disk that the master does not track yet. Click to register it. |
+
+Which detail sits in each **corner** of a card — capture time, GPS, place — is
+yours to choose per viewer: *File ▸ Settings ▸ Look & Feel ▸ Card corners*.
 
 ### The Attention model
 
@@ -120,7 +123,7 @@ This is where identifications actually get corrected.
 |---|---|
 | **Scope: Day / Trip / Trip+Master** | Which pictures of this species to show |
 | **Day picker** | Which day — visible only in Day scope |
-| **Species** | Which species. In the master viewer this is **type-to-search**: any part of a Dutch, English or scientific name. |
+| **Species** | Which species: **type any part** of a Dutch, English or scientific name (3 letters or more) — in the Trip, Album and Master viewer alike. |
 | **Names** | The name-language profile — which of NL / EN / Scientific reads out under each picture, as a fallback chain |
 
 The third scope button changes meaning with the viewer:
@@ -139,7 +142,7 @@ The third scope button changes meaning with the viewer:
 | Control | Does | Combines? |
 |---|---|---|
 | **Camera** | Only pictures from one camera body | Yes |
-| **Sort** | `Rate ↓` (best first, the default) · `Time ↑` · `Time ↓` · `Camera` | — |
+| **Sort** | `Rate ↓` (best first, the default) · `Rate ↓ (re-sort)` · `Time ↑` · `Time ↓` · `Camera` | — |
 | **JPG only** | Only pictures that have a JPG file. **On by default.** | Yes |
 | **Colour dots** | Only these colour labels — multi-select; **Grey** means *no label* | Yes |
 | **Columns** | Cards per row, 1 to 8 | — |
@@ -151,6 +154,10 @@ delete.
 The **sort** choices are not cosmetic. `Time ↑` puts near-identical burst frames
 next to each other, which is what makes duplicate-culling quick. `Camera` groups
 by body — useful on a trip shot with two.
+
+The order **stays put while you cull**: give a card a star or a colour and it does
+not jump away. Only `Rate ↓ (re-sort)` reorders after every edit. Pick an order
+again to re-sort. The choice is remembered per viewer.
 
 ### Acting on what you see
 
@@ -169,7 +176,9 @@ by body — useful on a trip shot with two.
 > scan, and ingests anything new it finds.
 
 Select one or more cards and **right-click** one of them; the menu acts on the
-whole selection. Two of its entries name the pictures:
+whole selection. To build a selection without holding a key, right-click a card
+▸ **Add to selection** (and *Remove from selection*). Two of the menu's entries
+name the pictures:
 
 | Menu item | Does |
 |---|---|
@@ -185,11 +194,10 @@ from that day's culling grid.
 
 **Esc** clears the selection.
 
-> **"look in trip names"** in the Set species dialog narrows its as-you-type
-> suggestions to species already recorded on this trip, instead of the full
-> ~30k-entry reference list — much shorter once a trip has a few days behind
-> it. Off by default (a brand-new trip has nothing to narrow to yet);
-> remembers your last choice across sessions.
+In the **Master** Species Viewer, **Uncertain only** narrows the species list to
+the ones with an open identification (see
+[Naming a picture](#naming-a-picture)), grouped by family, and switches *JPG
+only* off.
 
 ### When things are locked
 
@@ -225,17 +233,60 @@ pose. What happens:
 
 ---
 
+## Naming a picture
+
+The species dialog opens from a card's species badge, from **Set species…** in
+the right-click menu, and from the Editor. It is the same everywhere.
+
+**Type any name.** Dutch, English, scientific, or a local name you taught it —
+the suggestions match anywhere in the name. **look in trip names** narrows the
+suggestions to species already on this trip (off by default; remembered). The
+recently used species sit as buttons above, for one-click naming.
+
+**A name it does not know** gets a question with these choices:
+
+| Choice | Does |
+|---|---|
+| **Yes** | Keep the name as typed; it is looked up (GBIF) at the next Read & Summarize |
+| **No** | Back to the box, to correct it |
+| **Local name…** | The name a guide used. Pick the species it means: the picture gets that species, and the name is remembered for it — in the master and the trip, and on every computer the trip travels to |
+
+**When you are not sure.** Two ways to say so; neither counts as a species in any
+total, on any page or in any species count, until you settle it:
+
+- **A group name** — type the genus with *sp.*: "*Oplurus* sp.". It is filed with
+  its family.
+- **Certainty** — in *Sex / age / plumage / certainty*, choose **probable**
+  (shown as "cf.") or **possible** (shown as "?"). Leave it empty for a certain
+  identification.
+
+To find the open ones again: the purple **?** filter in the culling grid, or
+**Uncertain only** in the Master Species Viewer.
+
+**A landscape** is not a species: press **Landscape / context photo** in the
+species dialog or the Editor. The card then shows a green *landscape* badge until
+it has a headline — a landscape goes into the blog only with a JPG *and* a
+headline.
+
+**Faster naming in a grid:**
+
+- `a` gives the selected pictures the species they already agree on.
+- Copy a species name from one picture and paste it onto others, also across
+  days.
+
+---
+
 ## The culling grid
 
 The per-day contact sheet — one card per picture — opened by **Review & rate
-pictures**, or from a day row in the yellow panel. This is where a card of 800
-frames becomes 40 keepers with names on them.
+pictures**, or from a day's *Pictures* cell in the Days, Trip or Album panel.
+This is where a card of 800 frames becomes 40 keepers with names on them.
 
 Unlike the Species Viewer, it shows **one day across all species**.
 
-### The four view filters
+### The view filters
 
-These four are **mutually exclusive** — exactly one is active:
+These are **mutually exclusive** — exactly one is active:
 
 | Button | Shows |
 |---|---|
@@ -243,6 +294,7 @@ These four are **mutually exclusive** — exactly one is active:
 | **📍** | Only pictures **without** GPS coordinates |
 | **All** | Everything |
 | **Species** | Only pictures that **have** a species — i.e. what an add-to-master commit would take |
+| **?** (purple) | Only pictures whose identification is still open: a group name ("sp."), *probable* or *possible* |
 
 > **A greyed filter button is information.** 📍 greys out when no picture is
 > missing GPS. ⚠️ stays available even on a warning-free day, because its
@@ -270,7 +322,13 @@ These stack on top of whichever view filter is active, and on each other:
 | **Cancel** | Stop the scan in progress |
 
 Select cards and **right-click** one to act on the whole selection;
-**Esc** clears it.
+**Esc** clears it. Right-click ▸ **Add to selection** picks pictures one by one
+without holding a key. In the same menu, **Use as album/trip banner…** cuts the
+wide banner for the album's or trip's web pages from that picture (see
+[Albums](07-albums.md#select-or-update-album)).
+
+`z` opens **Quick View** — the camera's own JPEG, big and zoomable, with the
+culling keys (`1`–`5` colours, `q`/`w`/`e`/`r`/`t` stars) still working.
 
 > **🔄 Refresh is the answer to "I changed it in PhotoLab and nothing happened."**
 > The colour and rating live in the sidecar; SpeciesViewer re-reads on focus, but

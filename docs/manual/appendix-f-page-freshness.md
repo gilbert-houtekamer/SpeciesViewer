@@ -97,17 +97,27 @@ that chain, and every day published afterwards inherits the break.
 **Publish Trip** is a bulk run of Publish Day, so it behaves the same way — it is
 a convenience, not a different mechanism.
 
+> **Since October 2026 the order no longer matters.** Freeze now takes the
+> trip-wide totals from the *current* `active/species.csv` and adds only this
+> day's own counts (`mergeCurrentTripTotals`), and species are counted from the
+> tree instead of adding up each day's "new" marks. Two guarantees follow: days
+> can be summarized and published in any order, and **a publish never lowers the
+> number of species with a picture on the website** — Freeze refuses if it
+> would, and every publish logs the count before and after.
+
 ## What to do
 
 **The rule of thumb:** *Read & Summarize is what makes new files real; Publish
 Day is what carries a day into the trip-wide totals.* Run the first after
-PhotoLab, and run the second in date order.
+PhotoLab, then the second.
 
 If a trip-wide page already looks short:
 
 1. Run **Read & Summarize** on the days whose species are missing.
-2. Run **Publish Day** on those days again, in date order.
-3. Re-open the species summary and check the count is believable.
+2. **Reset Trip**, then publish the days again (a published day is locked until
+   then). The order does not matter.
+3. Check the closing line of Publish Day: it says how many species the trip
+   website now has.
 
 Nothing is lost while this is wrong. Every day's species list stays in
 `metadata/review/<day>/species.csv`, so a trip-wide page can always be rebuilt —
@@ -124,6 +134,5 @@ it is a stale page, never a lost record.
 ---
 
 *(The `readProject()` call list and the `sv7WriteCommit` copy above are read off
-the code. The claim that Freeze is where accumulation happens is **inferred**
-from the observed behaviour — a published trip whose `active/species.csv` held
-exactly one day's species — rather than traced line by line.)*
+the code; so is `mergeCurrentTripTotals` in `batch/sv6Freeze.py`, which is where
+the accumulation happens.)*

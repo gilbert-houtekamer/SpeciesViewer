@@ -138,7 +138,17 @@ called and the result is added to `sc_dict` (and consequently to
   without traversing back through `sc_dict` at render time.
 - Additional decoded qualifiers (`malefemale`, `ageintext`, `summerwinter`)
   come from [`Species.getBirdInfo`](../../speciesviewer/engine/specieslib.py) parsing the
-  subject string for tokens like "male", "juv.", "winter".
+  subject string for tokens like "male", "juv.", "winter". The fourth,
+  `certainty`, comes from `certainty_of()` in
+  [`species_count.py`](../../speciesviewer/engine/species_count.py) ("probable", "cf.",
+  "possible", "?"): empty for a certain identification, else `probable` or
+  `possible`.
+- **What counts as a species** is one rule,
+  [`counts_as_species()`](../../speciesviewer/engine/species_count.py): a group
+  name ("oplurus sp", stored without the dot because it is also a folder name),
+  an old "? name" placeholder, and a picture with a `certainty` never count. A
+  subspecies counts as its species. Every total — trip, Freeze, Recount, Count
+  Species, the website — goes through it.
 
 ## Master vs. trip — same shape, different role
 

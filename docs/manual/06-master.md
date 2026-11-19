@@ -15,7 +15,9 @@ What remains is what you do *with* and *to* the collection itself.
 | Species Viewer | A master |
 | Species Map | A master |
 | Species Without a Website Picture… | A master |
+| Undo Last Species Move… | A move to undo |
 | Maintain Master Database ▸ … | A master |
+| Empty Master Trash… | Deleted master pictures |
 
 ---
 
@@ -47,13 +49,19 @@ menu bar.
 
 *Needs: a master.*
 
-The shared species name dictionary: scientific name, English name, Dutch name.
-The same one list as [Trips ▸ Edit Species List](04-trips.md) — see there for why
-there is only one, and what happens to the active trip's copy when you save.
+The species name list: scientific name, English name, Dutch name. You can edit
+the English and Dutch names. The same one list as
+[Trips ▸ Edit Species List](04-trips.md) — see there for why there is only one,
+and what happens to the active trip's copy when you save.
 
-This list is application-global. It is not master-scoped data in any meaningful
-sense; it simply lives in the master because the master is the thing that is
-always there.
+The list also keeps **local names**: the name a guide used ("koereiger" for a
+cattle egret). They are not shown in this editor; you add one when you name a
+picture and SpeciesViewer does not know the name — choose **Local name…** and
+pick the species it means. From then on that name finds the species everywhere.
+
+Each master has its own list. A new master starts with SpeciesViewer's starter
+list (birds and mammals in the order of the world lists, with their Dutch and
+English names), and learns every new species you name from then on.
 
 ---
 
@@ -96,6 +104,24 @@ The master's editable species view — every species in the collection with its
 pictures, where ratings, colour labels and species assignments can be changed
 with write-back to the files.
 
+What only the master view does:
+
+- **Move to another species…** (card menu) — for a wrong identification. All
+  files of the picture move, JPGs included, and the species pages follow. Works
+  on a whole selection, and the target may be a species the master never had.
+  [Undo Last Species Move…](#undo-last-species-move) puts it back.
+- **Uncertain only** — shows only the species with a picture marked *probable*
+  or *possible*, or named only to a group ("*Oplurus* sp."), to settle them one
+  by one.
+- **Map…** — place master pictures that have no GPS, on the map.
+- **Crop, Make JPG and Rescan** in the Editor, on a master this computer may
+  write to. Make JPG adds the new JPG to the master as the website picture and
+  offers to update the species page; Rescan picks up a JPG you exported from
+  PhotoLab.
+- **Blue / Purple delete** — moves the pictures to the master's trash. Pictures
+  that have a JPG are left alone unless you tick *Also move the N pictures with
+  a JPG*. The page of each species involved is rebuilt right after.
+
 It is the same viewer as the [Trip Species Viewer](04-trips.md) and the
 [Album Species Viewer](07-albums.md), pointed at a different scope. What you
 learn in one applies to all three.
@@ -117,6 +143,13 @@ one — which is exactly what
 [Maintain Master Database ▸ Fill Picture GPS from Files…](#fill-picture-gps-from-files)
 is for.
 
+Pictures of the chosen species **without** GPS wait in a tray beside the map.
+Drag one onto the map to place it, or find a place by name (it starts from the
+place already written on the picture). Right-click a tray picture — or press
+`o` — for **Select this outing**: every tray picture taken in the same run (no
+gap over 30 minutes), so one drop places the whole outing. A position the camera
+recorded itself is never moved.
+
 ## Species Without a Website Picture…
 
 *Needs: a master.*
@@ -132,6 +165,24 @@ classified by *why*:
 This is a report with a viewer attached, so you can look at what it found. It is
 the practical answer to "why is this species page empty?"
 
+## Undo Last Species Move…
+
+*Needs: a species move to undo; grey otherwise.*
+
+Puts the pictures you last moved to another species back where they were — files,
+counts and pages — including a species the move emptied or created. Repeat it to
+undo earlier moves, newest first.
+
+## Empty Master Trash…
+
+*Needs: deleted master pictures; grey otherwise.*
+
+A delete in the master only moves the pictures to the master's trash, where they
+can still be restored (Settings ▸ Database ▸ *Restore images…*). This makes the
+delete final. It says what will go in plain numbers — "Permanently delete 1,256
+pictures of 11 species?", with the file count, size and delete dates — and
+Cancel is the default.
+
 ---
 
 ## Maintain Master Database
@@ -144,6 +195,7 @@ before anything changes.
 |---|---|
 | Refresh Master Database — Review… | No |
 | Refresh Master Database — Apply… | **Yes** — the only destructive action in this submenu |
+| Recount Species Counters… | Recounts; backs up first |
 | Add Missing Place Names… | Additive only |
 | Fill Picture GPS from Files… | Additive only |
 | Geotag from Tracklog (GPX/GPS log)… | Review-first |
@@ -180,11 +232,20 @@ files are all gone.
 Both CSVs are backed up first to `admin/status/backup/`. You get the counts and
 an explicit confirmation before anything is written.
 
-Afterwards, re-run **Count Species** to refresh the per-species totals; the
-master's SQLite cache rebuilds itself.
+Afterwards, run **Recount Species Counters…** to bring the per-species totals in
+line; the master's SQLite cache rebuilds itself.
 
 > More detail, including when the admin drifts in the first place, is in
 > [the Refresh how-to](howto_refresh_master_database.md).
+
+### Recount Species Counters…
+
+Makes the species list's picture counts say what the pictures say. The counts
+are added up at each merge and not recounted, so deletes and moves can leave
+them too high. This recounts every species from the pictures actually there —
+pictures, pictures with a JPG — redoes a species' best picture only when that
+picture is gone, and adds up the groups. It shows what would change and asks
+first; the species list is backed up before it is written.
 
 ### Add Missing Place Names…
 

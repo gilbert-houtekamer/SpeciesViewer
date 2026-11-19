@@ -1,7 +1,7 @@
 # 4. Trips
 
 The largest menu, because a trip is the scope with the most life in it. It is
-organised in five blocks, separated by dividers:
+organised in six blocks, separated by dividers:
 
 1. **Getting a trip** — create, select, or carry one between machines
 2. **Getting pictures in** — read cards, empty cards
@@ -29,9 +29,58 @@ organised in five blocks, separated by dividers:
 | Edit Species List | | An active trip |
 | Publish Species Names | | An active trip **and** a master |
 | Count Species | | An active trip |
+| Trash (deleted pictures)… | | An active trip |
 | Advanced ▸ … | | (see below) |
 
 ---
+
+## The Trip panel
+
+With the **Trip** pill selected, the table on the right shows the active trip,
+one row per day folder. This is where a trip is worked on day by day; the menu
+does the same things one step at a time.
+
+| Column | Shows | Double-click |
+|---|---|---|
+| **Day** | The day folder | |
+| **Pictures** | Pictures, and a health mark: ✅ all species fine · ⚠️ species name typos · 🔒 a species whose location is hidden on the website | Open the day's pictures |
+| **JPEG Files** | How many developed JPGs | |
+| **GPS** | ✅ every picture has GPS · 📍 *n* pictures without | |
+| **Geotag 🛰️** | Whether a tracklog exists for the day | Fill missing GPS and altitude from the tracklog |
+| **Sync Sidecars** | | Read back what Lightroom and PhotoLab wrote |
+| **In Blog** | A tick: does this day get a blog? Untick a day (the phone pictures, say) to leave it out | |
+| **1 Read & Summarize · 2 Write Blog · 3 Publish Day** | The pipeline, one sphere per step (below) | Run that step for the day |
+| **Translations** | 🟢 all texts checked · 🔵 *n* still to check | |
+| **Metadata backup 💾** | Whether the day's work (sidecars, JPGs, blog text) is on the SV INDEX card, and whether it changed since | Back up the day's work |
+| **RAW backup 💿** | Whether the day's pictures are copied to a spare card or disk | Copy the day's pictures |
+
+The pipeline spheres:
+
+| Sphere | Means |
+|---|---|
+| ⚪ | Not yet possible — hover to see what must happen first |
+| 🔘 | Ready — double-click to run |
+| ✅ | Done |
+| 🔒 | Done, and the day is published (locked) |
+| 🚫 | Ran, but there was nothing to make (no species, or no JPGs for a blog) |
+| ❌ | Failed — hover for the reason |
+
+Double-click a **column header** to run that step for every day that is ready.
+Double-click a **row number** to run again every step that day has already done
+(after you changed pictures, say). Right-click selected
+cells for more.
+
+Under the table:
+
+- **🗺 Map whole trip** — every picture of the trip on one map.
+- **Edit Blogs** — the blog texts of all days in one editor.
+- **Write All Blogs** — step 2 for every day that is ready.
+- **Publish Trip** — step 3 for every day that is ready.
+- **Reset Trip** — see [Advanced](#reset-trip).
+
+After a step, if a day lies outside the trip's dates, SpeciesViewer asks once
+whether to widen the dates to include it. A planned range that is wider than the
+days is never questioned.
 
 ## Getting a trip
 
@@ -173,12 +222,40 @@ backup follows the same rule, so both can share one card.
 ### Read SD-card or Folder
 
 Copies pictures from a folder — typically a mounted card — into the trip's
-picture directory. It runs the copy directly on a worker thread: no statemachine,
-no config plumbing, because it happens *before* any day or trip structure exists
-for those files.
+picture folder, one `YYYY-MM-DD` folder per day. It needs no trip steps to have
+run: it happens before there is anything to run them on.
 
-Alongside the pictures it carries across the sidecars it finds (`.xmp`, `.dop`),
-reports files it ignored, and shows a per-day count as it goes.
+**Scan days** first. The table lists every day on the card:
+
+| Column | Means |
+|---|---|
+| **Files** | Pictures on the card for that day |
+| **Copied** | How many are already here (✓ when all are) |
+| **Deleted** | Pictures you already deleted while culling — they are not copied back |
+| **Kept** | Pictures here now |
+| **Tracklog** | Whether a GPS log for the day was found |
+
+Tick the days to copy, then **Read**. Alongside the pictures it carries the
+sidecars it finds (`.xmp`, `.dop`).
+
+What it tells you on the way:
+
+- **The camera's clock in another time zone.** When the pictures and the day's
+  tracklog disagree about the time zone, an orange box says so and sets the time
+  zone offset for you, so the pictures land in the right day folder. Positions
+  are not affected.
+- **Files it leaves behind.** Files that are not pictures (`.log`, `.zip`, …) are
+  counted under the table. Pictures in a format SpeciesViewer cannot read yet
+  (Canon `.HIF`, Pentax `.PEF`, Samsung `.SRW`) are named as pictures, with the
+  folder they are in, and with the advice not to format the card.
+- **Whether everything arrived.** The read ends with "✅ All N picture(s) from
+  this card for the chosen days are here", or "⚠️ Only n of N …" — then keep the
+  card and read it again.
+- **Not enough room.** Before copying anything it checks the free space on the
+  destination; if it is short, nothing is copied.
+
+Once read, **View pictures** opens the new pictures, **Open day in PhotoLab**
+hands a day to PhotoLab, and **Geotag from tracklog…** fills missing GPS.
 
 > **The other lane.** If you do not yet know which trip a card belongs to, use
 > [Utilities ▸ Read card into unfiled…](08-utilities.md) instead. It asks nothing
@@ -193,9 +270,26 @@ reports files it ignored, and shows a per-day count as it goes.
 
 *Needs: an active trip.*
 
-The other end of Read SD-card or Folder. When every picture on a card has been judged, this
-checks that is actually true, saves the **keepers** to a second card, and marks
-the original safe to format.
+The other end of Read SD-card or Folder. When every picture on a card has been
+judged, this checks that is actually true, saves the **keepers** to a second
+card, and marks the original safe to format. SpeciesViewer never formats a card
+itself — do that in the camera.
+
+1. **Check card** — every picture on the card gets a verdict: kept, marked for
+   deletion, or already gone. Anything not settled is listed under *Needs
+   attention* — a picture with no colour yet, for instance. **Deal with these
+   here…** opens just those pictures.
+2. **Save the keepers…** — copies the kept pictures (with their sidecars) to the
+   keeper card or folder, checks the copies, and only then writes on the card
+   that it is safe to format.
+3. **Delete from the card…** — a separate step, offered only after the copies
+   are verified. It asks first, and says how many pictures were thrown away
+   during culling and will then exist nowhere. Files SpeciesViewer does not know
+   are never touched.
+
+A card is **not** declared safe when SpeciesViewer never read it (it carries no
+record of what was on it), or when it holds pictures SpeciesViewer cannot read
+(such as Canon `.HIF`).
 
 It needs the trip because the verdicts live beside the trip's pictures. The name
 written onto the physical card is the **picture folder's** name (`2026 North
@@ -237,8 +331,8 @@ flowchart LR
     D --> E["5. Manage Trip Publication<br/><i>whole trip</i>"]
 ```
 
-> **You will usually run 1 to 3 from the yellow panel, not this menu.** The menu
-> acts on the day you have selected; the yellow panel lets you see all days at
+> **You will usually run 1 to 3 from the [Trip panel](#the-trip-panel), not this
+> menu.** The menu acts on the day you have selected; the panel lets you see all days at
 > once, run a whole column, and see which step each day has reached. The menu
 > entries exist for when you want to ask for a step by name.
 
@@ -262,9 +356,18 @@ understands". Re-run it any time; it is not destructive.
 
 Generates the day's blog entry from its species and pictures — a draft you then
 edit. Re-run it whenever you like: after identifying more species, or to pick up
-a rewritten introduction. SpeciesViewer chooses the pictures by rating, one per
-species (and one each for male, female and juvenile where those are marked). Set
-a minimum rating to keep the blog to your best frames only.
+a rewritten introduction. It stays available after the day is published.
+
+SpeciesViewer chooses the pictures by rating: per species the best one (and one
+each for male, female and juvenile where those are marked). In the blog's
+*Configuration* you can set:
+
+- **Pictures per species** — 1 to 20; the best-rated ones, in the order taken.
+- **The picture for the blog index** — which of the day's pictures stands for
+  the day on the trip's blog index, or *Automatic (highest rated)*.
+- A minimum rating, to keep the blog to your best frames only.
+
+In the blog text, **Ctrl+K** inserts or edits a link. Links survive translation.
 
 ### 3. Publish Day
 
@@ -273,12 +376,18 @@ also builds the website pages, which is why the old separate "Build Website" ste
 no longer exists.
 
 Freezing is what makes a day's data final and quotable — it is the snapshot the
-master merge later reads from.
+master merge later reads from. The step ends with the result: how many species
+the trip has, how many are new this day, and how many have a picture on the trip
+website.
 
-Days freeze in date order, and a published day cannot be re-run on its own. If
-you need to bring in more pictures afterwards, **Reset Trip** frees all the days
-again so you can re-publish from a clean state. Because of that, publish a day
-only when you are fairly sure it is complete.
+Before copying anything it checks that the trip's drive has room; if not, it
+stops with nothing copied.
+
+A published day is locked (🔒) and cannot be re-run on its own; only its blog
+can still be rewritten. If you need to bring in more pictures afterwards,
+**Reset Trip** frees all the days again so you can re-publish from a clean state.
+Because of that, publish a day only when you are fairly sure it is complete. The
+order in which you publish days does not matter.
 
 > The individual **Freeze Data** and **Write Website Commit** steps still exist
 > under *Advanced ▸ Legacy*, for the rare case where you want only one of them.
@@ -326,8 +435,10 @@ where you can change star ratings, colour labels and the species assignment
 itself, with the changes written back to the files.
 
 This is arguably the most valuable single screen in the trip menu — it is where a
-trip's identifications actually get corrected. Its scopes, filters and bulk
-actions are documented in
+trip's identifications actually get corrected. From here you can also fix place
+and time (remove a wrong GPS, set a missing date and time, move pictures to
+another day of the trip) and review uncertain identifications. Its scopes,
+filters and bulk actions are documented in
 [10. The viewers](10-viewers.md#the-species-viewers).
 
 > **Frozen days open read-only.** Once a day has been committed, its cards are
@@ -371,12 +482,30 @@ another machine and carries names the master has not seen.
 
 *Needs: an active trip.*
 
-Analyses the trip's species information and produces a report: what was seen, how
-often, how it compares. Report only.
+A table of the trip's species: one row per species, one column per day, with
+the number of pictures, and a **No JPG** flag on a lifer that has no developed
+picture yet. Save it as Excel or CSV. Report only.
+
+Only certain identifications count: a "probable" or "possible" picture, or a
+group name like "*Oplurus* sp.", does not add a species.
 
 Note that Count Species is *also* the first step of the master merge, where it
 runs before the pictures are ingested — that ordering is what makes the "lifer"
 verdict true, because the master is still pre-trip at that moment.
+
+### Trash (deleted pictures)…
+
+*Needs: an active trip.*
+
+Pictures you delete while culling are not gone: they are moved to a `.trash`
+folder beside the day folders. This window shows them, one day at a time.
+
+- **Restore selected** — puts the pictures back in their day folder. Only for a
+  day that is not published. Right-click a picture to add it to the selection.
+- **Discard this day** — deletes that day's trashed pictures for good, after a
+  confirmation that names how many and how big.
+
+Double-click a picture (or press `z`) for a big look.
 
 ---
 
@@ -394,7 +523,8 @@ The delete-a-blog tool: lists the trip's blog entries and lets you remove one.
 
 Rebuilds the trip's generated data — the per-day summaries — from the current
 pictures and species, and frees the frozen days so the pipeline picks up changes
-you have made. Also available from the yellow panel. Your customisations are
+you have made. Also a button under the Trip panel. Open picture windows of the
+trip are closed first. Your customisations are
 kept: hand-edited blog text and the trip species list are not touched, and
 anything already published stays up. After a reset you can refresh the website.
 

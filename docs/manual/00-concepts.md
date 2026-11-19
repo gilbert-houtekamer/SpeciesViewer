@@ -19,6 +19,11 @@ owns. Learn these four and the menus stop being arbitrary.
 | **Master** | `…\naturedb` | **Yes — the permanent store** | Yes — `/nature` | Permanent |
 | **Album** | `…\virttrips\<name>` | None — its pages are built from the master | Yes — `/trips/<slug>` | Permanent, cheap |
 
+"Has a website" means: *if* you set one up. The website is optional — everything
+else works without one — and it can live **on this computer** (shown in your
+browser, nothing uploaded) or **on a web server**. See
+[File ▸ Settings ▸ Global](01-file.md#global).
+
 The single most important sentence in this manual:
 
 > **The Master is the only copy that lasts.** The trip repository is scaffolding,
@@ -104,6 +109,12 @@ Two more doors do the same job without any trip: **Days ▸ Add to Master**, and
 > website build, you can grow a complete species website without ever creating a
 > trip.
 
+**More than one master.** One computer can hold several masters — one for birds
+and one for plants, or a test master to try things in. Each has its own settings,
+species list, trips and albums, so working in one never touches another. One of
+them is your *main* master; another one shows its name in the window title.
+Switch, create and remove them under [Master ▸ Masters](06-master.md#masters).
+
 ## Album (called `virttrip` in the code)
 
 An **Album** is a **live date-range query over the master**. It holds an `.ini`
@@ -126,9 +137,34 @@ Albums arrive two ways:
 2. **Retroactively** — pick a date range in the master for a journey that never
    had a trip repository (an old holiday, say) and write it up from scratch.
 
-> **Naming note.** The GUI says *Album* everywhere; the code, config keys and
-> folder names still say `virttrip`. Same thing. You will see `virttrips\` on
-> disk and `[virttrip]` in `svconfig.ini`.
+> **Naming note.** The program says *Album* everywhere; folder names and the
+> settings file still say `virttrip`. Same thing. You will see `virttrips\` on
+> disk and a `[virttrip]` section in your settings file.
+
+---
+
+## Species and their names
+
+Every picture is filed under a **species**, and every species has a scientific
+name, an English name and a Dutch name. The list of them belongs to the master:
+a new master starts with SpeciesViewer's starter list — birds and mammals in the
+order of the world lists — and learns each new species you name.
+
+A few rules hold everywhere — in the viewers, the counts and on the website:
+
+- **Order follows the species list**, not the alphabet, so related species sit
+  together.
+- **A subspecies counts as its species.** It is shown right after the species.
+- **Only a certain identification counts.** A picture marked *probable* ("cf.")
+  or *possible* ("?"), or named only to a group ("*Oplurus* sp."), is kept and
+  shown, but adds no species to any total until you settle it.
+- **Local names travel.** When a guide calls a bird by a local name, teach it
+  once ("Local name…"); from then on the name finds the species, on every
+  computer the trip goes to.
+- **A landscape** is not a species: it is marked as a landscape and filed
+  separately.
+
+How to do each of these is in [10. The viewers](10-viewers.md#naming-a-picture).
 
 ---
 
@@ -200,7 +236,7 @@ Unfiled now, decide later.
 
 ## The main window
 
-The window has three regions:
+The window has three parts:
 
 - **The mode strip** (left) — four pills: **Unfiled · Day · Trip · Album**. Left
   to right, this is the order pictures actually travel. The strip is the master
@@ -209,17 +245,20 @@ The window has three regions:
   the trips you have, or your albums. Clicking an entry makes it the *active*
   one, and a great many menu items are enabled or greyed out purely on the
   strength of what is active here.
-- **The yellow panel** (right) — a table of the active thing's contents, one row
-  per day, with a column per pipeline step. This is where most day-by-day work
-  actually happens: right-click a row for its actions, or run a whole column.
+- **The panel** (right) — a table of the active thing's contents, one row per
+  day: the Unfiled, [Days](03-days.md#the-days-panel),
+  [Trip](04-trips.md#the-trip-panel) or [Album](07-albums.md#the-album-panel)
+  panel. This is where most day-by-day work actually happens: double-click a cell
+  to act on that day, right-click for more, or double-click a column header to
+  run it for every day.
 
-> **The invariant:** the left column leads. The yellow panel always shows the
-> scope the mode strip is on.
+> **The rule:** the left column leads. The panel always shows the scope the mode
+> strip is on.
 
 Two habits that pay off immediately:
 
-- **Right-click everything.** Rows in the yellow panel and entries in the left
-  column carry context menus with actions that have no menu-bar equivalent.
+- **Right-click everything.** Rows in the panel and entries in the left column
+  carry context menus with actions that have no menu-bar equivalent.
 - **Watch the bubbles** in the pipeline columns — they tell you which steps a day
   has been through, and hovering explains why a step is not yet available.
 

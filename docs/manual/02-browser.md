@@ -4,10 +4,9 @@ One menu, one idea: **viewing a collection**. The same two views over each of th
 three scopes that have a collection worth browsing.
 
 Think of it as your own website, but local and complete — every species and
-every picture, not just the subset that got published. These views used to be
-buried one per owning menu — the trip browser under Trips, the master browser
-under Master — which hid them behind the pipeline actions they sat beside.
-Browsing is not a pipeline step, so it gets its own menu.
+every picture, not just the subset that got published. Browsing is not a
+pipeline step, so it has a menu of its own, apart from the trip and album
+actions.
 
 | View | What it gives you |
 |---|---|
@@ -24,9 +23,9 @@ or the master's [Species Viewer](06-master.md).
 
 *Needs: an active trip (or a configured standalone repository).*
 
-The active trip's species, by taxonomy or as a flat list. This shows what the
-trip *knows about* — the species it has identified — which is exactly what will
-appear on the trip website.
+The active trip's species, by taxonomy or as a flat list. This shows every
+species the trip has identified. The trip website shows the ones with a
+developed JPG — usually fewer.
 
 ## Album Browser… / All Species in the Album…
 
@@ -53,6 +52,17 @@ The whole collection. This is the browser you will use most: it is the answer to
   it. It has a search box.
 
 Both end at the same place: a species and its pictures.
+
+A few things hold in both views:
+
+- **Order follows the species list**, not the alphabet: families and species
+  appear in the order of the bird and mammal lists SpeciesViewer uses, so related
+  species sit together.
+- **A subspecies sits right after its species** and counts as that species —
+  photographing three subspecies of one bird is still one species.
+- **Countries** are shown in your own language, whatever the place name in the
+  picture says. Click a country chip on a species to open its map zoomed to that
+  country.
 
 > Every control in the browser — the rank filter, the search box, the rank rail
 > and the two modes — is documented in

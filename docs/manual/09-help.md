@@ -45,8 +45,10 @@ add them to the master and browse it — no website needed.
 
 ## Connection status…
 
-Shows whether the services SpeciesViewer depends on are reachable, as a set of
-status lamps.
+Shows whether the services SpeciesViewer depends on are reachable, one lamp
+each: the **publish server** (where uploads go), **species lookup** (GBIF),
+**place names** (OpenStreetMap) and **your website** (where the pages are
+viewed). With the website on this computer, the server lamps do not matter.
 
 This matters more than it sounds, because the application is designed to work
 **offline** and degrade in specific ways rather than fail:
@@ -66,4 +68,6 @@ the pipeline right now?*
 
 ## About
 
-Version and build information.
+The version, what SpeciesViewer is, and **Licences and credits…** — the
+licence (GPL-3), the programs and libraries it uses, and where the pictures in
+its dialogs come from.

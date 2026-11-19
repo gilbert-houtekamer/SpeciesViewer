@@ -14,7 +14,7 @@ true — no restart needed.
 | **an active album** | An album is selected in the left column |
 | **an active day** | A day is selected in the Days list |
 | **a trip and a master** | Both of the above |
-| **the step's turn** | The statemachine says this day has completed the previous pipeline step |
+| **the step's turn** | This day has completed the previous pipeline step |
 | **a lifecycle milestone** | Merge done / trip retired / days published — see below |
 
 ## The lifecycle milestones
@@ -42,7 +42,7 @@ the work was done on another machine.
 
 | Item | Needs |
 |---|---|
-| All Settings dialogs | — |
+| Settings… | — |
 | Manage caches… | — |
 | Rescan master EXIF cache | a master |
 | **Developer Tools submenu** | *visible only when debug is enabled — restart to apply* |
@@ -92,9 +92,11 @@ the work was done on another machine.
 | Edit Species List | an active trip |
 | Publish Species Names | a trip and a master |
 | Count Species | an active trip |
+| Trash (deleted pictures)… | an active trip |
 | Advanced ▸ Manage Blogs | — |
 | Advanced ▸ Reset Trip | an active trip |
 | Advanced ▸ Recreate Trip Repository | an active trip |
+| Advanced ▸ Delete Trip Completely… | — (it lists every trip) |
 | Advanced ▸ Legacy ▸ Read Directory | an active trip **and** the step's turn |
 | Advanced ▸ Legacy ▸ Write Summary | an active trip **and** the step's turn |
 | Advanced ▸ Legacy ▸ Freeze Data | an active trip **and** the step's turn |
@@ -115,28 +117,35 @@ the work was done on another machine.
 
 | Item | Needs |
 |---|---|
+| Masters ▸ *the list*, New Master…, Rename Master… | — |
+| Masters ▸ Restore Master… | a master that was removed |
+| Masters ▸ Create Master Collection… | a master without a collection |
 | Edit Species List | a master |
 | Add Pictures to Master… | a master |
 | Species Viewer | a master |
 | Species Map | a master |
 | Species Without a Website Picture… | a master |
+| Undo Last Species Move… | a species move to undo |
 | Maintain Master Database ▸ *every item* | a master |
+| Empty Master Trash… | deleted master pictures in the trash |
 
 ### Albums
 
 | Item | Needs |
 |---|---|
 | Find Trips in the Master… | a full master |
+| Select or Update Album… | a full master |
 | Create Album | a full master |
 | Write Album Blogs | an active album |
 | Make the Blogs Clickable | an active album |
 | Build Album Website | an active album |
 | Manage Album Publication… | — |
 | Album Species Viewer | — |
+| Count Species | an active album |
 | Sync Placed GPS into the Index… | an active album |
 | Export Album | an active album |
 | Import Album | a master |
-| Delete Album… | an active album |
+| Delete Album… | — (it lists every album) |
 
 ### Utilities
 
@@ -154,6 +163,7 @@ the work was done on another machine.
 
 | Item | Needs |
 |---|---|
+| Setup Checklist… | — |
 | Connection status… | — |
 | About | — |
 
@@ -172,7 +182,7 @@ Work down this list; the first "no" is almost always the answer.
    greyed by design.
 4. **For a pipeline step: has the previous step run for this day?** Hover the
    item — the tooltip says what is missing. Or look at the day's row in the
-   yellow panel.
+   Trip panel.
 5. **For a To Master step: has the previous milestone happened?** Open the
    *Trip to Master Dashboard*, which shows the whole arc at once.
 6. **For Developer Tools: is debug enabled, and have you restarted?** The flag is
