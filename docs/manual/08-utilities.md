@@ -77,8 +77,9 @@ Generates PhotoMechanic "snap" keyword files from the species you expect on the
 next trip, so that tagging in PhotoMechanic uses the same vocabulary
 SpeciesViewer will later read back.
 
-PhotoMechanic remains a supported parallel path to the built-in card ingest — it
-has rich functionality that the SD-card lane has not reached parity with.
+You do not need Photo Mechanic: *Trips ▸ Read SD-card* copies and culls the
+card. This item is for when you still tag in Photo Mechanic, on the road or out
+of habit.
 
 ---
 

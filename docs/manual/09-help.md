@@ -1,12 +1,8 @@
 # 9. Help
 
-Three items. Small, but the first two earn their place.
-
-| Item | Needs |
-|---|---|
-| Setup Checklist… | |
-| Connection status… | |
-| About | |
+Three items: the **Setup Checklist** (what SpeciesViewer needs, and why a menu
+is grey), **Connection status** (what works offline and what does not), and
+**About**. None of them needs anything to be set up first.
 
 ---
 

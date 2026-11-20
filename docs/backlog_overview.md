@@ -29,6 +29,10 @@ to understand than it needs to be.
 | 1.11 | **Export Trip as the mirror of Import:** one window with three steps — 1 the trip ZIP, 2 the metadata to the SV INDEX card, 3 the RAWs to spare cards — instead of today's ZIP-only export plus the two backup columns. | M |
 | 1.12 | **Geotag 🛰️ cell:** bright means a log was found for the day, dimmed means none — in the dark theme the two look the same. Use a visibly different mark (or the log name in the cell). | S |
 | 1.13 | **Reset Trip next to the pipeline in the menu** (now under Advanced); it is a normal step, as the panel button already shows. | S |
+| 1.14 | **Album panel: double-clicking *Pictures* opens the JPGs only.** The day viewer opens with its JPG filter switched on, so *Pictures* and *JPEG Files* look the same. Open it with the filter off from *Pictures* (and *Date*), as the Trip panel does. | S |
+| 1.15 | **Albums on a SmallMaster.** A SmallMaster carries every row of the master's lists, so Find Trips, Check Range, Create Album and Select or Update would answer the same as on the full master; today they are greyed out there. Only the RAW-dependent parts (banner cut from the RAW, *Add new renders*, suggested crop) need the full master. Lift the gate for the rest, soften the "partial copy, fewer pictures" warnings, and add a test: Import Album on a SmallMaster. Open: which computer publishes an album made on the laptop. | S–M |
+| 1.16 | **Help ▸ Reference Manual.** Open the built manual (the one-page HTML we review now) from the Help menu; ship it with the program so it works offline. | S–M |
+| 1.17 | **Sync Placed GPS is a master repair in the Albums menu**, and its question counts every picture with a coordinate ("8,599 missing the flag") while only hand-placed ones change. Count what will change; move it into *Check the master…* (1.9), master-wide. | S |
 
 ## 2. Built, waiting for a live test
 

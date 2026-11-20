@@ -24,9 +24,12 @@ ingest, freeze or commit. There is only writing it up and publishing it.
 | Import Album | A master |
 | Delete Album… | |
 
-> **Full master required.** Create Album and Find Trips need a real master, not a
-> SmallMaster travelling install — an album is a query, and a partial collection
-> would answer it wrongly.
+> **Full master required — for now.** Find Trips, Select or Update and Create
+> Album are greyed out on a laptop with a SmallMaster. That is stricter than it
+> needs to be: a SmallMaster carries every row of the master's lists, so the
+> dates, the counts and *Check Range* would come out the same. Only what needs a
+> RAW — a banner cut from the RAW, *Add new renders*, a suggested crop — needs the
+> full master. Backlog 1.15.
 
 ---
 
@@ -35,18 +38,18 @@ ingest, freeze or commit. There is only writing it up and publishing it.
 With the **Album** pill selected, the table on the right shows the active album,
 one row per date that has pictures in the master:
 
-| Column | Shows |
-|---|---|
-| **Date** | The day |
-| **Pictures** | Master pictures of that day |
-| **JPEG Files** | How many have a developed JPG |
-| **GPS** | ✅ all have GPS · 📍 *n* without |
-| **In Blog** | Does this day get a blog? |
-| **Write Blog** | The blog's state — amber: written by SpeciesViewer, not yet reviewed; green: reviewed by you. Double-click to edit |
-| **Build Website** | ✅ when the album's species pages are built and uploaded — the website is built for the whole album, so every row shows the same |
-| **Translations** | 🟢 all texts checked · 🔵 *n* still to check |
+| Column | Shows | Double-click |
+|---|---|---|
+| **Date** | The day | Open the day's pictures |
+| **Pictures** | Master pictures of that day | Open the day's pictures — today with the JPG filter already on (backlog 1.14) |
+| **JPEG Files** | How many have a developed JPG | Open the day's JPGs |
+| **GPS** | ✅ all have GPS · 📍 *n* without | The day on the map, to place what is missing |
+| **In Blog** | Does this day get a blog? | |
+| **Write Blog** | The blog's state — amber: written by SpeciesViewer, not yet reviewed; green: reviewed by you | Edit the day's blog |
+| **Build Website** | ✅ when the album's species pages are built and uploaded — the website is built for the whole album, so every row shows the same | — (right-click ▸ *Rebuild website*) |
+| **Translations** | 🟢 all texts checked · 🔵 *n* still to check | Check the day's translations |
 
-Right-click a day for *Edit this day's blog…* and more. Under the table:
+Right-click a day for *Edit this day's blog…* and more. Above the table:
 
 - **🗺 Map whole trip** — the album's pictures on one map; place pictures without
   GPS from its tray.
@@ -98,7 +101,7 @@ An album plays one of two roles:
    folder under the trip's folder name. With no Albums folder yet, it offers
    the suggested one.
 2. **An album over an old period** — a journey that never had a trip. That is
-   what Create Album is for.
+   what Create Album is for, and what is described below.
 
 **One name, the rest suggested.** The first tab, *Name & Dates*, asks for a name
 and the dates. From `North Spain` it suggests:
@@ -200,7 +203,7 @@ is saved in the album's folder.
 The album's editable species view: the master's pictures within the album's date
 range, with ratings, colour labels and species assignments editable.
 
-Because an album is a window on the master, **edits here mirror into the master
+Because an album is a window on the master, **edits are done in the master
 database**. This is the intended way to keep improving a journey's pictures after
 the trip repository is long gone.
 
@@ -212,12 +215,21 @@ album a colour-delete removes **master** pictures, not working copies.
 
 *Needs: an active album.*
 
-For this album, copies the **place name and movable flag** that a hand-placed
-coordinate already carries in its sidecar into the master index.
+A **master repair**, offered here for one album's dates. A picture you placed by
+hand on the map has its coordinate, its place name and a *placed by hand* flag
+in its sidecar. Older versions of SpeciesViewer copied only the coordinate into
+the master's list, so such a picture showed raw coordinates on its card, and the
+map would not let you move it. This copies the name and the flag from the
+sidecar into the list. It invents nothing, and a position the camera recorded
+is left alone.
 
-Symptom it fixes: cards showing raw coordinates instead of a place name, for
-pictures whose position you set by hand on the map. The sidecar knew the name;
-the index had not been told.
+You only need it for pictures placed before July 2026; new placements are
+copied in full. It works on the album's dates only to keep it quick — the same
+gap in the rest of the master is not offered anywhere.
+
+> The question it asks counts too much: "8,599 are missing the flag" counts
+> every picture with a coordinate, camera positions included, while only the
+> ones placed by hand change. Backlog 1.17.
 
 ---
 
@@ -234,8 +246,13 @@ in an album to zip.
 
 *Needs: a master.*
 
-Unpacks an album export on this machine. It needs a master, because the album
-without a master is a query with nothing to query.
+Unpacks an album export on this machine and makes it the active album. The
+album then reads this machine's master by its dates.
+
+On a laptop with a SmallMaster this works: the lists are complete, so the days,
+counts and blogs come out the same; the viewers show the pictures that have a
+JPG, because those are the ones the SmallMaster carries. Not yet covered by a
+test (backlog 1.15).
 
 ### Delete Album…
 
