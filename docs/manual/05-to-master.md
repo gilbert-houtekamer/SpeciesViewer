@@ -49,10 +49,10 @@ gating rules apply, and clicking a card does what the menu item does. Each colum
 carries a gate line telling you what becomes impossible once you pass it —
 "no edits possible", "no more changes", "changes now happen in the album".
 
-The pipeline cards (Read & Summarize, Write Blog, Publish Day) deliberately do
-*not* run a step: they take you to the [Trip panel](04-trips.md#the-trip-panel),
-because that is where you choose which day to run. The progress bars still show how many
-days each step has reached.
+The first column, **Trip**, shows how far the trip's days are: Read & Summarize,
+Write Blog, Publish Day. These cards do not run a step; they take you to the
+[Trip panel](04-trips.md#the-trip-panel), where you choose the day. Their
+progress bars show how many days each step has reached.
 
 Use the dashboard when you want to see where a trip stands. Use the menu when you
 know what you want to run.
@@ -75,7 +75,8 @@ before it receives pictures of it.
 
 *Needs: at least one day published, and every day that has JPGs published.*
 
-**The real merge.** Opens a four-step dialog. **Run** takes the steps in order
+**The real merge.** It copies every picture of the trip that has a species
+name into the master — RAW, JPG and sidecars alike. Opens a four-step dialog. **Run** takes the steps in order
 and stops at a step that fails; the next Run continues there.
 
 | Step | Does |
@@ -92,9 +93,10 @@ without master mode, and it goes first because the master is still pre-trip at
 that moment. That is what makes the lifer verdict true: a species is a lifer if
 the master had no picture of it *before* this trip.
 
-**Steps 2 to 4 run the ordinary pipeline in master mode.** The same `sv2`/`sv3`,
-`sv5`/`sv6`, `sv7` code as a trip day — only the target repository differs. The
-merge pulls developed files from the trip's frozen metadata *and* undeveloped
+**Steps 2 to 4 are the trip's own steps, run once more for the whole trip.**
+Read & Summarize and Publish Day do for one day what the merge does for the
+whole trip, with the master as the destination instead of the trip — the same
+code, so the same checks. The merge pulls developed files from the trip's frozen metadata *and* undeveloped
 RAWs straight from local, so the master ends up holding every identified species
 file, not just the ones that got a JPG render.
 
@@ -150,7 +152,7 @@ After this, editing happens in the album, not the trip.
 
 ## Delete Local Files Backed Up in Master…
 
-*Needs: the merge done.*
+*Needs: the trip merge done.*
 
 Deletes the trip's local originals **that the master already physically holds**.
 This is the step that reclaims the space in `CurrentPictures`.

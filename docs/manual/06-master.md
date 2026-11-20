@@ -104,7 +104,8 @@ The master's editable species view — every species in the collection with its
 pictures, where ratings, colour labels and species assignments can be changed
 with write-back to the files.
 
-What only the master view does:
+First choose a species with the selector at the top left. Then you can cull,
+correct mistakes, and more. What only the master view does:
 
 - **Move to another species…** (card menu) — for a wrong identification. All
   files of the picture move, JPGs included, and the species pages follow. Works
@@ -149,6 +150,11 @@ place already written on the picture). Right-click a tray picture — or press
 `o` — for **Select this outing**: every tray picture taken in the same run (no
 gap over 30 minutes), so one drop places the whole outing. A position the camera
 recorded itself is never moved.
+
+*Suggest a position* guesses the spot from the pictures with GPS taken just
+before and after. A guess is only a guess: when there is a GPS log for the day,
+[Geotag from Tracklog](#geotag-from-tracklog-gpxgps-log) gives the real
+position.
 
 ## Species Without a Website Picture…
 
