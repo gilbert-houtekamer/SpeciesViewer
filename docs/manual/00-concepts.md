@@ -21,17 +21,31 @@ picture of a Hoopoe, across twenty years? Which species do I still lack a good
 picture of?* Answering those with keywords and folders is handwork.
 SpeciesViewer answers them because the species *is* how it organises.
 
-| Program | What it is best at | How SpeciesViewer relates |
+For the road from memory card to species collection, SpeciesViewer does the
+work itself, in one program: reading the card, culling, rating, naming the
+species, placing pictures on the map. It shows a picture fast from the JPG the
+camera embeds in the RAW, or decodes the RAW itself for a sharp look at 100%.
+For this work you no longer need Photo Mechanic or Lightroom's library. Only
+developing the RAW into the best possible JPG stays with a program made for it.
+
+| Program | What it is best at | What SpeciesViewer does |
 |---|---|---|
-| **Photo Mechanic** | Fast ingest and culling of a card, captions and keywords | SpeciesViewer also reads cards and culls, but culls *per species*: the names come from a world species list, not from free keywords. |
-| **Lightroom Classic** | A catalog of folders, collections and keywords; developing | A species is one keyword among many there. SpeciesViewer reads and writes the same `.xmp` sidecars, so ratings and colour labels stay in step. |
-| **DxO PhotoLab** | The best JPG from a (noisy) RAW | SpeciesViewer makes plain JPGs itself, but uses PhotoLab's when they exist, and keeps PhotoLab's `.dop` sidecars in step. |
+| **Photo Mechanic** | Fast ingest and culling of a card; captions and keywords | Reads the card and culls just as fast, but per species: the names come from a world species list, not from free keywords. |
+| **Lightroom Classic** | A catalog of folders, collections and keywords; maps; developing | Takes over the catalog and map work for your nature pictures. It reads and writes the same `.xmp` sidecars, so ratings and colour labels stay in step if you keep using Lightroom. |
+| **DxO PhotoLab** | The best JPG from a (noisy) RAW | Makes plain JPGs itself, but uses PhotoLab's when they exist, and keeps PhotoLab's `.dop` sidecars in step. |
 
-SpeciesViewer does not replace these programs; it adds what they leave out — the
-species, the best picture of each, the counts per trip, the trip written up day
-by day with its maps, and the website built from all of it.
+What SpeciesViewer adds that none of them has: the species and the best picture
+of each, the counts and new species per trip, the trip written up day by day
+with its maps, and the website built from all of it.
 
-And your collection stays **plain folders and files**: pictures, their
+SpeciesViewer is **open source** (GPL-3): free to use, and anyone can read the
+code or add what they need.
+
+<small>Photo Mechanic is a trademark of Camera Bits, Inc. Adobe and Lightroom are
+trademarks of Adobe Inc. DxO and PhotoLab are trademarks of DxO Labs.
+SpeciesViewer is independent of these companies and not endorsed by them.</small>
+
+Your collection stays **plain folders and files**: pictures, their
 sidecars, and lists you can open in a spreadsheet. Nothing is locked inside a
 catalog that only SpeciesViewer can read.
 
@@ -215,17 +229,6 @@ A few rules hold everywhere — in the viewers, the counts and on the website:
 - **A landscape** is not a species: it is marked as a landscape and filed
   separately.
 
-> GH: we need to think about landscapes.  We probably want to copy them to the 
-> master, but I wonder if we should delete them from the CurrentPictures directory.
-> When I make a photobook, I want to use many "vacation pictures" including 
-> the best ones that are labeled as landscape.
->
-> Claude: today Delete Local Files deletes a local landscape like any picture the
-> master holds, so the photobook would have to take them from the master's
-> landscape folder, apart from the holiday pictures of the same day. Suggestion:
-> Delete Local Files keeps landscapes (a tick, on by default) — the master still
-> has its copy, so nothing is at risk. Added to the backlog as 1.7; decide there.
-
 How to do each of these is in [10. The viewers](10-viewers.md#naming-a-picture).
 
 ---
@@ -249,7 +252,6 @@ flowchart LR
     TRIP -- "Merge pictures into Master" --> MASTER
     TRIP -- "Retire to Album" --> ALBUM
     MASTER -. "supplies the pictures" .-> ALBUM
-    TRIP -. "then delete locals + repo" .-> MASTER
 
     classDef m fill:#d8ebe1,stroke:#2e6b54,stroke-width:2px,color:#14342a;
     class MASTER m;
@@ -274,6 +276,9 @@ The full lifecycle, with the menu that owns each stage:
 Steps 6 and 7 are independent once step 5 is done. Doing 6 first is the calmer
 order: the reporting is in place before anything gets deleted.
 
+Step 7 is cleaning up, not a road pictures travel, so it has no arrow in the
+picture: by then the master holds the pictures and the album holds the story.
+
 ---
 
 ## The Unfiled inbox
@@ -291,54 +296,3 @@ Unfiled now, decide later.
 
 How to read a card into Unfiled and empty it again is in
 [Utilities](08-utilities.md).
-
-
-## The main window
-
-> GH: I do not know where the main window belongs, but not here I think.
-> Concepts feel good. Main window talks about the GUI.
->
-> Claude: agreed. Proposal: move "The main window" and "A note on active" to
-> chapter 1, right after the Setup Checklist — that is the moment the user
-> first meets the window. Days, Trip and Album each already open with their
-> own panel. Left here until you have read those chapters.
-
-The window has three parts:
-
-- **The mode strip** (left) — four pills: **Unfiled · Day · Trip · Album**. Left
-  to right, this is the order pictures actually travel. The strip is the master
-  control: whichever mode is selected, the rest of the window follows.
-- **The left column** — the list for that mode: unfiled days, registered days,
-  the trips you have, or your albums. Clicking an entry makes it the *active*
-  one, and a great many menu items are enabled or greyed out purely on the
-  strength of what is active here.
-- **The panel** (right) — a table of the active thing's contents, one row per
-  day: the Unfiled, [Days](03-days.md#the-days-panel),
-  [Trip](04-trips.md#the-trip-panel) or [Album](07-albums.md#the-album-panel)
-  panel. This is where most day-by-day work actually happens: double-click a cell
-  to act on that day, right-click for more, or double-click a column header to
-  run it for every day.
-
-> **The rule:** the left column leads. The panel always shows the scope the mode
-> strip is on.
-
-Two habits that pay off immediately:
-
-- **Right-click everything.** Rows in the panel and entries in the left column
-  carry context menus with actions that have no menu-bar equivalent.
-- **Watch the bubbles** in the pipeline columns — they tell you which steps a day
-  has been through, and hovering explains why a step is not yet available.
-
----
-
-## A note on "active"
-
-Many menu items depend on there being an **active trip**, **active album**, or
-**active day**. Active means *selected in the left column* (and stored in the
-config, so it survives a restart). If a whole run of menu items looks dead, the
-usual cause is that nothing is active in the scope they belong to.
-
-The other common cause is an unmet prerequisite — asking for a pipeline step
-before its predecessor has run, for instance trying to Publish a day that has
-only been read. Hover the greyed item and the tooltip says what is missing. See
-[Appendix A](appendix-a-greyed-out.md).

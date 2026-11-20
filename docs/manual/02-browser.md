@@ -1,10 +1,12 @@
 # 2. Browser
 
 One menu, one idea: **viewing a collection**. The same two views over each of the
-three scopes that have a collection worth browsing.
+three scopes that have a collection worth browsing. It shows your own
+pictures, so in a new master there is nothing to browse yet.
 
 Think of it as your own website, but local and complete — every species and
-every picture, not just the subset that got published. Browsing is not a
+every picture, not only the ones that have a JPG and made it to the website.
+Browsing is not a
 pipeline step, so it has a menu of its own, apart from the trip and album
 actions.
 
@@ -31,7 +33,7 @@ developed JPG — usually fewer.
 
 *Needs: an active album.*
 
-The same two views over the active album. Remember that an album is a live
+The same two views over the active album. Remember that an album is a 
 date-range window on the master, so what you see here is the master's own
 content, filtered to those dates. Nothing is copied.
 

@@ -6,8 +6,8 @@ Adding it to the master also updates the master website: new species appear, and
 where a Day brings a better-rated picture it replaces the current one.
 
 Use it for the local outing: an afternoon at the reserve, a garden moth trap, a
-walk that produced four species worth keeping. Creating a trip for that would be
-all ceremony and no payoff.
+walk that produced four species worth keeping. A trip for that would only add
+administration, for nothing in return.
 
 | Item | Needs | What it does |
 |---|---|---|
@@ -36,6 +36,9 @@ each. Double-click a cell to act on that day:
 | **Master** | Add this day to the master. 🔘 ready · ✅ already added (double-click again to add new or re-rated pictures) · ⚪ folder gone |
 | **✖** | Remove from the list; the pictures stay |
 | **Note** | Your own line about the day ("Zwin, high tide, spoonbills") |
+
+Everything about GPS — the 🛰️ column, placing pictures by hand, place names —
+is brought together in [How-to: GPS and place names](howto_gps_and_places.md).
 
 ---
 

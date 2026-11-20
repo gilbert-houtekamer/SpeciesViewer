@@ -70,6 +70,7 @@ as you last saw it (chapters 0–4) or as first written (5–10, never reviewed)
 | [D — Camera support](appendix-d-camera_support.md) | Which camera bodies have been **measured**, and what works on each. Generated — regenerate with `tools/svr_camera_checklist.py`. |
 | [E — Developer reference: Data structures](appendix-e-data_structures.md) | **Developer-facing.** The four CSVs that hold the project's biological knowledge and picture metadata, and the in-memory dictionaries they map to. |
 | [F — Page freshness](appendix-f-page-freshness.md) | Why a blog can be right while the trip's species summary is short, what each page is actually built from, and when Read & Summarize is not optional. |
+| [G — Developer tools](appendix-g-developer-tools.md) | The diagnostics under *File ▸ Developer Tools*, visible only with debug enabled. Report only; for finding faults in the program. |
 
 > **On the appendices.** These were written separately, before the manual, and
 > gathered here because they are the material that already existed. They are not
@@ -197,7 +198,16 @@ These are not part of the manual but answer neighbouring questions:
   picture viewers, which this manual does not repeat.
 - [../configuration_inventory.md](../configuration_inventory.md) — which setting
   lives in which file.
+- [The GPS how-to](howto_gps_and_places.md) — how a picture gets a position
+  and a place name, and where each tool is.
 - [The Refresh how-to](howto_refresh_master_database.md) — the detail behind
   Master ▸ Maintain Master Database.
 - [The trip-index how-to](howto_trip_index_publication.md) — the detail behind
   the two "Manage … Publication" dialogs.
+
+## Trademarks
+
+Photo Mechanic is a trademark of Camera Bits, Inc. Adobe and Lightroom are
+trademarks of Adobe Inc. DxO and PhotoLab are trademarks of DxO Labs. ExifTool
+is by Phil Harvey. SpeciesViewer is independent of these companies and not
+endorsed by them. SpeciesViewer is free software under the GPL-3 licence.

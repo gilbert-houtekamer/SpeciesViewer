@@ -1,17 +1,14 @@
 # Configuration & data files — the inventory
 
-*Backlog ch.19, "Configuration files have never been inventoried".*
+The technical companion of the manual's
+[Where your settings and data are kept](manual/01-file.md#where-your-settings-and-data-are-kept):
+every `.ini`, `.json` and `.csv` SpeciesViewer keeps, which scope it belongs to
+(this computer, the collection, a trip, a day, beside the pictures), whether it
+may be copied to another computer, and what losing it costs. Use it to decide
+where a new setting goes, and what a backup or a work-backup on a card may
+carry.
 
-There has never been a single statement of which `.ini`, `.json` and `.csv`
-files exist, which are per-machine, which travel with a trip, and which are
-throwaway caches. Two decisions in one working day needed that answer — where
-the SD-card prefix should live, and whether the settings snapshot written to a
-camera card may carry the GUI cache (it may) or the file holding the website
-password (it must not) — and both were settled by reading source. This is the
-table that answers them without reading source.
-
-This document replaces the older `config_state_files.md`, whose delete-safety
-verdicts and machine-config key list are folded in below. Companion documents:
+Companion documents:
 [manual/appendix-e-data_structures.md](manual/appendix-e-data_structures.md) for how the four picture CSVs
 reference each other, and
 [manual/howto_trip_index_publication.md](manual/howto_trip_index_publication.md) for the one file whose
@@ -32,7 +29,7 @@ happens when it is lost all follow from it.
 | Scope | Lives in | One copy per | Travels? |
 |---|---|---|---|
 | **Shipped** | the source tree | release | with the code |
-| **Machine** | repo root (today — see *Known irregularities*) | computer | **never** |
+| **Machine** | app-data `config/` and `state/` (since 0.4) | computer | **never** |
 | **App-data** | `%LOCALAPPDATA%\SpeciesViewer\` (Win), `~/Library/Application Support/SpeciesViewer/` (Mac) | computer | never |
 | **Ephemeral** | repo root, rewritten per run | run | never |
 | **Master** | `<master>/` — Dropbox | collection | via Dropbox, to your own machines |

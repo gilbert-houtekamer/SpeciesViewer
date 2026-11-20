@@ -28,8 +28,52 @@ The checklist also answers *"why is this menu grey?"*, so it is worth opening
 again later. Every row is described in
 [Help ▸ Setup Checklist](09-help.md#setup-checklist).
 
+---
+
+## The main window
+
+The window has three parts:
+
+- **The mode strip** (left) — four pills: **Unfiled · Day · Trip · Album**. Left
+  to right, this is the order pictures actually travel. The strip is the master
+  control: whichever mode is selected, the rest of the window follows.
+- **The left column** — the list for that mode: unfiled days, registered days,
+  the trips you have, or your albums. Clicking an entry makes it the *active*
+  one, and a great many menu items are enabled or greyed out purely on the
+  strength of what is active here.
+- **The panel** (right) — a table of the active thing's contents, one row per
+  day: the Unfiled, [Days](03-days.md#the-days-panel),
+  [Trip](04-trips.md#the-trip-panel) or [Album](07-albums.md#the-album-panel)
+  panel. This is where most day-by-day work actually happens: double-click a cell
+  to act on that day, right-click for more, or double-click a column header to
+  run it for every day.
+
+> **The rule:** the left column leads. The panel always shows the scope the mode
+> strip is on.
+
+Two habits that pay off immediately:
+
+- **Right-click everything.** Rows in the panel and entries in the left column
+  carry context menus with actions that have no menu-bar equivalent.
+- **Watch the bubbles** in the pipeline columns — they tell you which steps a day
+  has been through, and hovering explains why a step is not yet available.
+
+
+### A note on "active"
+
+Many menu items depend on there being an **active trip**, **active album**, or
+**active day**. Active means *selected in the left column* (and stored in the
+config, so it survives a restart). If a whole run of menu items looks dead, the
+usual cause is that nothing is active in the scope they belong to.
+
+The other common cause is an unmet prerequisite — asking for a pipeline step
+before its predecessor has run, for instance trying to Publish a day that has
+only been read. Hover the greyed item and the tooltip says what is missing. See
+[Appendix A](appendix-a-greyed-out.md).
+
 **The rest of this chapter can wait.** It covers the settings you change once
-you know what you want: how pictures look, caches, place names, PhotoLab.
+you know what you want: how pictures look, caches, place names, and the
+interfaces with DxO PhotoLab and Lightroom.
 
 ---
 
@@ -49,7 +93,7 @@ at, not documents. Choosing, creating and switching collections lives under
 | Settings ▸ Settings… | `Ctrl+G` | |
 | Settings ▸ Manage caches… | | |
 | Settings ▸ Rescan master EXIF cache | | a master |
-| Developer Tools ▸ … | | *Only visible when debug is enabled* |
+| Developer Tools ▸ … | | *Only visible when debug is enabled* — [Appendix G](appendix-g-developer-tools.md) |
 | Quit | `Ctrl+Q` | |
 
 ---
@@ -59,9 +103,8 @@ at, not documents. Choosing, creating and switching collections lives under
 One window, one tab per subject. A tab is built the first time you open it, and
 **OK on any tab closes the window**.
 
-> Which settings live in which file — and which ones travel with a trip versus
-> stay on this machine — is documented separately in
-> [configuration_inventory.md](../configuration_inventory.md).
+Where the settings are kept, and what travels with a trip, is at the end of
+this section: [Where your settings and data are kept](#where-your-settings-and-data-are-kept).
 
 | Tab | What you set there |
 |---|---|
@@ -158,11 +201,30 @@ back.
 > writes a `.dop` when PhotoLab itself authored one first. It never invents a
 > `.dop` — doing so would hand PhotoLab a development recipe you never asked for.
 
-### Species settings — removed
+### Where your settings and data are kept
 
-The old Species tab is gone. Its name display is on the Global tab; the other
-two settings (how far a name correction reaches, which languages the name box
-accepts) were never changed from their defaults and are no longer offered.
+You never need to open these files, but it helps to know what sits where — for
+a backup, a second computer, or a new disk.
+
+| What | Where | Copy it? |
+|---|---|---|
+| **Settings of this computer** — every folder, the website password, the translation key, window positions | `%LOCALAPPDATA%\SpeciesViewer\config\` (on the Mac: `~/Library/Application Support/SpeciesViewer/`) | **No.** Each computer has its own, because it holds passwords. |
+| **Your collection** — the master's lists of pictures, files and species, its trash and its daily backups | the master folder | **Yes** — this is what you back up and share between your own computers. |
+| **A trip** — its name, dates, blog texts and species | the trip's folder | Travels with the trip. |
+| **Beside your pictures** — the `.xmp` and `.dop` files with rating, colour, species and crop; a day's blog draft | the day folder | Travels with the pictures. Never delete them: they are your work. |
+| **Caches** — previews, EXIF, the fast read-copy of the master | `%LOCALAPPDATA%\SpeciesViewer\` | No — rebuilt by themselves. See [Manage caches](#manage-caches). |
+
+Three rules follow from this table:
+
+- **What lasts is the master and your pictures with their sidecars.** Back those
+  up; everything else is either rebuilt or quickly re-entered.
+- **The master protects itself.** Once a day, at start, it takes a compressed copy of
+  its lists and keeps the last 14; *Settings ▸ Database ▸ Restore…* puts one back.
+- **Caches never go in Dropbox.** They are large, change constantly, and are
+  per computer.
+
+> The technical inventory — every file, its scope and what losing it costs —
+> is [configuration_inventory.md](../configuration_inventory.md).
 
 ## Manage caches…
 
@@ -192,70 +254,24 @@ routine Read & Summarize.
 Run it after a large external change to the master's files. It is slow — it is a
 full pass over the collection.
 
+> GH: is this related to "rebuild the master"?  Does the rebuild include the
+> Rescan master EXIF cache
+> As you already noted, recount, rebuild etc are all maintenance tasks that 
+> are scattered in the menu.
+>
+> Claude: not related — and worse: nothing in the program reads the cache this
+> item fills. Only *Manage caches* shows its size. It is a leftover; proposal:
+> remove the menu item and the cache (backlog 1.8). Gathering the maintenance
+> items (Recount, Refresh, Rebuild, Empty Trash, Undo) in one place is 1.9.
+
 ---
 
 ## Developer Tools
 
-**Only present when "Enable debug functionality" is on** (Settings ▸ Global), and
-only after a restart. These are diagnostics: they report, they do not repair.
-The repair tools live in [Master ▸ Maintain Master Database](06-master.md).
-
-### Trip Status Console…
-
-*Needs: a configured master.*
-
-Scans **this machine's** trips and albums, scores each against the master
-(which pictures are already integrated, which would be lost if the trip were
-deleted now), writes a per-machine CSV shard, renders a private HTML console and
-opens it in your browser.
-
-It asks two questions first:
-
-- *Generate picture thumbnails for the drill-down?* — slower, because it extracts
-  RAW previews, but makes the console browsable.
-- *Upload this machine's status shard to the web?* — so the other machine can
-  merge it in later.
-
-The "is it safe to delete this trip?" question is now mostly answered
-automatically during retire; this console is the manual fallback, mainly for the
-two-machine (laptop + master) case and for development.
-
-### Merged Status (all machines)…
-
-*Needs: a configured master.*
-
-Pulls every machine's uploaded shard down from the web and renders the
-integrated overview — one row per trip, one column per machine. No local scan, so
-it is fast. Useful when a trip was worked on the laptop and you are sitting at
-the desktop.
-
-### Audit Species Counters (dry-run)…
-
-*Needs: a configured master.*
-
-Compares the species counts in `species.csv` against the pictures actually
-present, and lists ghosts (species whose pictures have vanished, with recovered
-last-known filenames), count drift, and orphaned best-picks.
-
-**Report only — it never modifies anything.** The report is also written to
-`<master>\admin\status\species_counter_audit.txt`.
-
-### Clean Orphan Sidecars (move to trash)…
-
-*Needs: a configured master.*
-
-Finds `.xmp` / `.dop` sidecars whose image is gone and moves them to a
-recoverable trash folder. It shows the count and extension breakdown, and asks
-before moving anything.
-
-Their now-dangling rows in the master admin are cleared by the next
-**Refresh Master Database — Apply**, so the natural order is: clean orphans,
-then refresh-apply.
-
-### Call Testbed for trip day
-
-A developer hook that runs the testbed batch against a chosen trip day. Not
-useful in normal operation.
+Only present when *Enable debug functionality* is on (Settings ▸ Global), and
+only after a restart. These are diagnostics written to find faults in the
+program; you will not need them. They are described in
+[Appendix G](appendix-g-developer-tools.md).
 
 ---
 

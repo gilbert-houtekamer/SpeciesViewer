@@ -22,7 +22,9 @@ to understand than it needs to be.
 | 1.4 | **Look-alike names:** *Delete Trip…* vs *Delete Trip Completely…*; *Count Species* vs *Recount Species Counters*. | S |
 | 1.5 | **Uneven menu wording:** "Manage caches…" next to "Manage Site Publication…"; two Utilities items end in a full stop. | S |
 | 1.6 | **Ungated album items:** Manage Album Publication and Album Species Viewer can be clicked with no album open (open since August). | S |
-| 1.7 | **Keep landscapes on this computer.** Delete Local Files deletes a local landscape once the master holds it; for a photobook you want them beside the day's holiday pictures. Proposal: a tick *Keep landscapes*, on by default — the master keeps its copy, so nothing is at risk. NEEDS DECISION. | S |
+| 1.7 | **Keep landscapes on this computer.** Delete Local Files deletes a local landscape once the master holds it; for a photobook you want them beside the day's holiday pictures. **Decided 20 Nov:** a tick *Keep landscapes*, **on by default** — the master keeps its copy, so nothing is at risk. | S |
+| 1.8 | **Rescan master EXIF cache fills a cache nothing reads.** Only Manage caches shows its size. Remove the menu item and the cache file. | S |
+| 1.9 | **Maintenance is scattered:** Recount, Refresh Review/Apply, Rebuild website, Empty Master Trash, Undo Last Species Move, restore in Settings ▸ Database, Rebuild all in Utilities. Gather them in one place. Needs a short proposal first. | M |
 
 ## 2. Built, waiting for a live test
 
