@@ -33,6 +33,11 @@ to understand than it needs to be.
 | 1.15 | **Albums on a SmallMaster.** A SmallMaster carries every row of the master's lists, so Find Trips, Check Range, Create Album and Select or Update would answer the same as on the full master; today they are greyed out there. Only the RAW-dependent parts (banner cut from the RAW, *Add new renders*, suggested crop) need the full master. Lift the gate for the rest, soften the "partial copy, fewer pictures" warnings, and add a test: Import Album on a SmallMaster. Open: which computer publishes an album made on the laptop. | S–M |
 | 1.16 | **Help ▸ Reference Manual.** Open the built manual (the one-page HTML we review now) from the Help menu; ship it with the program so it works offline. | S–M |
 | 1.17 | **Sync Placed GPS is a master repair in the Albums menu**, and its question counts every picture with a coordinate ("8,599 missing the flag") while only hand-placed ones change. Count what will change; move it into *Check the master…* (1.9), master-wide. | S |
+| 1.18 | **Help in every window.** A *Help* button (or F1) that opens the manual at the section for that window. Builds on 1.16. | M |
+| 1.19 | **Standard Windows selection as well.** Click, Ctrl+click and Shift+click in the grids, next to the `[` `]` keys and *Add to selection* — as an extra, never the only way, and only where it does not clash with existing clicks. | S–M |
+| 1.20 | **Sex / age / plumage is weak.** Fine for most birds, but no age classes for large birds (1st–4th year) and nothing for insects (larva, pupa, adult…). Settle the vocabulary per group, then document it. | M |
+| 1.21 | **The map as a viewer of its own.** Beside a grid or the Editor it does what Lightroom and PhotoLab cannot; give it a proper place in the menus and its own manual section (bubbles, moving, travel path). | M |
+| 1.22 | **No Trash window for Days.** A trip has *Trips ▸ Trash (deleted pictures)…*; pictures deleted in a day outside a trip go to a `.trash` folder inside that day folder, but there is no window to restore them (only Explorer). | S |
 
 ## 2. Built, waiting for a live test
 

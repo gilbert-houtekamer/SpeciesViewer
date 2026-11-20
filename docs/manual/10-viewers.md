@@ -393,15 +393,11 @@ camera recorded never moves. In the Master Species Viewer the map only shows
 the pictures of that species; to place several species at once, open the map
 of an Album that covers those days.
 
-### A workable culling order
+### In what order?
 
-Not prescriptive, but this is the order the filters are built for:
-
-1. **All** + colour dots — first pass, tag rejects Blue/Purple, keepers Green up.
-2. **✖B** / **✖P** — clear the rejects out of the way.
-3. **⚠️** — fix the questionable identifications.
-4. **Species** — see what will actually be committed.
-5. **📍** — mop up the pictures with no coordinate.
+Any order. Some do one thorough pass at home; others pick the five best of the
+day for a first blog on the road and come back to the rest later. The filters
+work the same either way.
 
 ---
 
@@ -547,15 +543,6 @@ The selector is a **per-session override**. The lasting default is in
 
 ---
 
-## What is missing from this chapter
-
-Written from the code rather than from use, so the following are the parts most
-likely to need your correction:
-
-- The **culling order** above is my inference from what the filters make easy,
-  not an observed workflow.
-- **Sex / age / plumage** qualifiers are listed but not explained — they deserve
-  their own section once the vocabulary is settled.
-- The **map** views (from both viewers) are only partly documented: placing
-  pictures without GPS is, the rest (bubbles, moving, travel path) is not; they
-  are arguably a fifth viewer.
+> Not described yet: the **sex / age / plumage** qualifiers (backlog 1.20), and
+> the **map** as a viewer in its own right — bubbles, moving, travel path
+> (backlog 1.21).
