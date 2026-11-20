@@ -25,6 +25,10 @@ to understand than it needs to be.
 | 1.7 | **Keep landscapes on this computer.** Delete Local Files deletes a local landscape once the master holds it; for a photobook you want them beside the day's holiday pictures. **Decided 20 Nov:** a tick *Keep landscapes*, **on by default** — the master keeps its copy, so nothing is at risk. | S |
 | 1.8 | **Rescan master EXIF cache fills a cache nothing reads.** Only Manage caches shows its size. Remove the menu item and the cache file. | S |
 | 1.9 | **Maintenance is scattered:** Recount, Refresh Review/Apply, Rebuild website, Empty Master Trash, Undo Last Species Move, restore in Settings ▸ Database, Rebuild all in Utilities. Gather them in one place. Needs a short proposal first. | M |
+| 1.10 | **One way in: Import Trip.** *Read Metadata from SV INDEX Card* is step 2 of Import Trip; drop it from the menu. | S |
+| 1.11 | **Export Trip as the mirror of Import:** one window with three steps — 1 the trip ZIP, 2 the metadata to the SV INDEX card, 3 the RAWs to spare cards — instead of today's ZIP-only export plus the two backup columns. | M |
+| 1.12 | **Geotag 🛰️ cell:** bright means a log was found for the day, dimmed means none — in the dark theme the two look the same. Use a visibly different mark (or the log name in the cell). | S |
+| 1.13 | **Reset Trip next to the pipeline in the menu** (now under Advanced); it is a normal step, as the panel button already shows. | S |
 
 ## 2. Built, waiting for a live test
 

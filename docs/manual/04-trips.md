@@ -8,7 +8,7 @@ organised in six blocks, separated by dividers:
 3. **Getting external edits in** — sync Lightroom and PhotoLab metadata
 4. **The pipeline** — the numbered steps 1 to 5, the heart of the menu
 5. **Reviewing and editing the trip** — viewers, species list, counts
-6. **Advanced** — rare maintenance, and the legacy individual pipeline steps
+6. **Advanced** — Reset Trip, rare maintenance, and the old individual pipeline steps
 
 | Item | Shortcut | Needs |
 |---|---|---|
@@ -44,10 +44,10 @@ does the same things one step at a time.
 |---|---|---|
 | **Day** | The day folder | |
 | **Pictures** | Pictures, and a health mark: ✅ all species fine · ⚠️ species name typos · 🔒 a species whose location is hidden on the website | Open the day's pictures |
-| **JPEG Files** | How many developed JPGs | |
+| **JPEG Files** | How many developed JPGs | Open the day's JPGs |
 | **GPS** | ✅ every picture has GPS · 📍 *n* pictures without | |
-| **Geotag 🛰️** | Whether a tracklog exists for the day | Fill missing GPS and altitude from the tracklog |
-| **Sync Sidecars** | | Read back what Lightroom and PhotoLab wrote |
+| **Geotag 🛰️** | Bright: a tracklog was found for the day. Dimmed: none found | Fill missing GPS and altitude from the tracklog; with none found, the window opens so you can choose a log yourself |
+| **Sync Sidecars** | | Bring PhotoLab's and Lightroom's crop and exposure in step for the day — see [Sync Lightroom & PhotoLab Metadata](#sync-lightroom--photolab-metadata) |
 | **In Blog** | A tick: does this day get a blog? Untick a day (the phone pictures, say) to leave it out | |
 | **1 Read & Summarize · 2 Write Blog · 3 Publish Day** | The pipeline, one sphere per step (below) | Run that step for the day |
 | **Translations** | 🟢 all texts checked · 🔵 *n* still to check | |
@@ -70,13 +70,13 @@ Double-click a **row number** to run again every step that day has already done
 (after you changed pictures, say). Right-click selected
 cells for more.
 
-Under the table:
+Above the table:
 
 - **🗺 Map whole trip** — every picture of the trip on one map.
 - **Edit Blogs** — the blog texts of all days in one editor.
 - **Write All Blogs** — step 2 for every day that is ready.
 - **Publish Trip** — step 3 for every day that is ready.
-- **Reset Trip** — see [Advanced](#reset-trip).
+- **Reset Trip** — unlock all published days, see [Reset Trip](#reset-trip--unlock-the-published-days).
 
 After a step, if a day lies outside the trip's dates, SpeciesViewer asks once
 whether to widen the dates to include it. A planned range that is wider than the
@@ -130,10 +130,11 @@ name, and builds the trip. Afterwards the button reads *Created ✓*.
 The descriptions on *Trip Text* take links: **Ctrl+K** or right-click ▸
 *Insert link…*.
 
-> **Why two entries and not one screen.** Each dialog can write to exactly one
-> place: *Create* only into a folder it makes itself, *Select or Update* only
-> into the trip you pick. Keeping them apart means creating a new trip can never
-> reach into the one you already have open.
+> **Why Create and Select are two items.** *Create Trip* makes a new trip and
+> fixes the two things that can never change afterwards: its **web address**
+> and its **folders**. *Select or Update Trip* never makes a trip; it opens one
+> you have and lets you change everything else — dates, titles, texts,
+> pictures. So creating a new trip can never touch the trip you have open.
 
 ### Export Trip
 
@@ -231,9 +232,13 @@ run: it happens before there is anything to run them on.
 |---|---|
 | **Files** | Pictures on the card for that day |
 | **Copied** | How many are already here (✓ when all are) |
-| **Deleted** | Pictures you already deleted while culling — they are not copied back |
-| **Kept** | Pictures here now |
 | **Tracklog** | Whether a GPS log for the day was found |
+
+Two more columns appear only when you read a card **again** for a trip whose
+backup covers those days — on another computer, or after a trip:
+**Deleted** (pictures you deleted while culling; they are not copied back) and
+**Kept** (the ones a re-read copies back). Read for a trip from Import Trip, it
+also shows **To copy** and **Metadata on this source**.
 
 Tick the days to copy, then **Read**. Alongside the pictures it carries the
 sidecars it finds (`.xmp`, `.dop`).
@@ -259,7 +264,7 @@ hands a day to PhotoLab, and **Geotag from tracklog…** fills missing GPS.
 
 > **The other lane.** If you do not yet know which trip a card belongs to, use
 > [Utilities ▸ Read card into unfiled…](08-utilities.md) instead. It asks nothing
-> and claims nothing.
+> and claims nothing; later you file each day under a trip or claim it as a Day.
 
 > 💡 **Tip.** A flat folder of mixed dates — an old shoot, a batch someone sent
 > you, a set of pictures ordered by day — goes into the master through
@@ -304,16 +309,21 @@ on everything inside it when you read it back months later.
 
 *Needs: an active trip.*
 
-Reads back what Lightroom and DxO PhotoLab have written into the `.xmp` and
-`.dop` sidecars, so the trip's own data agrees with what those applications
-think.
+Compares, picture by picture, the crop and exposure in PhotoLab's `.dop` and
+Lightroom's `.xmp`, and brings them in step:
 
-Run it after a development session, before Read & Summarize — otherwise the
-pipeline summarises stale metadata.
+- only one of the two has an edit → it is copied to the other;
+- both have one → the newer file wins;
+- neither has one → nothing happens.
 
-It is needed because Lightroom does not watch for edits made by other programs,
-and PhotoLab reads back only some XMP fields. The sync covers crops and light
-corrections — not the full development recipe.
+It ends by saying what to do next, for example *"Synced DOP→XMP: 16 file(s) →
+reload metadata in Lightroom"* and *"Synced XMP→DOP: 2 file(s) → read sidecars
+in PhotoLab"*, because neither program notices on its own that a sidecar
+changed.
+
+Run it after a development session, before Read & Summarize. It covers crop and
+exposure only — not the full development recipe. Also the *Sync Sidecars* column
+of the Trip panel, for one day.
 
 ---
 
@@ -341,10 +351,8 @@ means its predecessor is still pending — hover it and the tooltip says which.
 
 ### 1. Read & Summarize — `Ctrl+D`
 
-Reads the day's picture directory (EXIF, sidecars, species names) and writes the
-day's summary data. It is two historical steps in one — *Read Directory* +
-*Write Summary* — merged because the EXIF cache makes re-reading cheap, so fresh
-data is the sensible default.
+Reads the day's pictures (EXIF, sidecars, species names) and writes the day's
+summary data.
 
 This is the step that turns "a folder of files" into "a day the application
 understands". Re-run it any time; it is not destructive.
@@ -371,12 +379,8 @@ In the blog text, **Ctrl+K** inserts or edits a link. Links survive translation.
 
 ### 3. Publish Day
 
-**Freeze** the day's data and **commit** it to the website, in one step. Freeze
-also builds the website pages, which is why the old separate "Build Website" step
-no longer exists.
-
-Freezing is what makes a day's data final and quotable — it is the snapshot the
-master merge later reads from. The step ends with the result: how many species
+Makes the day's data final, builds the day's website pages and puts them on
+the website. The final data is also what the master merge reads from later. The step ends with the result: how many species
 the trip has, how many are new this day, and how many have a picture on the trip
 website.
 
@@ -385,12 +389,12 @@ stops with nothing copied.
 
 A published day is locked (🔒) and cannot be re-run on its own; only its blog
 can still be rewritten. If you need to bring in more pictures afterwards,
-**Reset Trip** frees all the days again so you can re-publish from a clean state.
+[Reset Trip](#reset-trip--unlock-the-published-days) frees all the days again so you can re-publish from a clean state.
 Because of that, publish a day only when you are fairly sure it is complete. The
-order in which you publish days does not matter.
-
-> The individual **Freeze Data** and **Write Website Commit** steps still exist
-> under *Advanced ▸ Legacy*, for the rare case where you want only one of them.
+trip's species list and website come out the same in any publishing order;
+a publish never lowers the number of species on the trip website. One number
+does follow the order: *new this day* in the closing line counts against the
+days already published. Publish in date order and it means "new on this date".
 
 ### 4. Make the Blogs Clickable
 
@@ -402,8 +406,8 @@ A **required finalize step over the whole trip**, not a cosmetic extra. It adds:
 - hyperlinks on scientific names, pointing at the species pages.
 
 It can only do this once all the species in the trip are known, which is why it
-comes after the per-day steps rather than during them. Re-run it whenever you
-publish more days.
+comes after the days are published rather than during them. Re-run it whenever
+you publish more days or add species.
 
 ### 5. Manage Trip Publication…
 
@@ -421,6 +425,22 @@ machine published is not silently dropped.
 >
 > A listing whose trip or album you can no longer open is repaired from
 > [Master ▸ Maintain Master Database ▸ Manage Site Publication…](06-master.md).
+
+### Reset Trip — unlock the published days
+
+*Needs: an active trip.*
+
+Rebuilds the trip's generated data — the per-day summaries — from the current
+pictures and species, and frees the published days so the pipeline picks up
+changes you have made. Also the **Reset Trip** button above the Trip panel. Open
+picture windows of the trip are closed first. Your own work is kept:
+hand-edited blog text and the trip species list are not touched, and
+anything already published stays up. After a reset you can refresh the website.
+
+Reset is a normal part of working on a trip, not a repair: a published day is
+locked, and Reset is how you go back to it — to add pictures, change a species
+name, or choose different blog pictures. Then run the steps again for the days
+you changed. The menu still has it under *Advanced*.
 
 ---
 
@@ -442,19 +462,21 @@ filters and bulk actions are documented in
 [10. The viewers](10-viewers.md#the-species-viewers).
 
 > **Frozen days open read-only.** Once a day has been committed, its cards are
-> not editable; this is a guard, not a bug.
+> not editable; this is a guard, not a bug.  After a reset, all days can be updated.
 
 ### Edit Species List
 
 *Needs: an active trip.*
 
-Opens the **shared species name dictionary** — scientific name to English and
-Dutch common names.
+Opens the master's **species list** — scientific name with its English and
+Dutch name. Use it mostly to fill in an English or Dutch name that GBIF does
+not have; Wikipedia in that language is a good source. **Lookup NBA** fills in
+missing English and Dutch names for the rows shown, from the Netherlands
+Biodiversity API, which sometimes knows more names than GBIF.
 
-> **There is only one list.** This entry and [Master ▸ Edit Species
+> **There is one list per master.** This entry and [Master ▸ Edit Species
 > List](06-master.md) open the same file: the master's
-> `metadata/active/speciescollection.csv`. It used to be two lists on two files,
-> and which entry you happened to open decided who saw your correction.
+> `metadata/active/speciescollection.csv`.
 >
 > When you save, changed rows are also mirrored into the active trip's working
 > copy, so the trip's own pipeline steps see the new names. If no master is
@@ -511,22 +533,12 @@ Double-click a picture (or press `z`) for a big look.
 
 ## Advanced
 
-Rare maintenance. Nothing here is part of a normal trip.
+Rare maintenance. Nothing here is part of a normal trip — except Reset Trip,
+which is described with [the pipeline](#reset-trip--unlock-the-published-days).
 
 ### Manage Blogs
 
 The delete-a-blog tool: lists the trip's blog entries and lets you remove one.
-
-### Reset Trip
-
-*Needs: an active trip.*
-
-Rebuilds the trip's generated data — the per-day summaries — from the current
-pictures and species, and frees the frozen days so the pipeline picks up changes
-you have made. Also a button under the Trip panel. Open picture windows of the
-trip are closed first. Your customisations are
-kept: hand-edited blog text and the trip species list are not touched, and
-anything already published stays up. After a reset you can refresh the website.
 
 ### Recreate Trip Repository
 
