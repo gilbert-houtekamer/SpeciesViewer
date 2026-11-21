@@ -19,7 +19,6 @@ ingest, freeze or commit. There is only writing it up and publishing it.
 | Manage Album Publication… | An active album |
 | Species per Day… | An active album |
 | Album Species Viewer | An active album |
-| Sync Placed GPS into the Index… | An active album |
 | Export Album | An active album |
 | Import Album | A master |
 | Delete Album… | |
@@ -209,28 +208,6 @@ the trip repository is long gone.
 Its scopes and filters are in
 [10. The viewers](10-viewers.md#the-species-viewers) — note especially that in an
 album a colour-delete removes **master** pictures, not working copies.
-
-### Sync Placed GPS into the Index…
-
-*Needs: an active album.*
-
-A **master repair**, offered here for one album's dates. A picture you placed by
-hand on the map has its coordinate, its place name and a *placed by hand* flag
-in its sidecar. Older versions of SpeciesViewer copied only the coordinate into
-the master's list, so such a picture showed raw coordinates on its card, and the
-map would not let you move it. This copies the name and the flag from the
-sidecar into the list. It invents nothing, and a position the camera recorded
-is left alone.
-
-You only need it for pictures placed before July 2026; new placements are
-copied in full. It works on the album's dates only to keep it quick — the same
-gap in the rest of the master is not offered anywhere.
-
-> The question it asks counts too much: "8,599 are missing the flag" counts
-> every picture with a coordinate, camera positions included, while only the
-> ones placed by hand change. Backlog 1.17.
-
----
 
 ## Moving and removing
 

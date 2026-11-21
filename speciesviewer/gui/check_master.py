@@ -16,7 +16,8 @@ INVARIANTS
 - The checks run on a worker thread; each opens and closes its own database
   connection there (SQLite connections do not cross threads).
 - A check that fails says so on its own line; the others still run.
-- After a fix, its row is checked again — the line always shows the state on disk.
+- After a fix, every line is checked again — a fix can change another line.
+- A slow check (ON_REQUEST) runs only when its Check now is pressed.
 """
 
 import logging
@@ -65,6 +66,14 @@ def check_gps_in_files(master):
     return n, f"{n:,} pictures have a camera position in their files but none in the list"
 
 
+def check_placed_gps(master):
+    from gui.place_sync import plan_sync
+    p = plan_sync(master)
+    names, flags = len(p["loc_updates"]), len(p["prov_updates"])
+    return names + flags, (f"{names:,} place names and {flags:,} movable flags are in "
+                           f"the sidecars but not in the list")
+
+
 def check_orphan_sidecars(master):
     import engine.admin_rebuild as ar
     info = ar.find_orphan_sidecars(master)
@@ -89,6 +98,10 @@ def check_read_copy(master):
     return len(findings), f"The master is {rep.summary()}"
 
 
+# Checks that only run when asked: they are slow (this one reads every sidecar
+# that could need it, 1–2 minutes on a large master) and rarely find anything.
+ON_REQUEST = {"placed"}
+
 # key, title, what it checks, check function, fix buttons [(label, fixes-key)]
 CHECKS = [
     ("disk", "Lists vs. Files on Disk",
@@ -103,6 +116,11 @@ CHECKS = [
      "A camera position in a picture's files that never reached the picture "
      "itself, so the map does not show it.", check_gps_in_files,
      [("Fill…", "fill_gps")]),
+    ("placed", "Hand-Placed GPS Not in the List",
+     "A place name or movable flag that sits in a picture's sidecar but not in "
+     "the master's list — its card then shows raw coordinates. Placing pictures "
+     "has copied all three since July 2026, so this is for older placements.",
+     check_placed_gps, [("Check now", "_check_now"), ("Copy…", "placed_gps")]),
     ("orphans", "Orphan Sidecars",
      "PhotoLab and Lightroom files left behind after their picture was deleted.",
      check_orphan_sidecars, [("Move to trash…", "orphans")]),
@@ -180,16 +198,29 @@ class CheckMasterWindow(QDialog):
         bottom.addWidget(restore)
         bottom.addStretch(1)
         self._again = QPushButton("Check again")
-        self._again.clicked.connect(lambda: self.check([c[0] for c in CHECKS]))
+        self._again.clicked.connect(lambda: self.check(self._routine()))
         bottom.addWidget(self._again)
         close = QPushButton("Close")
         close.clicked.connect(self.close)
         bottom.addWidget(close)
         lay.addLayout(bottom)
 
-        self.check([c[0] for c in CHECKS])
+        for k in ON_REQUEST:
+            self._not_checked(k)
+        self.check(self._routine())
 
     # ── checking ─────────────────────────────────────────────────────────
+
+    def _routine(self):
+        """Every check that runs by itself; the slow ones wait for Check now."""
+        return [c[0] for c in CHECKS if c[0] not in ON_REQUEST]
+
+    def _not_checked(self, key):
+        self._status[key].setText("not checked — it reads every sidecar that could "
+                                  "need it (a minute or two). Use Check now.")
+        self._status[key].setStyleSheet(f"color: {_th.INK_FAINT};")
+        for b in self._buttons[key]:
+            b.setEnabled(b.text() == "Check now")
 
     def check(self, keys):
         if self._thread is not None:
@@ -217,11 +248,14 @@ class CheckMasterWindow(QDialog):
         for b in self._buttons[key]:
             # A report (Details, Full report) is always useful; a fix only
             # when there is something to fix.
-            b.setEnabled(bool(n) or b.text() in ("Details…", "Full report…"))
+            b.setEnabled(bool(n) or b.text() in ("Details…", "Full report…",
+                                                 "Check now"))
 
     def _on_failed(self, key, err):
         self._status[key].setText(f"❌ could not check: {err}")
         self._status[key].setStyleSheet(f"color: {_th.WARN};")
+        for b in self._buttons[key]:
+            b.setEnabled(b.text() == "Check now")
 
     def _on_finished(self):
         self._thread = None
@@ -232,6 +266,9 @@ class CheckMasterWindow(QDialog):
     def _fix(self, key, fix_key):
         if self._thread is not None:
             return
+        if fix_key == "_check_now":
+            self.check([key])
+            return
         if fix_key == "_details":
             QMessageBox.information(self, "Lists vs. Read-Copy",
                                     getattr(check_read_copy, "details", "") or
@@ -241,12 +278,17 @@ class CheckMasterWindow(QDialog):
         if fn is None:
             return
         fn()                                # its own review + confirmation
-        self.check([key])
+        # Every line, not just this one: a fix can change another line (moving
+        # orphan sidecars empties rows that Lists vs. Files on Disk counts). A slow
+        # on-request line only when it was the one fixed.
+        self.check(self._routine() + ([key] if key in ON_REQUEST else []))
 
     def _restore(self):
         from gui.master_restore import restore_master_lists
         if restore_master_lists(self, self._master):
-            self.check([c[0] for c in CHECKS])
+            for k in ON_REQUEST:
+                self._not_checked(k)
+            self.check(self._routine())
 
     def closeEvent(self, e):
         if self._thread is not None:

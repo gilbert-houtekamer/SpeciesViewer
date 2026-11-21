@@ -159,8 +159,8 @@ SpeciesViewer keeps a fast read-copy of the master's lists on this computer (a
 SQLite database). It is rebuilt by itself whenever the master's lists change, so
 you normally never look here. The tab shows:
 
-- **Master SQLite cache** — how many rows, how big, when it was last built, and a
-  *Rebuild* button.
+- **Master SQLite cache** — how many rows, how big, and when it was last built.
+  To rebuild it: *Manage Caches ▸ Master read-copy ▸ Rebuild*.
 - **Writing changes back to the master** — an edit goes into the read-copy first
   and is then written back to the master's lists. A count that stays above zero
   means that write-back is stuck — usually because the master's drive cannot be
@@ -237,6 +237,8 @@ move it to another folder (a faster or bigger disk). Caches live under
   Previews that have not been looked at for 90 days, or whose picture is gone,
   are removed by themselves. An old *master EXIF cache* may still be listed:
   nothing uses it any more, so clear it to get the space back.
+- **Master read-copy** — the fast copy of the master's lists. It rebuilds
+  itself when the lists change; *Rebuild* forces it.
 - **Upload caches** — one per website: what has already been uploaded, so a
   publish only sends what changed. Clearing one makes the next publish send
   everything again.

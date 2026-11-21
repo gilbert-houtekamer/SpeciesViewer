@@ -27,7 +27,7 @@ def _window(app, monkeypatch, results):
     parent = QWidget()
     win = cm.CheckMasterWindow(parent, "M", {k: (lambda k=k: fixed.append(k))
                                              for k in ("refresh_review", "refresh_apply",
-                                                       "recount", "audit", "fill_gps", "orphans")})
+                                                       "recount", "audit", "fill_gps", "orphans", "placed_gps")})
     win._thread.wait()
     app.processEvents()
     return win, fixed, parent
@@ -36,7 +36,7 @@ def _window(app, monkeypatch, results):
 def test_each_check_reports_on_its_own_line(app, monkeypatch):
     win, _fixed, _p = _window(app, monkeypatch, {
         "disk": (3, "3 rows"), "counters": (0, ""), "gps": (2, "2 pictures"),
-        "orphans": RuntimeError("drive gone"), "readcopy": (0, "")})
+        "orphans": RuntimeError("drive gone"), "readcopy": (0, ""), "placed": (0, "")})
     assert win._status["disk"].text().startswith("⚠")
     assert "nothing to repair" in win._status["counters"].text()
     assert "could not check" in win._status["orphans"].text()   # the others still ran
@@ -52,11 +52,26 @@ def test_each_check_reports_on_its_own_line(app, monkeypatch):
 def test_a_fix_runs_its_tool_and_checks_that_row_again(app, monkeypatch):
     win, fixed, _p = _window(app, monkeypatch, {
         "disk": (0, ""), "counters": (0, ""), "gps": (2, "2 pictures"),
-        "orphans": (0, ""), "readcopy": (0, "")})
+        "orphans": (0, ""), "readcopy": (0, ""), "placed": (0, "")})
     win._buttons["gps"][0].click()
     assert fixed == ["fill_gps"]
     assert win._status["gps"].text() == "checking…"
     win._thread.wait()
     app.processEvents()
+    win._thread = None
+    win.close()
+
+
+def test_the_slow_check_waits_for_check_now(app, monkeypatch):
+    win, fixed, _p = _window(app, monkeypatch, {
+        "disk": (0, ""), "counters": (0, ""), "gps": (0, ""),
+        "orphans": (0, ""), "readcopy": (0, ""), "placed": (5, "5 names")})
+    assert "not checked" in win._status["placed"].text()
+    check_now, copy = win._buttons["placed"]
+    assert check_now.isEnabled() and not copy.isEnabled()
+    check_now.click()
+    win._thread.wait()
+    app.processEvents()
+    assert win._status["placed"].text().startswith("⚠") and copy.isEnabled()
     win._thread = None
     win.close()

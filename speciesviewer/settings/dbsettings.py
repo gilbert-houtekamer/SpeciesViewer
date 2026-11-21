@@ -5,7 +5,7 @@ sizes, when it was last built, and — most importantly — the pending master
 write queue (master.wal.jsonl). If pending writes sit unflushed for longer than
 the configurable threshold (e.g. Dropbox offline, or the checkpoint worker
 wedged) a red banner warns the user. "Flush now" forces a synchronous
-checkpoint; "Rebuild master DB" re-mirrors the CSVs.
+checkpoint. Rebuilding the read-copy lives in File ▸ Settings ▸ Manage Caches.
 """
 
 import logging
@@ -141,9 +141,6 @@ class DatabaseSettingsDialog(QDialog):
         flush_btn = QPushButton("Flush now")
         flush_btn.clicked.connect(self._flush_now)
         btn_row.addWidget(flush_btn)
-        rebuild_btn = QPushButton("Rebuild master DB")
-        rebuild_btn.clicked.connect(self._rebuild)
-        btn_row.addWidget(rebuild_btn)
         btn_row.addStretch(1)
         layout.addLayout(btn_row)
 
@@ -407,24 +404,6 @@ class DatabaseSettingsDialog(QDialog):
             return
         from settings.trash_restore import RestoreTrashDialog
         RestoreTrashDialog(self, self._master_root).exec()
-        self._refresh()
-
-    def _rebuild(self):
-        if not self._master_root or not Path(self._master_root).exists():
-            QMessageBox.warning(self, "Rebuild master DB",
-                                "Master root not configured or not found.")
-            return
-        from db.master_db import MasterDB
-        try:
-            db = MasterDB(self._master_root)
-            db.rebuild()
-            n = db.picture_count()
-            db.close()
-        except Exception as e:
-            QMessageBox.warning(self, "Rebuild master DB", f"Rebuild failed:\n{e}")
-            return
-        QMessageBox.information(self, "Rebuild master DB",
-                                f"Master DB rebuilt — {n} pictures indexed.")
         self._refresh()
 
     def _save_warn_secs(self):

@@ -1458,8 +1458,8 @@ def build_menu_spec(main_window):
         logger.info(
             f"Master database refreshed and safely backed up. Cleared "
             f"{r['removed_files']} stale entries, fixed {r['repointed']} moved pictures, "
-            f"and tidied {r['pictures_dropped']} empty ones. Next: Recount Species Counters "
-            f"to update the totals.")
+            f"and tidied {r['pictures_dropped']} empty ones.")
+        recount = _recount_after_apply(master, r)
         QMessageBox.information(
             main_window, "Refresh Master Database — Apply — done",
             f"Removed {r['removed_files']} dead file rows.\n"
@@ -1470,9 +1470,32 @@ def build_menu_spec(main_window):
                if r.get("species_unresolved") else "") +
             f"Dropped {r['pictures_dropped']} phantom pictures "
             f"(cleaned {r['files_cleaned']} Files lists).\n\n"
-            f"Backups in: {r['backup_dir']}\n\n"
-            f"Next: Species Counters in Check the Master, so the per-species "
-            f"counts match the pictures; the master's read-copy rebuilds itself.")
+            f"Backups in: {r['backup_dir']}\n\n" + recount)
+
+    def _recount_after_apply(master, r) -> str:
+        """Dropping or re-filing pictures changes the species counts, so the recount
+        follows in the same go instead of showing up as the next warning in Check the
+        Master. It only recomputes counters from the pictures (species.csv backed up
+        first); returns one sentence for the done message."""
+        if not (r.get("pictures_dropped") or r.get("species_changed")):
+            return "The species counts did not need a change."
+        import engine.master_recount as mr
+        try:
+            p = mr.plan(master)
+            if not p["changes"]:
+                return "The species counts already matched."
+            worst = sorted((c for c in p["changes"] if c[0] == "Level.SPECIES"
+                            and c[2] == "iPictureCollectionCount"),
+                           key=lambda c: -abs(int(c[3] or 0) - int(c[4] or 0)))[:3]
+            mr.apply(master)
+        except Exception as e:
+            logger.warning(f"Recount after Apply failed: {e}", exc_info=True)
+            return (f"⚠ The species counts could not be updated ({e}). "
+                    f"Use Species Counters ▸ Recount… in Check the Master.")
+        ex = ", ".join(f"{n} {o} → {v}" for _l, n, _c, o, v in worst)
+        logger.info(f"Recounted {p['species']} species after Apply ({ex}).")
+        return (f"Recounted {p['species']} species to match"
+                + (f" ({ex})." if ex else "."))
 
     heal_admin_item = MenuSpec(
         callback=_heal_admin,
@@ -1615,7 +1638,11 @@ def build_menu_spec(main_window):
         QMessageBox.information(
             main_window, "Clean Orphan Sidecars — done",
             f"Moved {r['moved']} orphan sidecar(s) to:\n{r['trash']}\n\n"
-            f"Run Refresh Master Database — Apply to clear their (now-dangling) admin rows.")
+            f"Their rows are still in the master's list. The next window clears "
+            f"them — it shows what it would remove and asks first.")
+        # Step two in the same go: without it the rows of the files just moved show
+        # up as "files that are gone" in Check the Master (seen 2026-11-21).
+        heal_admin_item.callback()
 
     clean_orphans_item = MenuSpec(
         callback=_clean_orphan_sidecars,
@@ -1738,6 +1765,8 @@ def build_menu_spec(main_window):
             "audit": audit_species_item.callback,
             "fill_gps": consolidate_gps_item.callback,
             "orphans": clean_orphans_item.callback,
+            "placed_gps": lambda: __import__(
+                "gui.place_sync", fromlist=["open_place_sync"]).open_place_sync(main_window),
         }).exec()
 
     check_master_item = MenuSpec(
@@ -2031,17 +2060,6 @@ def build_menu_spec(main_window):
                 enabled=has_active_album,
                 showsubdirectory=False,
             ),
-            f"{MenuSpec.separator()}_vt_sync": None,
-            "Sync Placed GPS into the Index…": MenuSpec(
-                callback=lambda: __import__(
-                    "gui.place_sync", fromlist=["open_place_sync_for_active_album"]
-                ).open_place_sync_for_active_album(main_window),
-                title="Sync Placed GPS into the Index…",
-                enabled=has_active_album,
-                tooltip="For this album, copy the place name and movable flag a "
-                        "hand-placed coordinate already carries in its sidecar into "
-                        "the master index (fixes cards showing raw coordinates)",
-                showsubdirectory=False),
             f"{MenuSpec.separator()}_vt5": None,
             "Export Album": export_virttrip,
             "Import Album": import_virttrip,

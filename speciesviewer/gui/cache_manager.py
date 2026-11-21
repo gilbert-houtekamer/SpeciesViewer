@@ -289,6 +289,33 @@ class ManageCachesDialog(QDialog):
             if edit_btn is not None:
                 edit_btn.clicked.connect(lambda _, r=row: self._on_edit(r))
 
+        # The master's read-copy (SQLite) is a cache too: rebuilt from the
+        # master's lists by itself; Rebuild forces it (moved here from Settings ▸
+        # Database, backlog 1.9). Not a pie slice and not in Clear All — it is
+        # rebuilt, never just thrown away.
+        db_group = QGroupBox("Master read-copy")
+        dl = QVBoxLayout(db_group)
+        sub = QLabel("A fast copy of the master's lists on this computer. It rebuilds "
+                     "itself when the lists change; Rebuild forces it.")
+        sub.setStyleSheet("color: grey; font-size: 11px;")
+        sub.setWordWrap(True)
+        dl.addWidget(sub)
+        db_row = QHBoxLayout()
+        self._db_size_lbl = QLabel()
+        db_row.addWidget(self._db_size_lbl)
+        db_row.addStretch()
+        rb = QPushButton("Rebuild")
+        rb.setFixedWidth(80)
+        rb.setStyleSheet("QPushButton { padding: 4px 0px; }")
+        rb.clicked.connect(self._rebuild_read_copy)
+        db_row.addWidget(rb)
+        dl.addLayout(db_row)
+        self._db_path_lbl = QLabel()
+        self._db_path_lbl.setStyleSheet("color: grey; font-size: 10px;")
+        self._db_path_lbl.setWordWrap(True)
+        dl.addWidget(self._db_path_lbl)
+        root.addWidget(db_group)
+
         root.addStretch()
         self._tabs.addTab(local_page, _LOCAL_TAB)
         self._tabs.addTab(self._build_upload_page(), "Upload caches")
@@ -308,6 +335,43 @@ class ManageCachesDialog(QDialog):
         close.clicked.connect(self.accept)
         btns.addWidget(close)
         outer.addLayout(btns)
+
+    # ── the master's read-copy ─────────────────────────────────────────────
+
+    def _refresh_read_copy(self) -> None:
+        from db.master_db import db_path
+        dbp = db_path()
+        size = sum(p.stat().st_size for p in (dbp, dbp.with_name(dbp.name + "-wal"),
+                                               dbp.with_name(dbp.name + "-shm"))
+                   if p.exists())
+        self._db_size_lbl.setText(_fmt(size) if dbp.exists() else "not built")
+        self._db_path_lbl.setText(str(dbp))
+
+    def _rebuild_read_copy(self) -> None:
+        from utils.config import _config
+        root = _config.get("master", "masterbiotadatabase", fallback="").strip().strip('"')
+        if not root or not Path(root).exists():
+            QMessageBox.warning(self, "Rebuild the read-copy",
+                                "No master is configured, or it cannot be reached.")
+            return
+        from db.master_db import MasterDB
+        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+        try:
+            db = MasterDB(root)
+            try:
+                db.rebuild()
+                n = db.picture_count()
+            finally:
+                db.close()
+        except Exception as e:
+            QApplication.restoreOverrideCursor()
+            QMessageBox.warning(self, "Rebuild the read-copy", f"Rebuild failed:\n{e}")
+            return
+        finally:
+            QApplication.restoreOverrideCursor()
+        self._refresh_read_copy()
+        QMessageBox.information(self, "Rebuild the read-copy",
+                                f"Rebuilt from the master's lists — {n:,} pictures.")
 
     def _on_tab_changed(self, index: int) -> None:
         self._clear_all_btn.setVisible(self._tabs.tabText(index) == _LOCAL_TAB)
@@ -524,6 +588,10 @@ class ManageCachesDialog(QDialog):
     # ── refresh ───────────────────────────────────────────────────────────────
 
     def _refresh(self) -> None:
+        try:
+            self._refresh_read_copy()
+        except Exception:                 # a size line, never a blocker
+            pass
         self._preview_scan_cache = None   # one fresh preview-cache walk this cycle
         pie_sizes = [0.0] * len(_SLICE_NAMES)
         for row in self._rows:

@@ -1,6 +1,6 @@
 # Menu regroup — by design vs. repair (backlog 1.9, with 1.3, 1.5, 1.17)
 
-*Status: **agreed 2026-11-21** (decisions in the Excel's last column). Every menu item, one row each, with its
+*Status: **DONE 2026-11-21** (steps 1–3 + 1.17), agreed 2026-11-21 (decisions in the Excel's last column). Every menu item, one row each, with its
 proposed place and name: [`menu_regroup.xlsx`](menu_regroup.xlsx) — the
 **Your thoughts** column is for your remarks. 1.8 (Rescan master EXIF cache) is
 done and no longer listed.*

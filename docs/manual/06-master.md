@@ -270,13 +270,19 @@ it be stopped at the source?
 The window runs every check as a **report** when it opens — nothing is changed —
 and shows one line per check: ✅ nothing to repair, ⚠ what it found, or why it
 could not check. Each line has its fix: the tool below, which shows what it would
-do and asks first. After a fix, that line checks itself again.
+do and asks first. After a fix, every line checks itself again, because one fix
+can change another line.
+
+**Hand-Placed GPS Not in the List** is the exception: it reads sidecars and takes
+a minute or two, and rarely finds anything, so it waits until you press its
+**Check now**.
 
 | Check | What it looks at | Fix |
 |---|---|---|
 | **Lists vs. Files on Disk** | Rows whose file is gone, has moved, or sits under another species | *Review…* and *Apply…* (Refresh Master Database) — Apply is the only destructive fix |
 | **Species Counters** | The species list's picture counts against the pictures really there | *Recount…*; *Full report…* lists every difference |
 | **GPS in the Files, Not in the List** | A camera position that never reached the picture itself | *Fill…* — additive only |
+| **Hand-Placed GPS Not in the List** | A place name or movable flag in a picture's sidecar, but not in the list | *Check now*, then *Copy…* — copies only what the sidecars hold |
 | **Orphan Sidecars** | `.xmp`/`.dop` files left after their picture was deleted | *Move to trash…* |
 | **Lists vs. Read-Copy** | The master's lists against SpeciesViewer's fast read-copy, and against themselves | *Details…* |
 
@@ -313,8 +319,9 @@ files are all gone.
 Both CSVs are backed up first to `admin/status/backup/`. You get the counts and
 an explicit confirmation before anything is written.
 
-Afterwards, run **Species Counters ▸ Recount…** to bring the per-species totals in
-line; the master's SQLite cache rebuilds itself.
+When it dropped or re-filed pictures, it then recounts the species counters by
+itself (species.csv is backed up first) and says which species changed — so they
+do not show up as the next warning. The master's read-copy rebuilds itself.
 
 > More detail, including when the admin drifts in the first place, is in
 > [the Refresh how-to](howto_refresh_master_database.md).
@@ -345,15 +352,34 @@ read as having no GPS while its RAW holds a perfectly good one.
 **Additive only.** It never changes or removes an existing coordinate. If every
 picture already carries its own, it says so and does nothing.
 
+### Hand-Placed GPS Not in the List — Copy…
+
+A picture you placed by hand on the map has its coordinate, its place name and
+a *placed by hand* flag in its sidecar. Older versions of SpeciesViewer copied
+only the coordinate into the master's list, so such a picture showed raw
+coordinates on its card, and the map would not let you move it. This copies the
+name and the flag from the sidecar into the list, for the whole master. It
+invents nothing, and a position the camera recorded is left alone. You only
+need it for pictures placed before July 2026; new placements are copied in full.
+
+The check reads the sidecars of the pictures that could need it — every picture
+with a position but no place name at all (no place, town, region or country),
+and every hand-placed one without the flag. It takes a minute or two on a large
+master.
+A position the camera recorded never gets the flag, so those are not counted
+(the old Albums item counted them: "8,599 missing the flag"). *Copy…* uses
+that read (if it is less than 15 minutes old), says how many names and flags
+**will** change, and asks first.
+
 ### Orphan Sidecars — Move to trash…
 
 Finds `.xmp` / `.dop` sidecars whose image is gone and moves them to a
 recoverable trash folder. It shows the count and extension breakdown, and asks
 before moving anything.
 
-Their now-dangling rows in the master admin are cleared by the next
-**Lists vs. Files on Disk — Apply**, so the natural order is: clean orphans,
-then refresh-apply.
+Their rows are still in the master's list, so straight after the move it opens
+**Lists vs. Files on Disk — Apply**, which shows what it would remove and asks
+first. After any fix, Check the Master checks every line again.
 
 ### Lists vs. Read-Copy — Details…
 
@@ -361,7 +387,7 @@ SpeciesViewer keeps a fast read-copy of the master's lists on this computer. Thi
 check compares the two — row counts, pictures naming a JPG that has no file row,
 orphan file rows, and pictures that would publish as a broken image — and
 *Details…* lists what it found. The read-copy rebuilds itself when the lists
-change; *Settings ▸ Database ▸ Rebuild master DB* forces it.
+change; *File ▸ Settings ▸ Manage Caches ▸ Master read-copy ▸ Rebuild* forces it.
 
 ### Restore the Master's Lists from a Backup…
 

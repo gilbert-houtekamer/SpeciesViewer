@@ -1902,16 +1902,21 @@ class MasterDB:
         master-wide run would read tens of thousands of camera sidecars to change the
         handful a person placed. Scoping to the album a user is fixing keeps it fast."""
         con = self._connect()
+        # "No place name" = ALL five place columns empty. Location alone is the
+        # sub-location, empty on most named pictures ("Texel, Netherlands" has a
+        # City and a Country but no Location) — testing only it counted 14,240
+        # pictures that already show a name on their card (backlog 1.17).
+        no_place = "(" + " AND ".join(
+            f'TRIM(COALESCE("{c}","")) = ""' for c in self.LOCATION_COLUMNS) + ")"
         where = ['TRIM(COALESCE("GPSPosition","")) <> ""',
-                 '(TRIM(COALESCE("Location","")) = "" '
-                 ' OR TRIM(COALESCE("GPSProcessingMethod","")) = "")']
+                 f'({no_place} OR TRIM(COALESCE("GPSProcessingMethod","")) = "")']
         params: list = []
         if from_date and to_date:
             where.append('substr("DateTimeOriginal", 1, 10) BETWEEN ? AND ?')
             params += [self._day_key(from_date), self._day_key(to_date)]
         rows = con.execute(
             'SELECT "UniquePictureName" AS upn, '
-            '       (TRIM(COALESCE("Location","")) = "") AS need_place, '
+            f'       {no_place} AS need_place, '
             '       (TRIM(COALESCE("GPSProcessingMethod","")) = "") AS need_prov '
             '  FROM pictures WHERE ' + ' AND '.join(where), params).fetchall()
         return [{"upn": r["upn"], "need_place": bool(r["need_place"]),
@@ -2166,6 +2171,28 @@ class MasterDB:
                 self._set_picture_fields(con, upn, fields)
         MasterCheckpointWorker.get(self.master_root).notify()
         return {"candidates": len(updates), "applied": len(updates)}
+
+    def upns_with_camera_fix(self, upns) -> set:
+        """Of these UPNs, the set whose RAW or JPG (not a sidecar) carries its own
+        camera coordinate. Such a picture's position came from the camera, so it
+        never gets the MANUAL (movable) flag — the place sync need not read its
+        sidecar for that. One indexed query, chunked."""
+        upns = [u for u in upns if u]
+        out: set = set()
+        if not upns:
+            return out
+        con = self._connect()
+        CHUNK = 500
+        for i in range(0, len(upns), CHUNK):
+            chunk = upns[i:i + CHUNK]
+            ph = ", ".join(["?"] * len(chunk))
+            rows = con.execute(
+                f'SELECT DISTINCT "UniquePictureName" AS upn FROM files '
+                f'WHERE "UniquePictureName" IN ({ph}) '
+                f'  AND LOWER(COALESCE("WindowsExtension","")) NOT IN ("xmp", "dop") '
+                f'  AND TRIM(COALESCE("Composite:GPSPosition","")) <> ""', chunk).fetchall()
+            out.update(r["upn"] for r in rows)
+        return out
 
     def upns_with_gps(self, upns) -> set:
         """Of these UPNs, the set that has a non-empty GPSPosition in the master.

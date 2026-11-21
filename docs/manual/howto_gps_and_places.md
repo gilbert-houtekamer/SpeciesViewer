@@ -42,8 +42,9 @@ In the *Master* menu ([6. Master](06-master.md)); filling GPS from the files is 
   master's list does not.
 - **Geotag from Tracklog…** — match master pictures to a GPS log by time.
 
-All three show what they would change and ask first. For an album:
-[Sync Placed GPS into the Index…](07-albums.md).
+All three show what they would change and ask first. A place name or movable
+flag that sits in a hand-placed picture's sidecar but not in the list is a repair:
+[Check the Master ▸ Hand-Placed GPS Not in the List](06-master.md#check-the-master).
 
 ## On the website
 

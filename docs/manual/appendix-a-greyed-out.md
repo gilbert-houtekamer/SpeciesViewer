@@ -134,7 +134,6 @@ the work was done on another machine.
 | Manage Album Publication… | an active album |
 | Album Species Viewer | an active album |
 | Species per Day… | an active album |
-| Sync Placed GPS into the Index… | an active album |
 | Export Album | an active album |
 | Import Album | a master |
 | Delete Album… | — (it lists every album) |
