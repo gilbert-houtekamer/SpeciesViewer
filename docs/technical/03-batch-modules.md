@@ -96,8 +96,7 @@ module — listing and un-listing are separate operations, not one toggle.
 
 | Menu item | Runs |
 |---|---|
-| Maintain ▸ Rebuild Entire Website (all pages)… | `svMasterRebuildWeb` (master mode) |
-| Utilities ▸ Rebuild all Albums and the Master website… | `svrRebuildAllWebsites` |
+| Master ▸ Rebuild Websites… | `svrRebuildAllWebsites` (the master part runs `svMasterRebuildWeb`) |
 | Bird Checklist (Excel)… | `svu2avibase` |
 | PhotoMechanic Keywords… | `svu8PhotoMechanic` |
 | Create Small Master… | `svu9SmallMaster` |

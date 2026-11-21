@@ -1,7 +1,8 @@
-"""Pick deleted master pictures out of the trash and put them back.
+"""Master ▸ Master Trash… — the master's deleted pictures: restore or empty.
 
-ONE job: show everything the master trash can still restore, and restore the
-ticked ones. It is a browser over `master_mutate.restorable_batches()` — it owns
+ONE job: show everything the master trash can still restore, restore the
+ticked ones, or empty the trash for good (through gui.master_trash, the one
+confirmation for that). The mirror of Trips ▸ Trash (backlog 1.3). It is a browser over `master_mutate.restorable_batches()` — it owns
 no state of its own and never decides what is recoverable.
 
 Invariant: the list is rebuilt from the trash after every restore, never patched.
@@ -47,7 +48,7 @@ def _preview_source(paths: list[Path]) -> Path | None:
 class RestoreTrashDialog(QDialog):
     def __init__(self, parent, master_root):
         super().__init__(parent)
-        self.setWindowTitle("Restore images")
+        self.setWindowTitle("Master Trash")
         self._master_root = master_root
         self._rows: list[dict] = []
         self._thumbs: dict[str, QPixmap | None] = {}   # batch id → pixmap, None = tried and failed
@@ -56,7 +57,8 @@ class RestoreTrashDialog(QDialog):
         outer = QVBoxLayout(self)
         outer.addWidget(QLabel(
             "Pictures deleted from the master are kept in the trash until it is "
-            "emptied. Tick the ones to put back."))
+            "emptied. Tick the ones to put back, or empty the trash to delete them "
+            "for good."))
 
         middle = QHBoxLayout()
         self._table = QTableWidget(0, 5)
@@ -110,12 +112,26 @@ class RestoreTrashDialog(QDialog):
         self._restore_btn = QPushButton("Restore selected")
         self._restore_btn.clicked.connect(self._restore_selected)
         btns.addWidget(self._restore_btn)
+        # Empty is the one button that takes Restore away, so it sits in the
+        # same window, red, with its own confirmation (gui.master_trash).
+        self._empty_btn = QPushButton("Empty trash…")
+        self._empty_btn.setStyleSheet(
+            "color: white; background-color: #b00020; padding: 4px 10px;")
+        self._empty_btn.setToolTip("Permanently delete every picture in the master "
+                                   "trash. Nothing can be restored afterwards.")
+        self._empty_btn.clicked.connect(self._empty_trash)
+        btns.addWidget(self._empty_btn)
         close_btn = QPushButton("Close")
         close_btn.clicked.connect(self.accept)
         btns.addWidget(close_btn)
         outer.addLayout(btns)
 
         self._reload()
+
+    def _empty_trash(self):
+        from gui.master_trash import empty_master_trash
+        if empty_master_trash(self):
+            self._reload()
 
     # ── list ──────────────────────────────────────────────────────────────
 

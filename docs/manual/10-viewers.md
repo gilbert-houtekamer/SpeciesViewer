@@ -228,7 +228,7 @@ pose. What happens:
   later and press **↻ Web**.
 - Nothing is removed from the website itself: the old picture files stay there.
 - If a species would have no photo left on its page, the confirm window names it.
-- **Restore images** (master trash) puts a picture back with its counts and its
+- **Master ▸ Master Trash…** puts a picture back with its counts and its
   place on the species page, and offers to update those pages.
 
 ---

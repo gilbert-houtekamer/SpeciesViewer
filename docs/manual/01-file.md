@@ -165,9 +165,9 @@ you normally never look here. The tab shows:
   and is then written back to the master's lists. A count that stays above zero
   means that write-back is stuck — usually because the master's drive cannot be
   reached. *Flush now* forces it.
-- **Trashed images** — master pictures you deleted that can still be restored.
-  *Restore images…* brings them back; emptying the trash makes the delete final
-  (also [Master ▸ Empty Master Trash…](06-master.md)).
+- **Trashed images** — how many master pictures you deleted can still be
+  restored. *Master Trash…* opens the window to put them back or empty the trash
+  — the same window as [Master ▸ Master Trash…](06-master.md#master-trash).
 
 ### Decode quality
 

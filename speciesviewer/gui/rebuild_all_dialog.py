@@ -1,8 +1,9 @@
-"""Rebuild all Albums and the Master website — the GUI face of
-batch/svrRebuildAllWebsites.
+"""Master ▸ Rebuild Websites… — the GUI face of batch/svrRebuildAllWebsites.
 
-One job: sweep a template/code fix across every album's published site, without
-selecting each album by hand.
+One job: sweep a template/code fix across the master site and/or every album's
+published site, without selecting each album by hand. The one rebuild window
+(backlog 1.9): it replaced Master ▸ Rebuild Entire Website and Utilities ▸
+Rebuild all Albums and the Master website.
 
 Why its own dialog rather than BatchModuleRunner: that runner is built around a
 StateMachine keyed on one repository's PictureDirectory (it fingerprints step
@@ -90,7 +91,7 @@ class _Worker(QObject):
 class RebuildAllWebsitesDialog(QDialog):
     def __init__(self, parent):
         super().__init__(parent)
-        self.setWindowTitle("Rebuild all Albums and the Master website")
+        self.setWindowTitle("Rebuild Websites")
         self.resize(1000, 560)
         self._thread = None
         self._worker = None
@@ -102,10 +103,11 @@ class RebuildAllWebsitesDialog(QDialog):
         from gui.wait_picture import picture_column
         lay = picture_column(self, "sandgrouse")
         lay.addWidget(HTMLLabel(
-            "<p><b>Rebuild all Albums and the Master website</b></p>"
+            "<p><b>Rebuild Websites</b></p>"
             "<p>The site is generated, so a fix to a page template or to the "
-            "rendering code only reaches an album once that album is rebuilt. "
-            "This re-renders and re-uploads them all, one after another.</p>"
+            "rendering code only reaches the master site or an album once it is "
+            "rebuilt. This re-renders and re-uploads them, one after another. "
+            "HTML and pictures only — no master data is changed.</p>"
             "<p>Which album is active is not changed. An album that fails is "
             "reported and the sweep carries on.</p>"))
 
@@ -114,7 +116,8 @@ class RebuildAllWebsitesDialog(QDialog):
         # tripindex-nl/en.html), and an "Also…" checkbox offers no way to say it.
         self.albums_cb = QCheckBox("Rebuild the albums")
         self.albums_cb.setChecked(True)
-        self.master_cb = QCheckBox("Rebuild the master site")
+        self.master_cb = QCheckBox(
+            "Rebuild the master site (every species page — can take an hour)")
         # svv6RedoBlog rewrites blog HTML only — setSkipJPGs(True),
         # uploadBlog(sftpPictures=False) — so it is the cheap half of a refresh,
         # not the expensive one. On by default because it is exactly the step
@@ -125,10 +128,10 @@ class RebuildAllWebsitesDialog(QDialog):
         self.blogs_cb = QCheckBox(
             "…their blogs (HTML only — no pictures are moved)")
         self.blogs_cb.setChecked(True)
+        lay.addWidget(self.master_cb)
         lay.addWidget(self.albums_cb)
         lay.addWidget(self.pages_cb)
         lay.addWidget(self.blogs_cb)
-        lay.addWidget(self.master_cb)
         for cb in (self.albums_cb, self.pages_cb, self.blogs_cb, self.master_cb):
             cb.toggled.connect(self._sync_enabled)
 
@@ -145,7 +148,7 @@ class RebuildAllWebsitesDialog(QDialog):
         row = QHBoxLayout()
         row.addStretch(1)
         self.dry_btn = QPushButton("Show what would be rebuilt")
-        self.run_btn = QPushButton("Rebuild all…")
+        self.run_btn = QPushButton("Rebuild…")
         self.close_btn = QPushButton("Close")
         self.dry_btn.setDefault(True)
         row.addWidget(self.dry_btn)
@@ -167,7 +170,7 @@ class RebuildAllWebsitesDialog(QDialog):
             parts.append("the master site")
         what = " and ".join(parts)
         if QMessageBox.question(
-                self, "Rebuild all Albums and the Master website",
+                self, "Rebuild Websites",
                 f"This re-renders {what} and uploads the result.\n\n"
                 "It can take a long while. Continue?",
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,

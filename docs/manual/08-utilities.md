@@ -16,7 +16,6 @@ setup, and one site-wide rebuild.
 > Two items here end in a full stop and read as sentences ("Create an Excel to
 > keep track of birds seen."), unlike every other menu item. Noticed while writing
 > this manual.
-| Rebuild all Albums and the Master website… | |
 
 ---
 
@@ -111,24 +110,7 @@ Unpacks and configures a Small Master on this machine.
 
 ---
 
-## Rebuild all Albums and the Master website…
+## Rebuilding the websites
 
-Re-renders and re-uploads the album sites and/or the master site, so that a fix
-to a page template or the rendering code reaches all of them.
-
-Four choices: **Rebuild the albums** — with their species pages (uploads
-pictures; slow the first time, then only what changed) and/or their blogs (text
-only, no pictures moved) — and **Rebuild the master site**. **Show what would be
-rebuilt** lists the albums first; **Rebuild all…** does it. Which album is
-active does not change, and an album that fails is reported while the sweep
-carries on. Translations made along the way are kept, so the next rebuild does
-not ask for them again.
-
-This is the site-wide sweep. Its single-scope siblings are
-[Master ▸ Maintain Master Database ▸ Rebuild Entire Website](06-master.md) and
-[Albums ▸ Build Album Website](07-albums.md).
-
-Reach for it when you have changed something shared — a stylesheet, a template, a
-piece of rendering code — and need every published page to pick it up. A
-per-album copy of a shared asset goes stale silently otherwise, and there are
-many albums.
+Moved to [Master ▸ Rebuild Websites…](06-master.md#rebuild-websites): one window
+for the master site and all albums.

@@ -165,19 +165,14 @@ class DatabaseSettingsDialog(QDialog):
         layout.addLayout(tform)
 
         trash_row = QHBoxLayout()
-        undo_btn = QPushButton("Restore images…")
+        # Restore and Empty live in one window, Master ▸ Master Trash…
+        # (backlog 1.3); this opens the same window.
+        undo_btn = QPushButton("Master Trash…")
         undo_btn.setToolTip(
-            "Pick deleted master pictures out of the trash and put them back.\n"
-            "Only possible while the deleted files are still in the trash —\n"
-            "Empty trash discards them for good.")
+            "Put deleted master pictures back, or empty the trash for good.\n"
+            "Also in the Master menu.")
         undo_btn.clicked.connect(self._undo_last_delete)
         trash_row.addWidget(undo_btn)
-        purge_btn = QPushButton("Empty trash…")
-        purge_btn.setToolTip(
-            "Permanently remove every trashed file. Nothing can be restored\n"
-            "afterwards.")
-        purge_btn.clicked.connect(self._purge_trash)
-        trash_row.addWidget(purge_btn)
         trash_row.addStretch(1)
         layout.addLayout(trash_row)
 
@@ -535,14 +530,6 @@ class DatabaseSettingsDialog(QDialog):
         from settings.trash_restore import RestoreTrashDialog
         RestoreTrashDialog(self, self._master_root).exec()
         self._refresh()
-
-    def _purge_trash(self):
-        if not self._master_root:
-            return
-        # Same window as Master ▸ Empty Master Trash… — one confirmation, one path.
-        from gui.master_trash import empty_master_trash
-        if empty_master_trash(self):
-            self._refresh()
 
     def _rebuild(self):
         if not self._master_root or not Path(self._master_root).exists():

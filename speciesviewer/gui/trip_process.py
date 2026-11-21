@@ -2815,69 +2815,6 @@ class RedoTripBlogsDialog(BaseTripModuleDialog):
             subdirectory=False
         )
 
-class MasterRebuildWebsiteDialog(QDialog):
-    """Force a full re-render + upload of every master website page.
-
-    HTML-only and publish-only: it re-renders every species/taxon page (so a
-    shared-template change reaches all pages at once) and uploads, but never
-    freezes or commits any master data. Runs threaded via BatchModuleRunner so
-    the (multi-minute) render+upload doesn't block the GUI."""
-
-    def __init__(self, parent, menu_spec):
-        super().__init__(parent)
-        self.logger        = parent.logger
-        self.passed_parent = parent
-        self.menu_spec     = menu_spec
-        self.setWindowTitle("Rebuild Entire Master Website")
-        self.resize(600, 300)
-
-        layout = QVBoxLayout(self)
-        layout.addWidget(HTMLLabel(
-            "<p><b>Rebuild the entire master website</b></p>"
-            "<p>Re-renders <b>every</b> species and taxon page — not only those "
-            "changed since the last build — and uploads them. Use it after a "
-            "shared-template change that should appear on all pages (e.g. the "
-            "species search box).</p>"
-            "<p>This re-renders HTML and uploads only. It does <b>not</b> change, "
-            "freeze, or commit any master data. Unchanged files are skipped on "
-            "upload, but a full master can still take several minutes.</p>"
-        ))
-
-        # After a species-list conversion the site has the full-size pictures
-        # at their OLD paths only: send each once to its current place (ch.6).
-        self.pictures_box = QCheckBox("Also send the full-size pictures")
-        self.pictures_box.setToolTip(
-            "Needed once after the species list was converted: the website still has "
-            "the pictures in the old folders. Pictures already in place are skipped.")
-        layout.addWidget(self.pictures_box)
-
-        self.status_label = QLabel("")
-        self.status_label.setWordWrap(True)
-        layout.addWidget(self.status_label)
-
-        btn_layout = QHBoxLayout()
-        btn_layout.addStretch()
-        self.run_btn = QPushButton("Rebuild && Upload")
-        close_btn = QPushButton("Close")
-        btn_layout.addWidget(self.run_btn)
-        btn_layout.addWidget(close_btn)
-        layout.addLayout(btn_layout)
-
-        self.run_btn.clicked.connect(self.on_run)
-        close_btn.clicked.connect(self.close)
-
-    def on_run(self):
-        self.run_btn.setEnabled(False)
-        # on_success passes no args, on_failure passes the error string — accept both.
-        def _reenable(*_args):
-            self.run_btn.setEnabled(True)
-        # set per run, so the choice never sticks to the shared menu spec
-        self.menu_spec.batch_parms["extra_config"] = (
-            [("rebuild", "pictures", "yes")] if self.pictures_box.isChecked() else [])
-        runner = BatchModuleRunner(self, self.passed_parent)
-        runner.run(self.menu_spec, on_success=_reenable, on_failure=_reenable)
-
-
 class MasterPipelineDialog(QDialog):
     """Drive the master-side database merge — four progressive steps
     (count → ingest → build+freeze → commit) inside one dialog. Each step's

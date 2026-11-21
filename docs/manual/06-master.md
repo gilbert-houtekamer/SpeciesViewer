@@ -19,7 +19,8 @@ What remains is what you do *with* and *to* the collection itself.
 | Geotag from Tracklog (GPX/GPS log)… | A master |
 | Add Missing Location Names… | A master |
 | Manage Trip & Album Publication… | A master |
-| Empty Master Trash… | Deleted master pictures |
+| Master Trash… | Deleted master pictures |
+| Rebuild Websites… | A master |
 | Maintain Master Database ▸ … | A master |
 
 ---
@@ -192,7 +193,10 @@ It is the only way to cover:
 - a day the camera's own GPS was never switched on, and
 - **altitude**, which the camera never records at all.
 
-Review-first: nothing is written until you confirm.
+Review-first: nothing is written until you confirm. When pictures got a
+position, *Add Missing Location Names* opens next and starts looking up their
+place names straight away — still review-first. Without internet it says so, and
+you run it later from the Master menu.
 
 
 ## Add Missing Location Names…
@@ -219,22 +223,45 @@ they act on something you must first be able to select.
 The live index is always the base for any write, so listings published from
 another machine are not silently dropped.
 
-## Empty Master Trash…
+## Master Trash…
 
 *Needs: deleted master pictures; grey otherwise.*
 
-A delete in the master only moves the pictures to the master's trash, where they
-can still be restored (Settings ▸ Database ▸ *Restore images…*). This makes the
-delete final. It says what will go in plain numbers — "Permanently delete 1,256
-pictures of 11 species?", with the file count, size and delete dates — and
-Cancel is the default.
+A delete in the master only moves the pictures to the master's trash. This window
+shows them, newest first, with a picture of each — the mirror of
+*Trips ▸ Trash (deleted pictures)*:
+
+- **Restore selected** puts the ticked pictures back, with their counts and their
+  place on the species page.
+- **Empty trash…** makes every delete final. It says what will go in plain
+  numbers — "Permanently delete 1,256 pictures of 11 species?", with the file
+  count, size and delete dates — and Cancel is the default.
+
+*Settings ▸ Database* opens the same window.
+
+## Rebuild Websites…
+
+*Needs: a master.*
+
+Re-renders and re-uploads the **master site** and/or **every album's site**, so a
+fix to a page template or the rendering code reaches all of them. You choose:
+**the master site** (every species page — it can take an hour), and **the
+albums**, with their species pages (uploads pictures; slow the first time, then
+only what changed) and/or their blogs (text only).
+
+**Show what would be rebuilt** lists them first; **Rebuild…** does it, after a
+confirmation. Which album is active does not change, and an album that fails is
+reported while the sweep carries on. HTML and pictures only — no master data is
+changed.
+
+Reach for it after a SpeciesViewer update that changed how pages look. A single
+album is rebuilt with [Albums ▸ Build Album Website](07-albums.md).
 
 ---
 
 ## Maintain Master Database
 
-The **repairs**: tools you only need when something drifted, plus the full
-website rebuild. Everything here except **Apply** is non-destructive, and
+The **repairs**: tools you only need when something drifted. Everything here except **Apply** is non-destructive, and
 everything here is review-first: you see what would change before anything
 changes. (Planned: one *Check the Master…* window that runs all the checks as a
 report first.)
@@ -245,7 +272,6 @@ report first.)
 | Refresh Master Database — Apply… | **Yes** — the only destructive action in this submenu |
 | Recount Species Counters… | Recounts; backs up first |
 | Fill Picture GPS from Files… | Additive only |
-| Rebuild Entire Website (all pages)… | HTML only — no data changed |
 
 ### Refresh Master Database — Review…
 
@@ -304,16 +330,4 @@ read as having no GPS while its RAW holds a perfectly good one.
 
 **Additive only.** It never changes or removes an existing coordinate. If every
 picture already carries its own, it says so and does nothing.
-
-### Rebuild Entire Website (all pages)…
-
-Forces a full re-render and upload of **every** master species and taxon page,
-not just those that changed — for when a shared template or the rendering code
-changed and the fix has to reach all pages at once.
-
-**HTML only.** It never freezes or commits master data; it is deliberately
-separate from the data pipeline.
-
-Its album-and-master counterpart is
-[Utilities ▸ Rebuild all Albums and the Master website…](08-utilities.md).
 

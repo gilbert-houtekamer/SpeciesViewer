@@ -398,6 +398,9 @@ class TracklogGeotagDialog(QDialog):
         QMessageBox.critical(self, "Geotag from Tracklog", f"Writing failed:\n{msg}")
 
     def _on_written(self, res: dict):
+        # Remembered for open_tracklog_geotag: pictures that just got a
+        # position have no location name yet.
+        self.gps_written = getattr(self, "gps_written", 0) + res.get("gps_files", 0)
         self._thread = None
         self._bar.setVisible(False)
         self._plan_btn.setEnabled(True)
@@ -423,7 +426,28 @@ def open_tracklog_geotag(main_window):
                             "No master repository is configured.")
         return
     source = MasterSource(MasterDB(root), root)
-    TracklogGeotagDialog(main_window, source).exec()
+    dlg = TracklogGeotagDialog(main_window, source)
+    dlg.exec()
+    if getattr(dlg, "gps_written", 0):
+        _then_location_names(main_window)
+
+
+def _then_location_names(main_window):
+    """A geotag gives a position, not a place: look up the location names
+    straight away when the place-name service answers (backlog 1.9). The
+    window is still review-first — nothing is written until you confirm.
+    Offline (a trip without internet), say where to do it later."""
+    from engine import connectivity
+    _label, host, port, _note = connectivity.endpoints()["place"]
+    if not connectivity.probe(host, port, timeout=4.0)["ok"]:
+        QMessageBox.information(
+            main_window, "Geotag from Tracklog",
+            "The place-name service cannot be reached now, so the new positions "
+            "have no location names yet.\n\nWhen you are online, use "
+            "Master ▸ Add Missing Location Names….")
+        return
+    from gui.master_geocode import open_master_geocode
+    open_master_geocode(main_window, look_up_now=True)
 
 
 def open_tracklog_geotag_for_folder(parent, folder: str):

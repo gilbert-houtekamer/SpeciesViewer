@@ -120,7 +120,8 @@ the work was done on another machine.
 | Species Without a Website Picture… | a master |
 | Undo Last Species Move… | a species move to undo |
 | Maintain Master Database ▸ *every item* | a master |
-| Empty Master Trash… | deleted master pictures in the trash |
+| Master Trash… | deleted master pictures in the trash |
+| Rebuild Websites… | a master |
 
 ### Albums
 
@@ -150,7 +151,6 @@ the work was done on another machine.
 | Create PhotoMechanic keyword files… | — |
 | Create Small Master… | a master |
 | Install Small Master… | — |
-| Rebuild all Albums and the Master website… | — |
 
 ### Help
 

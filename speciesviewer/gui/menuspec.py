@@ -10,7 +10,7 @@ from gui.trip_process import (ReadDirDialog, ReadSummarizeDialog, TripCreationDi
         PublishDayDialog,
         WritePicturesDialog, CreateBlogDialog, FreezeDialog, WriteCommitDialog,
         CountSpeciesDialog, RedoTripBlogsDialog, MergeTripDialog,
-        MasterPipelineDialog, MasterRebuildWebsiteDialog, ConvertAvibaseDialog,
+        MasterPipelineDialog, ConvertAvibaseDialog,
         SyncSidecarsDialog, EmptyTripDataDialog, SpeciesCollectionDialog,
         BlogAdminDialog, PhotoMechanicDialog,
         SmallMasterDialog, InstallSmallMasterDialog,
@@ -42,7 +42,6 @@ import batch.sv4WriteBlog
 import batch.sv5BuildWebsite
 import batch.sv6Freeze
 import batch.sv7WriteCommit
-import batch.svMasterRebuildWeb
 import batch.svr2CountSpecies
 import batch.svr4UpdateTrips
 import batch.svr5MergeSpeciesCollections
@@ -855,6 +854,12 @@ def build_menu_spec(main_window):
         from gui.rebuild_all_dialog import RebuildAllWebsitesDialog
         RebuildAllWebsitesDialog(main_window).exec()
 
+    def _open_master_trash():
+        from settings.trash_restore import RestoreTrashDialog
+        root = _config.get("master", "masterbiotadatabase", fallback="").strip().strip('"')
+        if root:
+            RestoreTrashDialog(main_window, root).exec()
+
     manage_caches = MenuSpec(
         callback=_manage_caches,
         title="Manage Caches…",
@@ -1623,11 +1628,10 @@ def build_menu_spec(main_window):
         from gui.master_geocode import open_master_geocode
         open_master_geocode(main_window)
 
-    # A data REPAIR tool, so it belongs beside the other master-data maintenance
-    # (Refresh / Audit / Clean Orphans), not in the Master menu, which is about
-    # publishing and viewers. Shown to everyone, not gated behind debug: it is
-    # review-first (nothing is written until the table is confirmed) and it only
-    # touches pictures that have NO place name at all.
+    # By design, not a repair (backlog 1.9): a position needs a place name, and
+    # without internet (a trip) that waits until later. Also opened straight
+    # after a master geotag. Review-first (nothing is written until the table
+    # is confirmed) and it only touches pictures that have NO place name at all.
     add_place_names_item = MenuSpec(
         callback=_add_place_names,
         title="Add Missing Location Names…",
@@ -1700,12 +1704,11 @@ def build_menu_spec(main_window):
         from gui.tracklog_geotag_dialog import open_tracklog_geotag
         open_tracklog_geotag(main_window)
 
-    # A third data-repair tool alongside the two above: where those two fill
-    # a picture's coordinate from data the master ALREADY has (a camera file,
-    # an address lookup), this one sources GPS/altitude from an EXTERNAL
+    # By design, not a repair (backlog 1.9): GPS/altitude from an EXTERNAL
     # tracklog file (GPX / OM-1 log) — the only way to cover a day the
     # camera's own GPS was never enabled, and the only source for altitude
-    # (the camera never records it). Review-first like its siblings.
+    # (the camera never records it). Review-first; afterwards the location
+    # names are looked up (tracklog_geotag_dialog._then_location_names).
     tracklog_geotag_item = MenuSpec(
         callback=_tracklog_geotag,
         title="Geotag from Tracklog (GPX/GPS log)…",
@@ -1716,37 +1719,9 @@ def build_menu_spec(main_window):
         showsubdirectory=False,
     )
 
-    # Force a full website re-render (every taxon/species page, not just the ones
-    # changed this run) + upload — for when a SHARED TEMPLATE changed and must reach
-    # all master pages at once. HTML-only + publish-only: it never freezes or commits
-    # master data (deliberately separate from the data pipeline). master_mode=True so
-    # the batch runs against the master repository config.
-    master_rebuild_web_spec = MenuSpec(
-        callback=None,
-        title="Rebuild Entire Website",
-        showsubdirectory=False,
-        batch_parms={
-            'statusname':     "",
-            'module_called':  batch.svMasterRebuildWeb.main,
-            'before_msg':     "Re-rendering and uploading every master page…",
-            'after_msg':      "✅ Master website fully rebuilt and uploaded.",
-            'master_mode':    True,
-            'wait_picture':   "weaver",   # a long wait (an hour with the pictures)
-        },
-    )
-    rebuild_master_web_item = MenuSpec(
-        callback=lambda: MasterRebuildWebsiteDialog(main_window, master_rebuild_web_spec).exec(),
-        title="Rebuild Entire Website (all pages)…",
-        enabled=has_master,
-        tooltip="Re-render every master species/taxon page (e.g. after a template "
-                "change) and upload. HTML only — no master data is changed.",
-        showsubdirectory=False,
-    )
-
     # By design vs. repair (docs/plans/maintenance_regroup_plan.md, backlog 1.9):
     # tools needed by design sit in the normal menus; what is left here are the
-    # REPAIRS (plus the website rebuild), until they move into one Check the
-    # Master… window. Apply is the only destructive action. The consoles live
+    # REPAIRS, until they move into one Check the Master… window. Apply is the only destructive action. The consoles live
     # under File ▸ Developer Tools, shown only when "Enable debug functionality"
     # is on (Global Settings; read at build time, so toggling needs a restart).
     maintain_master_menu = {
@@ -1755,8 +1730,6 @@ def build_menu_spec(main_window):
         "Recount Species Counters…": recount_species_item,
         f"{MenuSpec.separator()}_maint_gps": None,
         "Fill Picture GPS from Files…": consolidate_gps_item,
-        f"{MenuSpec.separator()}_maint_web": None,
-        "Rebuild Entire Website (all pages)…": rebuild_master_web_item,
     }
     developer_tools_menu = {
         "Trip Status Console…": trip_status_console,
@@ -1977,16 +1950,25 @@ def build_menu_spec(main_window):
             f"{MenuSpec.separator()}_master_maint": None,
             # A master delete only moves files to <master>/.trash (restorable);
             # this is the step that makes it final. Grey when there is nothing.
+            # Restore or empty, in one window — the mirror of Trips ▸ Trash
+            # (backlog 1.3; the two buttons used to sit in Settings ▸ Database).
             "Empty Master Trash…": MenuSpec(
-                callback=lambda: __import__(
-                    "gui.master_trash", fromlist=["empty_master_trash"]
-                ).empty_master_trash(main_window),
-                title="Empty Master Trash…",
+                callback=lambda: _open_master_trash(),
+                title="Master Trash…",
                 enabled=lambda: __import__(
                     "gui.master_trash", fromlist=["master_trash_has_content"]
                 ).master_trash_has_content(),
-                tooltip="Permanently delete the master pictures you deleted — "
-                        "until then they can still be restored",
+                tooltip="The master pictures you deleted: put some back, or "
+                        "delete them for good",
+                showsubdirectory=False),
+            # One window for every site: the master and/or all albums.
+            "Rebuild Websites…": MenuSpec(
+                callback=lambda: _rebuild_all_websites(),
+                title="Rebuild Websites…",
+                enabled=has_master,
+                tooltip="Re-render and re-upload the master site and/or every "
+                        "album, so a fix to a page template or the rendering "
+                        "code reaches them all",
                 showsubdirectory=False),
             f"{MenuSpec.separator()}_master_repair": None,
             # The repairs, until Check the Master… replaces this submenu.
@@ -2070,13 +2052,6 @@ def build_menu_spec(main_window):
              "PhotoMechanic": photo_mechanic,
              "Small Master Database": small_master,
              "Install Small Master": install_small_master,
-             f"{MenuSpec.separator()}_util_rebuild": None,
-             "Rebuild all Albums and the Master website…": MenuSpec(
-                 callback=lambda: _rebuild_all_websites(),
-                 title="Rebuild all Albums and the Master website…",
-                 tooltip="Re-render and re-upload the album sites and/or the master, "
-                         "so a fix to a page template or the rendering code reaches them all",
-                 showsubdirectory=False),
         },
         "Help": {
             # The whole manual as one page in the browser; shipped with the

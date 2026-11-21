@@ -79,9 +79,9 @@ class _WriteThread(QThread):
 
 
 class MasterGeocodeDialog(QDialog):
-    def __init__(self, parent, db, master_root):
+    def __init__(self, parent, db, master_root, look_up_now=False):
         super().__init__(parent)
-        self.setWindowTitle("Add missing place names")
+        self.setWindowTitle("Add Missing Location Names")
         self.resize(880, 560)
         self._db, self._master_root = db, master_root
         self._rows: list[dict] = []
@@ -121,6 +121,11 @@ class MasterGeocodeDialog(QDialog):
         lay.addLayout(row)
 
         self._scan()
+        # Straight after a geotag: start the lookup at once (still review-first:
+        # nothing is written until the table is confirmed).
+        if look_up_now and self._look_btn.isEnabled():
+            from PyQt6.QtCore import QTimer
+            QTimer.singleShot(0, self._on_lookup)
 
     # ── scan ──────────────────────────────────────────────────────────────
     def _scan(self):
@@ -261,13 +266,14 @@ class MasterGeocodeDialog(QDialog):
         self._scan()
 
 
-def open_master_geocode(main_window):
-    """Master ▸ Add missing place names…"""
+def open_master_geocode(main_window, look_up_now=False):
+    """Master ▸ Add Missing Location Names… — and straight after a master
+    geotag, with look_up_now."""
     from utils.config import _config
     from db.master_db import MasterDB
     root = _config.get("master", "MasterBiotaDatabase", fallback="").strip().strip('"')
     if not root:
-        QMessageBox.warning(main_window, "Add missing place names",
+        QMessageBox.warning(main_window, "Add Missing Location Names",
                             "No master repository is configured.")
         return
-    MasterGeocodeDialog(main_window, MasterDB(root), root).exec()
+    MasterGeocodeDialog(main_window, MasterDB(root), root, look_up_now).exec()
