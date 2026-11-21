@@ -289,7 +289,7 @@ class PicturesStep(QWidget):
         check.setToolTip("Compare the pictures here with the backup's record — read-only.")
         check.clicked.connect(self._check)
         btns.addWidget(check)
-        self._read_btn = QPushButton("Read SD-card or Folder…")
+        self._read_btn = QPushButton("Read Card or Folder…")
         self._read_btn.setDefault(True)
         self._read_btn.clicked.connect(self._read)
         btns.addWidget(self._read_btn)

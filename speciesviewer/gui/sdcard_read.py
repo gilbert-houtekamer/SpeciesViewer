@@ -183,8 +183,8 @@ class ReadSDCardDialog(QDialog):
         # exists so the first one asks no questions. See engine/unfiled.py.
         self.unfiled_mode = unfiled_mode
         self.logger = parent.logger
-        self.setWindowTitle("Read card into unfiled" if unfiled_mode else
-                            "Copy Day from Card" if days_mode else "Read SD-card or Folder")
+        self.setWindowTitle("Read Card into Unfiled" if unfiled_mode else
+                            "Copy Day from Card" if days_mode else "Read Card or Folder")
         # A plain QDialog gets only a close button on Windows; min/max lets you
         # deliberately go full-screen for a big card instead of the dialog
         # having to guess a size that works for every case.
@@ -227,7 +227,7 @@ class ReadSDCardDialog(QDialog):
             "so you can re-run this safely. (To remember what was copied, SpeciesViewer "
             "keeps two small files of its own on the card.)</p>"
             if unfiled_mode else
-            "<p><b>Read SD-card or Folder</b><br>"
+            "<p><b>Read Card or Folder</b><br>"
             "Copy pictures from a folder — typically a mounted SD-card — into the "
             "project pictures directory. The filename prefix is added to each picture "
             "(e.g. <i>2026 Zeeland - IMG_1234.CR3</i>); leave it empty to keep names as-is. "
@@ -286,7 +286,7 @@ class ReadSDCardDialog(QDialog):
         self.dest_field = DirectoryFieldQt(
             "Unfiled inbox (a YYYY-MM-DD folder is created here)" if unfiled_mode else
             "Days location (a YYYY-MM-DD folder is created here)" if days_mode else
-            "Project pictures",
+            "Trip pictures folder",
             dest_default)
         input_layout.addWidget(self.dest_field)
 
@@ -1191,7 +1191,7 @@ class ReadSDCardDialog(QDialog):
             w.setToolTip(tip)
         name = Path(self.trip_picture_root).name if self.trip_picture_root else ""
         if name:
-            self.setWindowTitle(f"Read SD-card or Folder — for {name}")
+            self.setWindowTitle(f"Read Card or Folder — for {name}")
 
     def on_scan(self):
         """Group the card by capture-day and fill the day table — no copying."""
@@ -1796,7 +1796,7 @@ class ReadSDCardDialog(QDialog):
                    else f"Copy {scope} to:\n\n    {dest}\n\nFilenames kept as-is (no prefix).")
         if bucket_by_date:
             confirm += "\nSorted into YYYY-MM-DD subfolders."
-        if QMessageBox.question(self, "Read SD-card", confirm + "\n\nProceed?") \
+        if QMessageBox.question(self, "Read Card or Folder", confirm + "\n\nProceed?") \
                 != QMessageBox.StandardButton.Yes:
             return
 

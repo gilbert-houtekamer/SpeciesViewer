@@ -6,12 +6,12 @@ setup, and one site-wide rebuild.
 
 | Item | Needs |
 |---|---|
-| Read card into unfiled… | |
-| Unfiled pictures | |
-| Create an Excel to keep track of birds seen. | |
-| Create PhotoMechanic keyword files for next trip. | |
-| Create Small Master Database | A master |
-| Install Small Master Database | |
+| Read Card into Unfiled… | |
+| Unfiled Pictures… | |
+| Bird Checklist (Excel)… | |
+| PhotoMechanic Keywords… | |
+| Create Small Master… | A master |
+| Install Small Master… | |
 
 > Two items here end in a full stop and read as sentences ("Create an Excel to
 > keep track of birds seen."), unlike every other menu item. Noticed while writing
@@ -26,7 +26,7 @@ These two are here, away from the trip pipeline, on purpose: **emptying a card i
 not a trip action**, because which trip it belongs to is exactly what has not
 been decided yet.
 
-### Read card into unfiled…
+### Read Card into Unfiled…
 
 Copies a card into `<CurrentPictures>\<year>\<year> unfiled\YYYY-MM-DD` and
 **claims nothing** — no trip, no Days entry.
@@ -38,7 +38,7 @@ The pictures-root question is asked once and then stored — never silently
 guessed. A guess is fine for pre-filling a field you can see; it is not fine as
 the thing that decides where a card is written.
 
-### Unfiled pictures
+### Unfiled Pictures…
 
 Shows the inbox: it switches the mode strip to **Unfiled**, where the inbox
 lives as a panel. The menu item is there for when the mode strip is not where
@@ -62,7 +62,7 @@ dates, say), so the whole list stays reachable.
 
 ## Helpers for other applications
 
-### Create an Excel to keep track of birds seen.
+### Bird Checklist (Excel)…
 
 Builds an `.xlsx` checklist from a source species list — the paper-and-spreadsheet
 companion for a trip.
@@ -71,7 +71,7 @@ The source list is chosen by browsing to it, with its columns mapped in the
 dialog, and `.xlsx` files are read directly. The generated columns and formulas
 are a settled design; they are meant to be used, not redesigned per trip.
 
-### Create PhotoMechanic keyword files for next trip.
+### PhotoMechanic Keywords…
 
 Generates PhotoMechanic "snap" keyword files from the species you expect on the
 next trip, so that tagging in PhotoMechanic uses the same vocabulary
@@ -87,7 +87,7 @@ of habit.
 
 Two halves of one job: taking a usable copy of the collection on the road.
 
-### Create Small Master Database
+### Create Small Master…
 
 *Needs: a master.*
 
@@ -100,7 +100,7 @@ out.
 Use it before a trip: the laptop then knows your whole collection well enough to
 answer "have I had this before?" without carrying terabytes.
 
-### Install Small Master Database
+### Install Small Master…
 
 Unpacks and configures a Small Master on this machine.
 

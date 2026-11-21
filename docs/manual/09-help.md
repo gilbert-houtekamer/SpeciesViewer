@@ -1,7 +1,7 @@
 # 9. Help
 
 Four items: the **Reference Manual** (this manual), the **Setup Checklist**
-(what SpeciesViewer needs, and why a menu is grey), **Connection status** (what
+(what SpeciesViewer needs, and why a menu is grey), **Connection Status** (what
 works offline and what does not), and **About**. None of them needs anything to
 be set up first.
 
@@ -50,7 +50,7 @@ is enough.
 
 ---
 
-## Connection status…
+## Connection Status…
 
 Shows whether the services SpeciesViewer depends on are reachable, one lamp
 each: the **publish server** (where uploads go), **species lookup** (GBIF),

@@ -20,7 +20,7 @@ a chain — useful when a step half-fails.
 | **2. Write Blog** | `sv4WriteBlog` | `WriteBlog` |
 | **3. Publish Day** | `sv6Freeze` **then** `sv7WriteCommit` | `Freeze`, `WriteCommit` |
 | **4. Make the Blogs Clickable** | `svr9RedoBlog` | — |
-| Count Species | `svr2CountSpecies` | — |
+| Species per Day… | `svr2CountSpecies` | — |
 | Publish Species Names | `svr5MergeSpeciesCollections` | — |
 
 ### The legacy singles
@@ -69,7 +69,7 @@ mode**, which points the same code at the master repository instead of the trip.
 | Write Album Blogs | `svv3WriteBlog` |
 | Make the Blogs Clickable | `svv6RedoBlog` |
 | Build Album Website | `svv4BuildWebsite` |
-| Count Species | `svv7CountSpecies` |
+| Species per Day… | `svv7CountSpecies` |
 | Export Album | `svv7ExportVirtualTrip` |
 
 **Retire Trip to Album** runs the whole arc in one worker thread:
@@ -99,9 +99,9 @@ module — listing and un-listing are separate operations, not one toggle.
 |---|---|
 | Maintain ▸ Rebuild Entire Website (all pages)… | `svMasterRebuildWeb` (master mode) |
 | Utilities ▸ Rebuild all Albums and the Master website… | `svrRebuildAllWebsites` |
-| Create an Excel to keep track of birds seen. | `svu2avibase` |
-| Create PhotoMechanic keyword files for next trip. | `svu8PhotoMechanic` |
-| Create Small Master Database | `svu9SmallMaster` |
+| Bird Checklist (Excel)… | `svu2avibase` |
+| PhotoMechanic Keywords… | `svu8PhotoMechanic` |
+| Create Small Master… | `svu9SmallMaster` |
 | Developer Tools ▸ Call Testbed for trip day | `svu7Testbed` |
 
 ## Actions with no batch module

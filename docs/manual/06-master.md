@@ -202,11 +202,11 @@ before anything changes.
 | Refresh Master Database — Review… | No |
 | Refresh Master Database — Apply… | **Yes** — the only destructive action in this submenu |
 | Recount Species Counters… | Recounts; backs up first |
-| Add Missing Place Names… | Additive only |
+| Add Missing Location Names… | Additive only |
 | Fill Picture GPS from Files… | Additive only |
 | Geotag from Tracklog (GPX/GPS log)… | Review-first |
 | Rebuild Entire Website (all pages)… | HTML only — no data changed |
-| Manage Site Publication… | Changes the site index only |
+| Manage Trip & Album Publication… | Changes the site index only |
 
 ### Refresh Master Database — Review…
 
@@ -253,7 +253,7 @@ pictures, pictures with a JPG — redoes a species' best picture only when that
 picture is gone, and adds up the groups. It shows what would change and asks
 first; the species list is backed up before it is written.
 
-### Add Missing Place Names…
+### Add Missing Location Names…
 
 Looks up the place for master pictures that have GPS but **no location, city or
 country** — the ones that show as bare coordinates on the species map.
@@ -303,7 +303,7 @@ separate from the data pipeline.
 Its album-and-master counterpart is
 [Utilities ▸ Rebuild all Albums and the Master website…](08-utilities.md).
 
-### Manage Site Publication…
+### Manage Trip & Album Publication…
 
 The site index seen whole: **everything currently listed** on the website's trip
 index, whether or not you can still open the thing behind it.

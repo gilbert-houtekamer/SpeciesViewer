@@ -16,7 +16,7 @@ organised in six blocks, separated by dividers:
 | Create Trip | | |
 | Export Trip | | An active trip |
 | Import Trip | | |
-| Read SD-card or Folder | | |
+| Read Card or Folder | | |
 | Empty a Card | | An active trip |
 | Sync Lightroom & PhotoLab Metadata | | An active trip |
 | 1. Read & Summarize | `Ctrl+D` | An active trip, and the step's turn |
@@ -28,7 +28,7 @@ organised in six blocks, separated by dividers:
 | Trip Species Viewer | | An active trip |
 | Edit Species List | | An active trip |
 | Publish Species Names | | An active trip **and** a master |
-| Count Species | | An active trip |
+| Species per Day… | | An active trip |
 | Trash (deleted pictures)… | | An active trip |
 | Advanced ▸ … | | (see below) |
 
@@ -202,7 +202,7 @@ from a card or dump.
 **Step 3.** *Read from* shows the SD-card or dump folder the pictures come
 from, and what it was last read into; *Choose…* changes it. Each day shows how
 many of the pictures kept on the trip are here ("520 of 751"), and which card or
-dump it was last read from. *Read SD-card or Folder…* opens the card read with
+dump it was last read from. *Read Card or Folder…* opens the card read with
 that source, and the trip's folder, name prefix and date folders filled in and
 locked, and scans the days at once; you choose which days to read. Pictures
 culled on the trip are left out, and so are pictures you deleted on this
@@ -218,14 +218,14 @@ never replaced: a different picture under the same name is a new shot, and is
 saved beside it with a letter added (`… B.JPG`).
 
 > 💡 **Tip.** If the pictures are already on a disk (copied off the laptop, say),
-> point *Read SD-card or Folder…* at that folder instead of a card — the same
+> point *Read Card or Folder…* at that folder instead of a card — the same
 > rules apply.
 
 ---
 
 ## Getting pictures in
 
-### Read SD-card or Folder
+### Read Card or Folder
 
 Copies pictures from a folder — typically a mounted card — into the trip's
 picture folder, one `YYYY-MM-DD` folder per day. It needs no trip steps to have
@@ -268,7 +268,7 @@ Once read, **View pictures** opens the new pictures, **Open day in PhotoLab**
 hands a day to PhotoLab, and **Geotag from tracklog…** fills missing GPS.
 
 > **The other lane.** If you do not yet know which trip a card belongs to, use
-> [Utilities ▸ Read card into unfiled…](08-utilities.md) instead. It asks nothing
+> [Utilities ▸ Read Card into Unfiled…](08-utilities.md) instead. It asks nothing
 > and claims nothing; later you file each day under a trip or claim it as a Day.
 
 > 💡 **Tip.** A flat folder of mixed dates — an old shoot, a batch someone sent
@@ -280,7 +280,7 @@ hands a day to PhotoLab, and **Geotag from tracklog…** fills missing GPS.
 
 *Needs: an active trip.*
 
-The other end of Read SD-card or Folder. When every picture on a card has been
+The other end of Read Card or Folder. When every picture on a card has been
 judged, this checks that is actually true, saves the **keepers** to a second
 card, and marks the original safe to format. SpeciesViewer never formats a card
 itself — do that in the camera.
@@ -429,7 +429,7 @@ machine published is not silently dropped.
 > See [the trip-index how-to](howto_trip_index_publication.md).
 >
 > A listing whose trip or album you can no longer open is repaired from
-> [Master ▸ Maintain Master Database ▸ Manage Site Publication…](06-master.md).
+> [Master ▸ Maintain Master Database ▸ Manage Trip & Album Publication…](06-master.md).
 
 ### Reset Trip — unlock the published days
 
@@ -505,7 +505,7 @@ On a single machine this step is usually a no-op: the species list is already th
 master's (see *Edit Species List* above). It matters when the trip was built on
 another machine and carries names the master has not seen.
 
-### Count Species
+### Species per Day…
 
 *Needs: an active trip.*
 
@@ -516,8 +516,8 @@ picture yet. Save it as Excel or CSV. Report only.
 Only certain identifications count: a "probable" or "possible" picture, or a
 group name like "*Oplurus* sp.", does not add a species.
 
-Note that Count Species is *also* the first step of the master merge, where it
-runs before the pictures are ingested — that ordering is what makes the "lifer"
+The same count is *also* the first step of the master merge (*Count Species
+(final verdict)*), where it runs before the pictures are ingested — that ordering is what makes the "lifer"
 verdict true, because the master is still pre-trip at that moment.
 
 ### Trash (deleted pictures)…
@@ -540,7 +540,7 @@ Double-click a picture (or press `z`) for a big look.
 
 Rare maintenance. Nothing here is part of a normal trip.
 
-### Manage Blogs
+### Delete a Blog…
 
 The delete-a-blog tool: lists the trip's blog entries and lets you remove one.
 

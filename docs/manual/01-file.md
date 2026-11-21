@@ -91,7 +91,7 @@ at, not documents. Choosing, creating and switching collections lives under
 | Item | Shortcut | Needs |
 |---|---|---|
 | Settings ▸ Settings… | `Ctrl+G` | |
-| Settings ▸ Manage caches… | | |
+| Settings ▸ Manage Caches… | | |
 | Developer Tools ▸ … | | *Only visible when debug is enabled* — [Appendix C](appendix-c-developer-tools.md) |
 | Quit | `Ctrl+Q` | |
 
@@ -211,7 +211,7 @@ a backup, a second computer, or a new disk.
 | **Your collection** — the master's lists of pictures, files and species, its trash and its daily backups | the master folder | **Yes** — this is what you back up and share between your own computers. |
 | **A trip** — its name, dates, blog texts and species | the trip's folder | Travels with the trip. |
 | **Beside your pictures** — the `.xmp` and `.dop` files with rating, colour, species and crop; a day's blog draft | the day folder | Travels with the pictures. Never delete them: they are your work. |
-| **Caches** — previews, EXIF, the fast read-copy of the master | `%LOCALAPPDATA%\SpeciesViewer\` | No — rebuilt by themselves. See [Manage caches](#manage-caches). |
+| **Caches** — previews, EXIF, the fast read-copy of the master | `%LOCALAPPDATA%\SpeciesViewer\` | No — rebuilt by themselves. See [Manage Caches](#manage-caches). |
 
 Three rules follow from this table:
 
@@ -225,7 +225,7 @@ Three rules follow from this table:
 > The technical inventory — every file, its scope and what losing it costs —
 > is [configuration_inventory.md](../configuration_inventory.md).
 
-## Manage caches…
+## Manage Caches…
 
 Shows every cache this computer keeps, with its size, and lets you clear it or
 move it to another folder (a faster or bigger disk). Caches live under

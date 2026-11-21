@@ -37,7 +37,7 @@ the name follows later.
 
 Under *Master ▸ Maintain Master Database* ([6. Master](06-master.md)):
 
-- **Add Missing Place Names…** — pictures with a position but no place name.
+- **Add Missing Location Names…** — pictures with a position but no place name.
 - **Fill Picture GPS from Files…** — the camera file has a position, but the
   master's list does not.
 - **Geotag from Tracklog…** — match master pictures to a GPS log by time.

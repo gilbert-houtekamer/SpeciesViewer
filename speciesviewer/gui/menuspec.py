@@ -237,7 +237,7 @@ def build_menu_spec(main_window):
     # because it precedes any day/trip structure.
     read_sdcard = MenuSpec(
         callback=None,
-        title="Read SD-card or Folder…",
+        title="Read Card or Folder…",
         showsubdirectory=False,
         # Copies INTO the open trip's pictures folder; with no trip there is no
         # right place (it fell back to a stale folder — Sandbox test, 14 Oct).
@@ -249,7 +249,7 @@ def build_menu_spec(main_window):
         # ReadSDCardDialog), so there's no reason to freeze the rest of SV
         # while a card reads. _try_start_background_op stops a second one
         # (any of the three read modes) starting at the same time.
-        if not main_window._try_start_background_op("Read SD-card or Folder"):
+        if not main_window._try_start_background_op("Read Card or Folder"):
             return
         dlg = ReadSDCardDialog(main_window, read_sdcard)
         main_window._read_sdcard_dlg = dlg  # keep alive while non-modal
@@ -264,7 +264,7 @@ def build_menu_spec(main_window):
     # "which trip?" once per card. The inbox screen files each day afterwards.
     read_sdcard_unfiled = MenuSpec(
         callback=lambda: unfiled_view.read_card_into_unfiled(main_window),
-        title="Read card into unfiled…",
+        title="Read Card into Unfiled…",
         tooltip="Empty a card now, decide which trip it belongs to later",
         showsubdirectory=False,
     )
@@ -273,7 +273,7 @@ def build_menu_spec(main_window):
     # ask for it by name when the strip is not where you are looking.
     unfiled_inbox = MenuSpec(
         callback=lambda: unfiled_view.open_unfiled_inbox(main_window),
-        title="Unfiled pictures",
+        title="Unfiled Pictures…",
         tooltip="Show the unfiled inbox — days that belong to no trip yet",
         showsubdirectory=False,
     )
@@ -285,7 +285,7 @@ def build_menu_spec(main_window):
     # identity was overwritten. See docs/plans/trip_dialog_and_ingest_lanes.md.
     trip_create = MenuSpec(
         callback=None,
-        title="Create Trip",
+        title="Create Trip…",
         batch_parms={
             'statusname': "MakeRepository",
             'module_called': batch.sv1MakeReposity.main,
@@ -505,7 +505,7 @@ def build_menu_spec(main_window):
 
     count_species = MenuSpec(
         callback=None,
-        title="Count Species",
+        title="Species per Day…",
         enabled=has_active_trip,
         showsubdirectory=False,
         batch_parms={
@@ -572,7 +572,7 @@ def build_menu_spec(main_window):
 
     manage_blogs = MenuSpec(
         callback=lambda: BlogAdminDialog(main_window).exec(),
-        title="Manage Blogs",
+        title="Delete a Blog…",
         showsubdirectory=False,
     )
 
@@ -593,7 +593,7 @@ def build_menu_spec(main_window):
 
     empty_trip_data = MenuSpec(
         callback=None,
-        title="Reset Trip",
+        title="Reset Trip…",
         enabled=has_active_trip,
         showsubdirectory=False,
         batch_parms={
@@ -657,7 +657,7 @@ def build_menu_spec(main_window):
 
     manage_site_publication = MenuSpec(
         callback=_manage_site_publication,
-        title="Manage Site Publication…",
+        title="Manage Trip & Album Publication…",
         tooltip="Everything listed on the site's trip index — remove a listing "
                 "whose trip or album you can no longer open",
         enabled=has_master,
@@ -746,7 +746,7 @@ def build_menu_spec(main_window):
     ]
     add_trip_pictures = MenuSpec(
         callback=None,
-        title="Merge Pictures into Master",
+        title="Merge Pictures into Master…",
         enabled=merge_ready,
         tooltip="Copy the trip's pictures into the master",
         showsubdirectory=False,
@@ -847,7 +847,7 @@ def build_menu_spec(main_window):
 
     trip_master_dashboard = MenuSpec(
         callback=_open_lifecycle_board,
-        title="Trip to Master Dashboard",
+        title="Trip to Master Dashboard…",
         enabled=has_active_trip,
         showsubdirectory=False,
     )
@@ -872,7 +872,7 @@ def build_menu_spec(main_window):
 
     manage_caches = MenuSpec(
         callback=_manage_caches,
-        title="Manage caches…",
+        title="Manage Caches…",
         showsubdirectory=False,
     )
 
@@ -891,7 +891,7 @@ def build_menu_spec(main_window):
         # Master updates
     convert_avibase = MenuSpec(
         callback=None,
-        title="Create an Excel to keep track of birds seen.",
+        title="Bird Checklist (Excel)…",
         showsubdirectory=False,
         batch_parms={
             'statusname': "",
@@ -906,7 +906,7 @@ def build_menu_spec(main_window):
 
     photo_mechanic = MenuSpec(
         callback=None,
-        title="Create PhotoMechanic keyword files for next trip.",
+        title="PhotoMechanic Keywords…",
         showsubdirectory=False,
         batch_parms={
             'statusname': "",
@@ -919,7 +919,7 @@ def build_menu_spec(main_window):
 
     small_master = MenuSpec(
         callback=None,
-        title="Create Small Master Database",
+        title="Create Small Master…",
         enabled=has_master,
         showsubdirectory=False,
         batch_parms={
@@ -934,12 +934,12 @@ def build_menu_spec(main_window):
 
     install_small_master = MenuSpec(
         callback=lambda: InstallSmallMasterDialog(main_window).exec(),
-        title="Install Small Master Database",
+        title="Install Small Master…",
     )
 
     export_trip = MenuSpec(
         callback=None,
-        title="Export Trip",
+        title="Export Trip…",
         enabled=has_active_trip,
         showsubdirectory=False,
         batch_parms={
@@ -965,7 +965,7 @@ def build_menu_spec(main_window):
 
     import_trip = MenuSpec(
         callback=_import_trip,
-        title="Import Trip",
+        title="Import Trip…",
     )
 
     def _empty_card():
@@ -989,7 +989,7 @@ def build_menu_spec(main_window):
 
     empty_card = MenuSpec(
         callback=_empty_card,
-        title="Empty a Card",
+        title="Empty a Card…",
         tooltip="Check that a card's pictures are all dealt with, save the "
                 "keepers to a second card, and mark it safe to format",
         enabled=has_active_trip,
@@ -998,7 +998,7 @@ def build_menu_spec(main_window):
 
     export_virttrip = MenuSpec(
         callback=None,
-        title="Export Album",
+        title="Export Album…",
         enabled=has_active_album,
         showsubdirectory=False,
         batch_parms={
@@ -1013,7 +1013,7 @@ def build_menu_spec(main_window):
 
     import_virttrip = MenuSpec(
         callback=lambda: ImportVirtualTripDialog(main_window).exec(),
-        title="Import Album",
+        title="Import Album…",
         enabled=has_master,
     )
 
@@ -1031,7 +1031,7 @@ def build_menu_spec(main_window):
 
     virttrip_create = MenuSpec(
         callback=None,
-        title="Create Album",
+        title="Create Album…",
         enabled=has_full_master,
         batch_parms={
             'statusname': "",
@@ -1095,7 +1095,7 @@ def build_menu_spec(main_window):
     retire_trip_item = MenuSpec(
         callback=lambda: require_full_master(main_window)
                          and retire_trip_to_virttrip(main_window),
-        title="Retire Trip to Album",
+        title="Retire Trip to Album…",
         enabled=retire_ready,
         showsubdirectory=False,
     )
@@ -1216,7 +1216,7 @@ def build_menu_spec(main_window):
 
     delete_trip_repo_item = MenuSpec(
         callback=_delete_trip_repo,
-        title="Delete Trip…",
+        title="Delete Retired Trip…",
         enabled=delete_trip_ready,
         tooltip="Permanently delete the trip repository (its metadata copy). "
                 "CurrentPictures, the master and the album are untouched.",
@@ -1656,7 +1656,7 @@ def build_menu_spec(main_window):
     # touches pictures that have NO place name at all.
     add_place_names_item = MenuSpec(
         callback=_add_place_names,
-        title="Add Missing Place Names…",
+        title="Add Missing Location Names…",
         enabled=has_master,
         tooltip="Look up the place for master pictures that have GPS but no "
                 "location, city or country — they show as bare coordinates on "
@@ -1882,7 +1882,7 @@ def build_menu_spec(main_window):
                 title="Review & Rate Pictures…", enabled=has_active_day, showsubdirectory=False),
             "Add to Master": MenuSpec(
                 callback=lambda: days_process.add_day_to_master(main_window),
-                title="Add to Master", enabled=has_active_day, showsubdirectory=False),
+                title="Add to Master…", enabled=has_active_day, showsubdirectory=False),
             f"{MenuSpec.separator()}_days1": None,
             "Remove from list": MenuSpec(
                 callback=lambda: days_process.remove_day_from_list(main_window),
@@ -2045,7 +2045,7 @@ def build_menu_spec(main_window):
             f"{MenuSpec.separator()}_vt3": None,
             "Count Species": MenuSpec(
                 callback=lambda: _show_album_count_species(),
-                title="Count Species",
+                title="Species per Day…",
                 enabled=has_active_album,
                 tooltip="One row per species, one column per day; flags species "
                         "with no JPG",
@@ -2116,6 +2116,7 @@ def build_menu_spec(main_window):
                 tooltip="What is set up, what is missing, and what is optional",
             ),
             "Connection status…": MenuSpec(
+                title="Connection Status…",
                 callback=lambda: __import__(
                     "gui.connection_status", fromlist=["ConnectionStatusDialog"]
                 ).ConnectionStatusDialog(main_window).exec(),

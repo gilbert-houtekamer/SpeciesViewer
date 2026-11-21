@@ -14,7 +14,7 @@ order that the menu enforces by greying out whatever is not yet due.
 | Merge Pictures into Master | Every JPG-bearing day published, and at least one day published |
 | Retire Trip to Album | A full master, an active trip, **and** the merge done |
 | Delete Local Files Backed Up in Master… | The merge done |
-| Delete Trip… | The merge done **and** the trip retired |
+| Delete Retired Trip… | The merge done **and** the trip retired |
 
 The gating is the useful part of this menu: **you cannot get the order wrong**.
 Each item unlocks only when its predecessor has genuinely happened, checked
@@ -186,7 +186,7 @@ retiring the whole trip, or they stay local forever.
 
 ---
 
-## Delete Trip…
+## Delete Retired Trip…
 
 *Needs: the merge done and the trip retired.*
 

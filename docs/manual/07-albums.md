@@ -17,7 +17,7 @@ ingest, freeze or commit. There is only writing it up and publishing it.
 | Make the Blogs Clickable | An active album |
 | Build Album Website | An active album |
 | Manage Album Publication… | An active album |
-| Count Species | An active album |
+| Species per Day… | An active album |
 | Album Species Viewer | An active album |
 | Sync Placed GPS into the Index… | An active album |
 | Export Album | An active album |
@@ -185,7 +185,7 @@ immutable web slug applies here.
 
 ## Reviewing and editing
 
-### Count Species
+### Species per Day…
 
 *Needs: an active album.*
 

@@ -43,7 +43,7 @@ the work was done on another machine.
 | Item | Needs |
 |---|---|
 | Settings… | — |
-| Manage caches… | — |
+| Manage Caches… | — |
 | **Developer Tools submenu** | *visible only when debug is enabled — restart to apply* |
 | Trip Status Console… | a master |
 | Merged Status (all machines)… | a master |
@@ -78,7 +78,7 @@ the work was done on another machine.
 | Create Trip | — |
 | Export Trip | an active trip |
 | Import Trip | — |
-| Read SD-card or Folder | an active trip (without one: Days ▸ Copy day from card) |
+| Read Card or Folder | an active trip (without one: Days ▸ Copy day from card) |
 | Empty a Card | an active trip |
 | Sync Lightroom & PhotoLab Metadata | an active trip |
 | 1. Read & Summarize | an active trip **and** the step's turn |
@@ -90,9 +90,9 @@ the work was done on another machine.
 | Trip Species Viewer | an active trip |
 | Edit Species List | an active trip |
 | Publish Species Names | a trip and a master |
-| Count Species | an active trip |
+| Species per Day… | an active trip |
 | Trash (deleted pictures)… | an active trip |
-| Advanced ▸ Manage Blogs | — |
+| Advanced ▸ Delete a Blog… | — |
 | Advanced ▸ Recreate Trip Repository | an active trip |
 | Advanced ▸ Delete Trip Completely… | — (it lists every trip) |
 | Advanced ▸ Legacy ▸ Read Directory | an active trip **and** the step's turn |
@@ -109,7 +109,7 @@ the work was done on another machine.
 | Merge Pictures into Master | merge ready |
 | Retire Trip to Album | a full master **and** an active trip **and** merge done |
 | Delete Local Files Backed Up in Master… | merge done |
-| Delete Trip… | merge done **and** trip retired |
+| Delete Retired Trip… | merge done **and** trip retired |
 
 ### Master
 
@@ -139,7 +139,7 @@ the work was done on another machine.
 | Build Album Website | an active album |
 | Manage Album Publication… | an active album |
 | Album Species Viewer | an active album |
-| Count Species | an active album |
+| Species per Day… | an active album |
 | Sync Placed GPS into the Index… | an active album |
 | Export Album | an active album |
 | Import Album | a master |
@@ -149,12 +149,12 @@ the work was done on another machine.
 
 | Item | Needs |
 |---|---|
-| Read card into unfiled… | — |
-| Unfiled pictures | — |
+| Read Card into Unfiled… | — |
+| Unfiled Pictures… | — |
 | Create an Excel… | — |
 | Create PhotoMechanic keyword files… | — |
-| Create Small Master Database | a master |
-| Install Small Master Database | — |
+| Create Small Master… | a master |
+| Install Small Master… | — |
 | Rebuild all Albums and the Master website… | — |
 
 ### Help
@@ -163,7 +163,7 @@ the work was done on another machine.
 |---|---|
 | Reference Manual | — |
 | Setup Checklist… | — |
-| Connection status… | — |
+| Connection Status… | — |
 | About | — |
 
 ---
