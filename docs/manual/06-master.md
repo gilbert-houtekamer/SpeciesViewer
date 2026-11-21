@@ -21,7 +21,7 @@ What remains is what you do *with* and *to* the collection itself.
 | Manage Trip & Album Publication… | A master |
 | Master Trash… | Deleted master pictures |
 | Rebuild Websites… | A master |
-| Maintain Master Database ▸ … | A master |
+| Check the Master… | A master |
 
 ---
 
@@ -145,7 +145,7 @@ native OpenStreetMap slippy map.
 This is the screen that makes missing GPS visible. Pictures whose *picture row*
 carries no coordinate simply do not appear here, even if the RAW file itself has
 one — which is exactly what
-[Maintain Master Database ▸ Fill Picture GPS from Files…](#fill-picture-gps-from-files)
+[Check the Master ▸ GPS in the Files, Not in the List](#check-the-master)
 is for.
 
 Pictures of the chosen species **without** GPS wait in a tray beside the map.
@@ -259,21 +259,31 @@ album is rebuilt with [Albums ▸ Build Album Website](07-albums.md).
 
 ---
 
-## Maintain Master Database
+## Check the Master…
 
-The **repairs**: tools you only need when something drifted. Everything here except **Apply** is non-destructive, and
-everything here is review-first: you see what would change before anything
-changes. (Planned: one *Check the Master…* window that runs all the checks as a
-report first.)
+*Needs: a master.*
 
-| Item | Destructive? |
-|---|---|
-| Refresh Master Database — Review… | No |
-| Refresh Master Database — Apply… | **Yes** — the only destructive action in this submenu |
-| Recount Species Counters… | Recounts; backs up first |
-| Fill Picture GPS from Files… | Additive only |
+The **repairs**, in one window. You only need one when something drifted — every
+one of them is a question for SpeciesViewer: which write let this happen, and can
+it be stopped at the source?
 
-### Refresh Master Database — Review…
+The window runs every check as a **report** when it opens — nothing is changed —
+and shows one line per check: ✅ nothing to repair, ⚠ what it found, or why it
+could not check. Each line has its fix: the tool below, which shows what it would
+do and asks first. After a fix, that line checks itself again.
+
+| Check | What it looks at | Fix |
+|---|---|---|
+| **Lists vs. Files on Disk** | Rows whose file is gone, has moved, or sits under another species | *Review…* and *Apply…* (Refresh Master Database) — Apply is the only destructive fix |
+| **Species Counters** | The species list's picture counts against the pictures really there | *Recount…*; *Full report…* lists every difference |
+| **GPS in the Files, Not in the List** | A camera position that never reached the picture itself | *Fill…* — additive only |
+| **Orphan Sidecars** | `.xmp`/`.dop` files left after their picture was deleted | *Move to trash…* |
+| **Lists vs. Read-Copy** | The master's lists against SpeciesViewer's fast read-copy, and against themselves | *Details…* |
+
+At the bottom: **Restore the Master's Lists from a Backup…** — see below.
+*Settings ▸ Database* opens the same window.
+
+### Lists vs. Files on Disk — Review…
 
 Compares the master's admin CSVs against the pictures actually on disk, and
 reports what a refresh would change:
@@ -294,7 +304,7 @@ currently show nothing.
 
 **The master is never touched by Review.**
 
-### Refresh Master Database — Apply…
+### Lists vs. Files on Disk — Apply…
 
 Applies what Review described: removes dead rows, repoints stale paths,
 reclassifies pictures to their folder's species, and drops phantom pictures whose
@@ -303,13 +313,13 @@ files are all gone.
 Both CSVs are backed up first to `admin/status/backup/`. You get the counts and
 an explicit confirmation before anything is written.
 
-Afterwards, run **Recount Species Counters…** to bring the per-species totals in
+Afterwards, run **Species Counters ▸ Recount…** to bring the per-species totals in
 line; the master's SQLite cache rebuilds itself.
 
 > More detail, including when the admin drifts in the first place, is in
 > [the Refresh how-to](howto_refresh_master_database.md).
 
-### Recount Species Counters…
+### Species Counters — Recount…
 
 Makes the species list's picture counts say what the pictures say. The counts
 are added up at each merge and not recounted, so deletes and moves can leave
@@ -318,7 +328,11 @@ pictures, pictures with a JPG — redoes a species' best picture only when that
 picture is gone, and adds up the groups. It shows what would change and asks
 first; the species list is backed up before it is written.
 
-### Fill Picture GPS from Files…
+The **Full report…** beside it lists ghosts (species whose pictures have
+vanished, with their last-known file names), count drift and best pictures that
+no longer exist. It never changes anything.
+
+### GPS in the Files, Not in the List — Fill…
 
 Copies a coordinate that a picture's **camera files** carry up into the
 **picture row** itself.
@@ -331,3 +345,29 @@ read as having no GPS while its RAW holds a perfectly good one.
 **Additive only.** It never changes or removes an existing coordinate. If every
 picture already carries its own, it says so and does nothing.
 
+### Orphan Sidecars — Move to trash…
+
+Finds `.xmp` / `.dop` sidecars whose image is gone and moves them to a
+recoverable trash folder. It shows the count and extension breakdown, and asks
+before moving anything.
+
+Their now-dangling rows in the master admin are cleared by the next
+**Lists vs. Files on Disk — Apply**, so the natural order is: clean orphans,
+then refresh-apply.
+
+### Lists vs. Read-Copy — Details…
+
+SpeciesViewer keeps a fast read-copy of the master's lists on this computer. This
+check compares the two — row counts, pictures naming a JPG that has no file row,
+orphan file rows, and pictures that would publish as a broken image — and
+*Details…* lists what it found. The read-copy rebuilds itself when the lists
+change; *Settings ▸ Database ▸ Rebuild master DB* forces it.
+
+### Restore the Master's Lists from a Backup…
+
+Once a day, at start, the master takes a compressed copy of its three lists —
+pictures, files, species — and keeps the last 14. This puts one back: pick the
+day, confirm, and the read-copy is rebuilt. The lists you replace are kept first
+(`backup/pre-restore-*`), so a restore can be undone. Anything added to the
+master since that day is lost, and the window says so before it starts. Restart
+SpeciesViewer afterwards — it keeps the master in memory.

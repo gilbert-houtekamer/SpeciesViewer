@@ -35,7 +35,7 @@ the name follows later.
 
 ## Repairs in the master
 
-In the *Master* menu ([6. Master](06-master.md)); *Fill Picture GPS from Files* is under *Master ▸ Maintain Master Database*:
+In the *Master* menu ([6. Master](06-master.md)); filling GPS from the files is a repair, in *Master ▸ Check the Master…*:
 
 - **Add Missing Location Names…** — pictures with a position but no place name.
 - **Fill Picture GPS from Files…** — the camera file has a position, but the

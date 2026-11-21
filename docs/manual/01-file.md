@@ -218,7 +218,8 @@ Three rules follow from this table:
 - **What lasts is the master and your pictures with their sidecars.** Back those
   up; everything else is either rebuilt or quickly re-entered.
 - **The master protects itself.** Once a day, at start, it takes a compressed copy of
-  its lists and keeps the last 14; *Settings ▸ Database ▸ Restore…* puts one back.
+  its lists and keeps the last 14; *Master ▸ Check the Master… ▸ Restore the
+  Master's Lists from a Backup…* puts one back.
 - **Caches never go in Dropbox.** They are large, change constantly, and are
   per computer.
 

@@ -4,8 +4,8 @@ Over time the master metadata (`metadata/active/data_files.csv` and
 `data_pictures.csv`) drifts out of sync with what is actually on disk under
 `biota/`: an import records a file that never lands, a picture is moved to
 another species folder, an old path string gets mangled. **Refresh Master
-Database** compares the two and offers to reconcile them. It lives under
-**Master ▸ Maintain Master Database** and is backed by
+Database** compares the two and offers to reconcile them. It is the first line of
+**Master ▸ Check the Master…** (*Lists vs. Files on Disk*, Review and Apply) and is backed by
 [`engine/admin_rebuild.py`](../../speciesviewer/engine/admin_rebuild.py); the menu
 wiring is in [`gui/menuspec.py`](../../speciesviewer/gui/menuspec.py).
 
@@ -20,8 +20,8 @@ Orphan Sidecars*.)
 | **Refresh Master Database — Review…** | No | Scans the `biota/` tree once and reports what a refresh *would* change. Always shows a fast summary; then optionally writes the full suggested CSVs + a black-image scan for inspection. Writes only into `admin/status/review_<timestamp>/`. |
 | **Refresh Master Database — Apply…** | **Yes** | Backs up both CSVs to `admin/status/backup/`, then rewrites them with the reconcile. The only destructive Admin action. |
 
-Non-debug builds show just these two. *Audit Species Counters* and *Clean Orphan
-Sidecars* are separate maintenance items, shown only when debug is enabled.
+The other lines of *Check the Master…* — species counters, GPS in the files,
+orphan sidecars, the read-copy — are separate checks in the same window.
 
 ## What the reconcile computes
 
@@ -77,8 +77,8 @@ fallback) and buckets it `jpg_ok` / `raw_fallback` / `black`. Investigating the
   `admin/status/backup/<timestamp>_pre-prune_*` before writing. To undo, copy
   those two files back over `metadata/active/`.
 - After Apply, the per-species counters in `species.csv` are left high — the
-  dropped phantoms were counted in them. Run **Master ▸ Maintain Master Database
-  ▸ Recount Species Counters…** to bring them in line (it shows what would change
+  dropped phantoms were counted in them. Run **Master ▸ Check the Master… ▸
+  Species Counters ▸ Recount…** to bring them in line (it shows what would change
   and asks first). The master DB cache (`master.db`) rebuilds
   itself on next use.
 

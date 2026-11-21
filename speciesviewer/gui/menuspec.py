@@ -1471,8 +1471,8 @@ def build_menu_spec(main_window):
             f"Dropped {r['pictures_dropped']} phantom pictures "
             f"(cleaned {r['files_cleaned']} Files lists).\n\n"
             f"Backups in: {r['backup_dir']}\n\n"
-            f"Next: Master ▸ Maintain Master Database ▸ Recount Species Counters, so "
-            f"the per-species counts match the pictures; the master DB cache rebuilds itself.")
+            f"Next: Species Counters in Check the Master, so the per-species "
+            f"counts match the pictures; the master's read-copy rebuilds itself.")
 
     heal_admin_item = MenuSpec(
         callback=_heal_admin,
@@ -1720,23 +1720,37 @@ def build_menu_spec(main_window):
     )
 
     # By design vs. repair (docs/plans/maintenance_regroup_plan.md, backlog 1.9):
-    # tools needed by design sit in the normal menus; what is left here are the
-    # REPAIRS, until they move into one Check the Master… window. Apply is the only destructive action. The consoles live
-    # under File ▸ Developer Tools, shown only when "Enable debug functionality"
-    # is on (Global Settings; read at build time, so toggling needs a restart).
-    maintain_master_menu = {
-        "Refresh Master Database — Review…": refresh_review_item,
-        "Refresh Master Database — Apply…": heal_admin_item,
-        "Recount Species Counters…": recount_species_item,
-        f"{MenuSpec.separator()}_maint_gps": None,
-        "Fill Picture GPS from Files…": consolidate_gps_item,
-    }
+    # tools needed by design sit in the normal menus; every REPAIR lives only in
+    # Check the Master…, which reports first and opens these same tools as its
+    # fixes. Apply is the only destructive one. The consoles live under
+    # File ▸ Developer Tools, shown only when "Enable debug functionality" is on
+    # (Global Settings; read at build time, so toggling needs a restart).
+    def _check_master():
+        from gui.check_master import CheckMasterWindow
+        master = _config.get("master", "masterbiotadatabase", fallback="").strip().strip('"')
+        if not master:
+            QMessageBox.warning(main_window, "Check the Master", "No master is configured.")
+            return
+        CheckMasterWindow(main_window, master, {
+            "refresh_review": refresh_review_item.callback,
+            "refresh_apply": heal_admin_item.callback,
+            "recount": recount_species_item.callback,
+            "audit": audit_species_item.callback,
+            "fill_gps": consolidate_gps_item.callback,
+            "orphans": clean_orphans_item.callback,
+        }).exec()
+
+    check_master_item = MenuSpec(
+        callback=_check_master,
+        title="Check the Master…",
+        enabled=has_master,
+        tooltip="The repairs, in one window: every check as a report first, "
+                "then a fix for what it found",
+        showsubdirectory=False,
+    )
     developer_tools_menu = {
         "Trip Status Console…": trip_status_console,
         "Merged Status (all machines)…": merged_status_console,
-        f"{MenuSpec.separator()}_dev_0": None,
-        "Audit Species Counters (dry-run)…": audit_species_item,
-        "Clean Orphan Sidecars (move to trash)…": clean_orphans_item,
         f"{MenuSpec.separator()}_dev_1": None,
         # The individual pipeline steps from before Read & Summarize and Publish
         # Day merged them; kept for a read-only CSV refresh and the freeze-only
@@ -1971,8 +1985,8 @@ def build_menu_spec(main_window):
                         "code reaches them all",
                 showsubdirectory=False),
             f"{MenuSpec.separator()}_master_repair": None,
-            # The repairs, until Check the Master… replaces this submenu.
-            "Maintain Master Database": maintain_master_menu,
+            # Every repair, report first (backlog 1.9).
+            "Check the Master…": check_master_item,
         },
         "Albums": {
             "Find Trips in the Master…": find_trips,

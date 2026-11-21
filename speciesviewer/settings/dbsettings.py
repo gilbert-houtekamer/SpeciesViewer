@@ -90,12 +90,13 @@ class DatabaseSettingsDialog(QDialog):
         layout.addLayout(hform)
 
         hrow = QHBoxLayout()
-        check_btn = QPushButton("Check now")
+        # The check and the restore live in Master ▸ Check the Master…
+        # (backlog 1.9); this opens the same window.
+        check_btn = QPushButton("Check the Master…")
         check_btn.setToolTip(
-            "Compare the master CSVs with the database, and the master with itself:\n"
-            "row counts, pictures naming a JPG that has no file row, orphan file rows,\n"
-            "and JPGmap entries that would publish as a broken image.")
-        check_btn.clicked.connect(self._check_now)
+            "Every master check as a report, with a fix for what it finds, and\n"
+            "restoring a backup. Also in the Master menu.")
+        check_btn.clicked.connect(self._open_check_master)
         hrow.addWidget(check_btn)
         backup_btn = QPushButton("Back up now")
         backup_btn.setToolTip(
@@ -104,9 +105,6 @@ class DatabaseSettingsDialog(QDialog):
             "a snapshot of a broken master would eventually push out the last good one.")
         backup_btn.clicked.connect(self._backup_now)
         hrow.addWidget(backup_btn)
-        restore_btn = QPushButton("Restore backup…")
-        restore_btn.clicked.connect(self._restore)
-        hrow.addWidget(restore_btn)
         hrow.addStretch(1)
         layout.addLayout(hrow)
 
@@ -335,78 +333,10 @@ class DatabaseSettingsDialog(QDialog):
             return str(raw)
 
     # ── health & backup ───────────────────────────────────────────────────
-    def _run_check(self):
-        from db.master_db import MasterDB
-        from db import master_health
-        db = MasterDB(self._master_root)
-        try:
-            db.ensure_fresh()
-            rep = master_health.check(db, self._master_root)
-        finally:
-            db.close()
-        self._last_check = rep
-        return rep
-
-    def _check_now(self):
-        if not self._master_root:
-            return
-        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
-        try:
-            rep = self._run_check()
-        except Exception as e:
-            QApplication.restoreOverrideCursor()
-            QMessageBox.warning(self, "Consistency check", f"The check failed:\n{e}")
-            return
-        finally:
-            QApplication.restoreOverrideCursor()
-
-        lines = []
-        for name, c in rep.counts.items():
-            if c.get("db") is None:      # not mirrored in the DB — nothing to compare to
-                lines.append(f"Rows — {name}: {c['csv']} (not mirrored in the database)")
-            else:
-                lines.append(
-                    f"Rows — {name}: {c['csv']} in the CSV, {c['db']} in the database")
-        if rep.findings:
-            lines.append("")
-            for f in rep.findings:
-                mark = "PROBLEM" if f.level == "error" else "warning"
-                lines.append(f"[{mark}] {f.what}" + (f"\n          {f.detail}"
-                                                     if f.detail else ""))
-        else:
-            lines.append("\nNo problems found.")
-        self._show_report(f"The master is {rep.summary()}.", "\n".join(lines),
-                          bool(rep.errors))
+    def _open_check_master(self):
+        from gui.check_master import open_check_master
+        open_check_master(self)
         self._refresh()
-
-    def _show_report(self, summary: str, details: str, is_error: bool):
-        """The check's report in a window you can resize, details open at once
-        (a message box keeps them tiny and fixed-size)."""
-        from PyQt6.QtWidgets import QPlainTextEdit, QDialogButtonBox
-        dlg = QDialog(self)
-        dlg.setWindowTitle("Consistency check")
-        dlg.setSizeGripEnabled(True)
-        lay = QVBoxLayout(dlg)
-        head = QLabel(summary)
-        head.setWordWrap(True)
-        if is_error:
-            head.setStyleSheet("font-weight: bold; color: #c62828;")
-        else:
-            head.setStyleSheet("font-weight: bold;")
-        lay.addWidget(head)
-        text = QPlainTextEdit()
-        text.setReadOnly(True)
-        text.setPlainText(details)
-        text.setLineWrapMode(QPlainTextEdit.LineWrapMode.WidgetWidth)
-        lay.addWidget(text, 1)
-        btns = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok)
-        btns.accepted.connect(dlg.accept)
-        lay.addWidget(btns)
-        # a good default: most of the settings window, never larger than the screen
-        w, h = max(760, int(self.width() * 0.7)), max(460, int(self.height() * 0.6))
-        scr = (self.screen() or QApplication.primaryScreen()).availableGeometry()
-        dlg.resize(min(w, scr.width() - 40), min(h, scr.height() - 80))
-        dlg.exec()
 
     def _backup_now(self):
         if not self._master_root:
@@ -444,58 +374,6 @@ class DatabaseSettingsDialog(QDialog):
                 self, "Back up",
                 f"Backed up to {res['path'].name} — {_fmt_size(res['bytes'])} "
                 f"in {res['seconds']:.1f}s.\n\nThe master is {res['report'].summary()}.")
-        self._refresh()
-
-    def _restore(self):
-        if not self._master_root:
-            return
-        from PyQt6.QtWidgets import QInputDialog
-        from db import master_health
-        backups = master_health.list_backups(self._master_root)
-        backups = [b for b in backups if not b["day"].startswith("pre-restore")]
-        if not backups:
-            QMessageBox.information(self, "Restore", "There are no backups yet.")
-            return
-        items = [f"{b['day']}  —  {_fmt_size(b['bytes'])}  "
-                 f"({(b['manifest'] or {}).get('check', 'not checked')})"
-                 for b in backups]
-        pick, ok = QInputDialog.getItem(
-            self, "Restore the master CSVs",
-            "Restoring REPLACES the three master CSVs and rebuilds the database.\n"
-            "The current CSVs are snapshotted first, so this is reversible.\n\n"
-            "Restore from:", items, 0, False)
-        if not ok:
-            return
-        day = backups[items.index(pick)]["day"]
-        if QMessageBox.question(
-                self, "Restore the master CSVs",
-                f"Replace data_pictures.csv, data_files.csv and species.csv with the "
-                f"backup from {day}?\n\nAnything added to the master since then will be "
-                f"lost. The current CSVs are kept (gzipped) under backup/pre-restore-*, "
-                f"so you can come back.") != QMessageBox.StandardButton.Yes:
-            return
-
-        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
-        try:
-            res = master_health.restore(self._master_root, day)
-            from db.master_db import MasterDB
-            db = MasterDB(self._master_root)
-            try:
-                db.rebuild()          # the DB is stale by construction after a restore
-            finally:
-                db.close()
-        except Exception as e:
-            QApplication.restoreOverrideCursor()
-            QMessageBox.warning(self, "Restore", f"The restore failed:\n{e}")
-            return
-        finally:
-            QApplication.restoreOverrideCursor()
-        self._last_check = None
-        QMessageBox.information(
-            self, "Restore",
-            f"Restored {len(res['restored'])} CSV(s) from {day} and rebuilt the "
-            f"database.\n\nThe CSVs you replaced are in {res['kept'].name}.\n\n"
-            f"Restart SpeciesViewer — it caches the master in memory.")
         self._refresh()
 
     # ── actions ───────────────────────────────────────────────────────────

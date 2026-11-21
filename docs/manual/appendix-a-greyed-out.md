@@ -47,8 +47,6 @@ the work was done on another machine.
 | **Developer Tools submenu** | *visible only when debug is enabled — restart to apply* |
 | Trip Status Console… | a master |
 | Merged Status (all machines)… | a master |
-| Audit Species Counters (dry-run)… | a master |
-| Clean Orphan Sidecars… | a master |
 | Legacy Steps ▸ Read Directory, Write Summary, Freeze Data, Write Website Commit | an active trip **and** the step's turn |
 | Quit | — |
 
@@ -119,7 +117,7 @@ the work was done on another machine.
 | Species Map | a master |
 | Species Without a Website Picture… | a master |
 | Undo Last Species Move… | a species move to undo |
-| Maintain Master Database ▸ *every item* | a master |
+| Check the Master… | a master |
 | Master Trash… | deleted master pictures in the trash |
 | Rebuild Websites… | a master |
 
