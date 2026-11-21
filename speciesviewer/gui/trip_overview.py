@@ -427,7 +427,7 @@ def _format_raw_backup_item(day_dir, trip_name: str, total_pictures: int, state:
     """Build the RAW backup (💿) cell for one day, from the REMEMBERED status
     (engine.raw_backup.backup_status_verified) rather than a live count — see
     format_raw_backup_status for the Compact/Full/Incomplete/Missing wording,
-    shared with the RawBackupDialog picker so the two never disagree.
+    shared with the RawBackupPanel picker so the two never disagree.
 
     `state` is loaded ONCE for the whole table by the caller (one JSON read,
     not one per day) — see populate_trip_overview. Beyond that, status needs

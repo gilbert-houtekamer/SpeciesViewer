@@ -16,7 +16,6 @@ organised in six blocks, separated by dividers:
 | Create Trip | | |
 | Export Trip | | An active trip |
 | Import Trip | | |
-| Read Metadata from SV INDEX Card | | An active trip |
 | Read SD-card or Folder | | |
 | Empty a Card | | An active trip |
 | Sync Lightroom & PhotoLab Metadata | | An active trip |
@@ -51,8 +50,8 @@ does the same things one step at a time.
 | **In Blog** | A tick: does this day get a blog? Untick a day (the phone pictures, say) to leave it out | |
 | **1 Read & Summarize · 2 Write Blog · 3 Publish Day** | The pipeline, one sphere per step (below) | Run that step for the day |
 | **Translations** | 🟢 all texts checked · 🔵 *n* still to check | |
-| **Metadata backup 💾** | Whether the day's work (sidecars, JPGs, blog text) is on the SV INDEX card, and whether it changed since | Back up the day's work |
-| **RAW backup 💿** | Whether the day's pictures are copied to a spare card or disk | Copy the day's pictures |
+| **Metadata backup 💾** | Whether the day's work (sidecars, JPGs, blog text) is on the SV INDEX card, and whether it changed since | Opens [Export Trip](#export-trip) at step 2: back up the days' work |
+| **RAW backup 💿** | Whether the day's pictures are copied to a spare card or disk | Opens [Export Trip](#export-trip) at step 3: copy the days' pictures |
 
 The pipeline spheres:
 
@@ -138,11 +137,29 @@ The descriptions on *Trip Text* take links: **Ctrl+K** or right-click ▸
 
 *Needs: an active trip.*
 
-Zips the trip's **settings, species list and translations** — its identity, not
-its pictures. Small.
+Takes a trip to another computer, in one window with three numbered steps — the
+mirror of [Import Trip](#import-trip). The top of the window shows each step's
+status, so you can see what is already on its way and what is left.
 
-This is half of carrying a trip to another machine: prepare it on the big
-machine, export, import on the laptop.
+| Step | Takes away | To | Read back by |
+|---|---|---|---|
+| **1 Trip** | A small ZIP: the trip's settings, banner and trip picture, species list, lifer status, translations and publication state | A folder you choose (remembered) | Import Trip step 1 |
+| **2 Metadata** | Per day: culling colours, species names, places, crops, blog text and the rendered JPGs | The SV INDEX card | Import Trip step 2 |
+| **3 Pictures** | The RAW pictures with their sidecars and JPGs | A spare SD-card or a drive | Import Trip step 3 |
+
+Clicking a cell in the Trip panel's *Metadata backup 💾* or *RAW backup 💿*
+column opens this same window at step 2 or 3 — the quickest way to protect the
+work while travelling. Both steps write only what changed since the last time,
+and the window stays open until a copy is done; meanwhile the rest of
+SpeciesViewer stays usable.
+
+Typical use: prepare a trip on the big computer, export, import it on the
+laptop; on the way home, export from the laptop and import on the big computer.
+
+**About the SV INDEX card.** You choose the card itself, never a trip folder on
+it: the backup adds the trip's folder by itself. If you do pick a trip folder,
+SpeciesViewer says so and offers the card instead. The RAW backup follows the
+same rule, so both can share one card.
 
 ### Import Trip
 
@@ -157,6 +174,8 @@ can see at any moment what is done and what is left.
 | **3 Pictures** | The RAW pictures | The trip's SD-cards, or a folder they were dumped into |
 
 Steps 2 and 3 work in either order, and can be repeated as often as you like.
+To read only the SV INDEX card — after a trip, or on the same computer — open
+Import Trip and click step 2.
 
 **Step 1.** Choose the SV INDEX card. The trips on it are listed, newest first,
 with whether each one is already on this computer. Pick one and press *Import*.
@@ -200,19 +219,6 @@ saved beside it with a letter added (`… B.JPG`).
 > 💡 **Tip.** If the pictures are already on a disk (copied off the laptop, say),
 > point *Read SD-card or Folder…* at that folder instead of a card — the same
 > rules apply.
-
-### Read Metadata from SV INDEX Card
-
-*Needs: an active trip.*
-
-Opens the Import Trip window at step 2, for reading the SV INDEX card on its
-own — after a trip, or on the same computer.
-
-The SV INDEX card is the card you write while travelling (click the *Metadata
-backup* cell of a day in the Trip Overview). You choose the card itself, never
-a trip folder on it: the backup adds the trip's folder by itself. If you do
-pick a trip folder, SpeciesViewer says so and offers the card instead. The RAW
-backup follows the same rule, so both can share one card.
 
 ---
 

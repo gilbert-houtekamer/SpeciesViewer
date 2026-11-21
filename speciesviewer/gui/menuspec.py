@@ -14,7 +14,7 @@ from gui.trip_process import (ReadDirDialog, ReadSummarizeDialog, TripCreationDi
         SyncSidecarsDialog, EmptyTripDataDialog, SpeciesCollectionDialog,
         TestbedDialog, BlogAdminDialog, PhotoMechanicDialog,
         SmallMasterDialog, InstallSmallMasterDialog,
-        ExportTripDialog, ImportTripDialog)
+        )
 from gui.virttrip_process import (VirtualTripCreationDialog,
                                    VirttripWriteBlogDialog, VirttripRedoBlogDialog,
                                    VirttripBuildWebsiteDialog,
@@ -938,7 +938,13 @@ def build_menu_spec(main_window):
             'after_msg': "✅ Trip export complete.",
         }
     )
-    export_trip.callback = lambda: ExportTripDialog(main_window, export_trip).exec()
+    # Export Trip is a three-step window, the mirror of Import Trip: the ZIP
+    # (export_trip's batch job), the metadata to the SV INDEX card, and the
+    # pictures to spare cards — the last two the trip panel's backup columns.
+    def _export_trip():
+        from gui.trip_export_window import open_trip_export
+        open_trip_export(main_window, 0, export_spec=export_trip)
+    export_trip.callback = _export_trip
 
     def _import_trip(step=0):
         """Import Trip: the trip, then its metadata from the SV INDEX card, then
@@ -949,14 +955,6 @@ def build_menu_spec(main_window):
     import_trip = MenuSpec(
         callback=_import_trip,
         title="Import Trip",
-    )
-
-    # The same window, opened at its metadata step: reading the SV INDEX card
-    # is also done on its own — after a trip, or on the same computer.
-    restore_work = MenuSpec(
-        callback=lambda: _import_trip(step=1),
-        title="Read Metadata from SV INDEX Card",
-        enabled=has_active_trip,
     )
 
     def _empty_card():
@@ -1870,7 +1868,6 @@ def build_menu_spec(main_window):
             # back when you come home.
             "Export Trip…": export_trip,
             "Import Trip…": import_trip,
-            "Read Metadata from SV INDEX Card…": restore_work,
             f"{MenuSpec.separator()}_setup0": None,
             "Read SD-card or Folder…": read_sdcard,
             "Empty a Card": empty_card,

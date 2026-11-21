@@ -3870,13 +3870,10 @@ class ExportTripDialog(QDialog):
         layout = QVBoxLayout(self)
 
         info = QLabel(
-            "<b>Export this trip</b><br>"
             "Writes a small ZIP holding the trip's settings (<tt>trip.ini</tt>), its "
             "trip picture and banner, its species list, its lifer status, its "
-            "translations and its publication state.<br><br>"
-            "The <b>pictures are not included</b> — copy the day folders yourself "
-            "with Explorer or Finder, and use <i>Read &amp; Summarize</i> on the "
-            "other machine to rebuild the day data from them."
+            "translations and its publication state. The days' work and the "
+            "pictures follow in steps 2 and 3."
         )
         info.setWordWrap(True)
         layout.addWidget(info)
@@ -3897,7 +3894,7 @@ class ExportTripDialog(QDialog):
         self.copy_label.setStyleSheet(f"color: {_theme.INK_SOFT};")
         if trip_root and os.path.isdir(trip_root):
             try:
-                from engine.trip_transfer import build_manifest, copy_instruction
+                from engine.trip_transfer import build_manifest
                 _cfg, _info = build_manifest(
                     trip_root,
                     master_root=_config.get("master", "masterbiotadatabase", fallback=""))
@@ -3908,9 +3905,7 @@ class ExportTripDialog(QDialog):
                 self.copy_label.setTextFormat(Qt.TextFormat.RichText)
                 # Escape: the instruction carries a Windows path, and an
                 # unescaped one can be eaten by Qt's HTML parser.
-                self.copy_label.setText(
-                    f"📁 {_e(copy_instruction(_info))}<br>"
-                    f"🌐 {published[_info['published']]}")
+                self.copy_label.setText(f"🌐 {_e(published[_info['published']])}")
             except Exception as e:
                 self.copy_label.setText(f"(could not read the trip: {e})")
         layout.addWidget(self.copy_label)

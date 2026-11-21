@@ -1148,55 +1148,15 @@ class MainWindow(QMainWindow):
             # Read & Summarize runs again.
             self._run_trip_geotag(day_str)
 
-        # Back up column — one ZIP per day's WORK to a spare card. Opens the
-        # picker with every day that NEEDS a backup already ticked (trip-wide,
-        # not just the day you clicked) — the common case, "back up whatever
-        # changed", is one click regardless of which row you opened this from.
-        # Non-modal (the ZIP work runs on its own QThread) so the rest of SV
-        # stays usable while it runs; the row is repainted once it closes.
-        elif column == BACKUP_COL:
-            from gui.work_backup_dialog import BackupWorkDialog
-            if not self._try_start_background_op("Back up work"):
-                return
-            trip_days = sorted(d for d in Path(new_dir).parent.iterdir() if d.is_dir())
-            dlg = BackupWorkDialog(self, trip_days, trip_root=str(trip_root))
-            self._backup_work_dlg = dlg  # keep alive while non-modal
-
-            def _on_backup_finished(*_a, _trip_root=trip_root, _review_day=review_day, _day_str=day_str):
-                self._end_background_op()
-                sm2 = StateMachine(str(_trip_root), str(_review_day), readState=True)
-                self.refresh_trip_row(sm2, _day_str)
-                self._backup_work_dlg = None
-
-            dlg.finished.connect(_on_backup_finished)
-            dlg.show()
-
-        # RAW backup column — a plain folder copy of the day's PICTURES to a
-        # spare card/HDD (the other half of "protect today's work" beside
-        # Back up above). No day is pre-ticked: unlike the ZIP's manifest,
-        # knowing which days still need copying would mean stat-ing every
-        # picture at the destination up front — see _format_raw_backup_item.
-        # A run can copy several days at once, not just the one clicked, so a
-        # single-row refresh (like Back up's) is not enough — the whole
-        # overview is repainted once the dialog closes. Non-modal (the copy
-        # runs on its own QThread) so the rest of SV stays usable meanwhile.
-        elif column == RAW_BACKUP_COL:
-            from gui.raw_backup_dialog import RawBackupDialog
-            if not self._try_start_background_op("RAW backup"):
-                return
-            picture_root = Path(new_dir).parent
-            trip_days = sorted(d for d in picture_root.iterdir() if d.is_dir())
-            dlg = RawBackupDialog(self, trip_days, trip_name=picture_root.name,
-                                  trip_root=str(trip_root))
-            self._raw_backup_dlg = dlg  # keep alive while non-modal
-
-            def _on_raw_backup_finished(*_a):
-                self._end_background_op()
-                populate_trip_overview(self)
-                self._raw_backup_dlg = None
-
-            dlg.finished.connect(_on_raw_backup_finished)
-            dlg.show()
+        # Metadata backup and RAW backup columns: Export Trip, opened at its
+        # step 2 (the day's WORK to the SV INDEX card) or step 3 (the PICTURES
+        # to a spare card). One window for each job, whichever door you use;
+        # it holds the background-op guard and repaints the overview on close.
+        elif column in (BACKUP_COL, RAW_BACKUP_COL):
+            from gui.trip_export_window import (open_trip_export,
+                                                STEP_METADATA, STEP_PICTURES)
+            open_trip_export(self, STEP_METADATA if column == BACKUP_COL
+                             else STEP_PICTURES)
 
         # Batch action
         else:

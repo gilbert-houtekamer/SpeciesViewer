@@ -1,8 +1,10 @@
-"""Back up the days' work to a spare card.
+"""Back up the days' work to a spare card — step 2 of Export Trip.
 
 ONE job: choose a folder and a set of days, and write one ZIP per day into it.
 All the thinking lives in `engine.work_backup`; this is the picker and the
-progress report.
+progress report. It is a PANEL, shown inside gui.trip_export_window (which the
+trip panel's Metadata backup column opens at this step) — never a window of its
+own, so it can never end up behind the window that opened it.
 
 Invariant: the day list is rebuilt from disk every time it is shown, and each
 day's state comes from comparing the folder against the manifest inside its
@@ -18,9 +20,9 @@ from pathlib import Path
 
 from PyQt6.QtCore import QObject, Qt, QThread, pyqtSignal
 from PyQt6.QtWidgets import (
-    QAbstractItemView, QApplication, QDialog, QFileDialog, QHBoxLayout,
+    QAbstractItemView, QApplication, QHBoxLayout,
     QHeaderView, QLabel, QMessageBox, QPushButton, QTableWidget,
-    QTableWidgetItem, QVBoxLayout,
+    QTableWidgetItem, QVBoxLayout, QWidget,
 )
 
 from engine import work_backup as wb
@@ -116,20 +118,21 @@ class _BackupWorker(QObject):
                 self.finished.emit({}, str(e))
 
 
-class BackupWorkDialog(QDialog):
-    def __init__(self, parent, day_dirs, trip_root=""):
+class BackupWorkPanel(QWidget):
+    """busy_changed(True) while a backup runs — the window around it keeps
+    itself open meanwhile. run_done after every run, to refresh statuses."""
+    busy_changed = pyqtSignal(bool)
+    run_done = pyqtSignal()
+
+    def __init__(self, parent=None, day_dirs=(), trip_root=""):
         super().__init__(parent)
-        self.setWindowTitle("Back up the day's work")
         self._trip_root = str(trip_root or "")
         self._day_dirs = [Path(d) for d in day_dirs]
         self._rows: list[dict] = []
         self._thread = None
-        self.resize(1000, 520)
 
-        # The jay buries acorns and finds them back months later — a backup.
-        # On the left of the whole dialog, as in Create Excel (2026-10-21).
-        from gui.wait_picture import picture_column
-        outer = picture_column(self, "jay")
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
         intro_row = QHBoxLayout()
         intro_row.setSpacing(14)
         outer.addLayout(intro_row)
@@ -176,18 +179,22 @@ class BackupWorkDialog(QDialog):
         self._run_btn = QPushButton("Back up selected")
         self._run_btn.clicked.connect(self._run)
         btns.addWidget(self._run_btn)
-        self._close_btn = QPushButton("Close")
-        self._close_btn.clicked.connect(self.accept)
-        btns.addWidget(self._close_btn)
         outer.addLayout(btns)
 
-        # Comparing every day's folder against its ZIP manifest can take a
-        # moment for a long trip. Show the window with a status message and
-        # force it to actually paint before running the (blocking) scan — a
-        # deferred QTimer.singleShot(0, ...) call still raced the first paint
-        # and lost, leaving a blank window the whole time.
+    def set_days(self, day_dirs, trip_root=""):
+        self._day_dirs = [Path(d) for d in day_dirs]
+        self._trip_root = str(trip_root or "")
+
+    def is_busy(self) -> bool:
+        return self._thread is not None
+
+    def reload(self):
+        """Comparing every day's folder against its ZIP manifest can take a
+        moment for a long trip: say so, and let it paint, before the
+        (blocking) scan."""
+        if self.is_busy():
+            return
         self._summary.setText("Collecting metadata from all days…")
-        self.show()
         QApplication.processEvents()
         self._reload()
 
@@ -294,7 +301,7 @@ class BackupWorkDialog(QDialog):
             return
 
         self._run_btn.setEnabled(False)
-        self._close_btn.setEnabled(False)
+        self.busy_changed.emit(True)
         self._summary.setText("Backing up…")
         QApplication.processEvents()
 
@@ -310,8 +317,10 @@ class BackupWorkDialog(QDialog):
     def _on_finished(self, out, error):
         self._thread.quit()
         self._thread.wait()
+        self._thread = None
         self._run_btn.setEnabled(True)
-        self._close_btn.setEnabled(True)
+        self.busy_changed.emit(False)
+        self.run_done.emit()
         if error:
             self._summary.setText(f"❌ {error}")
             QMessageBox.warning(self, "Back up the day's work",

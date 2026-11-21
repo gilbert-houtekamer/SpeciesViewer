@@ -3,7 +3,9 @@ external HDD.
 
 ONE job: choose a folder and a set of days, and copy each day's folder into
 it. All the thinking lives in `engine.raw_backup`; this is the picker and the
-progress report. Sibling to work_backup_dialog.BackupWorkDialog (the
+progress report — a PANEL, step 3 of gui.trip_export_window (which the trip
+panel's RAW backup column opens at this step). Sibling to
+work_backup_dialog.BackupWorkPanel (the
 Metadata backup), which this deliberately does not duplicate: that one ZIPs
 the culling WORK and never touches a RAW; this one copies the pictures and
 knows nothing about ratings or species.
@@ -22,9 +24,9 @@ from pathlib import Path
 from PyQt6.QtCore import QObject, Qt, QThread, pyqtSignal
 from PyQt6.QtGui import QColor
 from PyQt6.QtWidgets import (
-    QAbstractItemView, QApplication, QCheckBox, QDialog, QFileDialog, QHBoxLayout,
+    QAbstractItemView, QApplication, QCheckBox, QHBoxLayout,
     QHeaderView, QLabel, QMessageBox, QPushButton, QTableWidget,
-    QTableWidgetItem, QVBoxLayout,
+    QTableWidgetItem, QVBoxLayout, QWidget,
 )
 
 from engine import raw_backup as rb
@@ -80,6 +82,30 @@ def format_raw_backup_status(status: str, rec: dict | None, current_total: int) 
     return (label, f"Backed up (full): {rec.get('copied', 0)} file(s) copied "
                    f"last run, including Blue and/or already-deleted "
                    f"pictures. Click to check again.", "done")
+
+def day_statuses(day_dirs, trip_root, trip_name) -> list[dict]:
+    """One row per day: {dir, total, status, rec}. The ONE place a day's RAW
+    backup status is decided — the panel's table and Export Trip's step tile
+    both read it, so they cannot disagree. One JSON read for all days."""
+    dest = raw_backup_location()
+    state = rb.load_backup_state(trip_root) if trip_root else {}
+    rows = []
+    for d in day_dirs:
+        d = Path(d)
+        try:
+            total = sum(1 for p in d.iterdir() if p.is_file())
+        except OSError:
+            total = 0
+        status = rb.backup_status_verified(d.name, total, state, dest, trip_name)
+        if status == "not_copied" and dest and rb.count_copied(d, dest, trip_name) > 0:
+            status = "legacy"
+        rows.append({"dir": d, "total": total, "status": status, "rec": state.get(d.name)})
+    return rows
+
+
+# Counted as "copied" in a summary: on the drive, recorded or from before records.
+COPIED_STATUSES = ("compact", "full", "legacy")
+
 
 def raw_backup_location() -> str:
     return _config.get(CONFIG_SECTION, CONFIG_KEY, fallback="").strip()
@@ -149,21 +175,22 @@ class _RawBackupWorker(QObject):
                 self.finished.emit(out, str(e))
 
 
-class RawBackupDialog(QDialog):
-    def __init__(self, parent, day_dirs, trip_name: str = "", trip_root: str = ""):
+class RawBackupPanel(QWidget):
+    """busy_changed(True) while a copy runs — the window around it keeps
+    itself open meanwhile. run_done after every run, to refresh statuses."""
+    busy_changed = pyqtSignal(bool)
+    run_done = pyqtSignal()
+
+    def __init__(self, parent=None, day_dirs=(), trip_name: str = "", trip_root: str = ""):
         super().__init__(parent)
-        self.setWindowTitle("Back up pictures (RAW backup)")
         self._trip_name = trip_name
         self._trip_root = trip_root
         self._day_dirs = [Path(d) for d in day_dirs]
         self._rows: list[dict] = []
         self._thread = None
-        self.resize(1000, 560)
 
-        # The jay buries acorns and finds them back months later — a backup.
-        # On the left of the whole dialog, as in Create Excel (2026-10-21).
-        from gui.wait_picture import picture_column
-        outer = picture_column(self, "jay")
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
         intro_row = QHBoxLayout()
         intro_row.setSpacing(14)
         outer.addLayout(intro_row)
@@ -241,18 +268,22 @@ class RawBackupDialog(QDialog):
         self._cancel_btn.setEnabled(False)
         self._cancel_btn.clicked.connect(self._on_cancel_clicked)
         btns.addWidget(self._cancel_btn)
-        self._close_btn = QPushButton("Close")
-        self._close_btn.clicked.connect(self.accept)
-        btns.addWidget(self._close_btn)
         outer.addLayout(btns)
 
-        # Counting "already copied" files at the destination for every day
-        # can take a moment. Show the window with a status message and force
-        # it to actually paint before running the (blocking) scan — a
-        # deferred QTimer.singleShot(0, ...) call still raced the first paint
-        # and lost, leaving a blank window the whole time.
+    def set_days(self, day_dirs, trip_name="", trip_root=""):
+        self._day_dirs = [Path(d) for d in day_dirs]
+        self._trip_name = trip_name
+        self._trip_root = trip_root
+
+    def is_busy(self) -> bool:
+        return self._thread is not None
+
+    def reload(self):
+        """Counting "already copied" files at the destination for every day
+        can take a moment: say so, and let it paint, before the scan."""
+        if self.is_busy():
+            return
         self._summary.setText("Collecting picture counts from all days…")
-        self.show()
         QApplication.processEvents()
         self._reload()
 
@@ -269,18 +300,7 @@ class RawBackupDialog(QDialog):
         day with no recorded run, where a plain destination check is the only
         way to notice a pre-existing (legacy/manual) copy."""
         dest = raw_backup_location()
-        state = rb.load_backup_state(self._trip_root) if self._trip_root else {}
-        self._rows = []
-        for d in self._day_dirs:
-            try:
-                total = sum(1 for p in d.iterdir() if p.is_file())
-            except OSError:
-                total = 0
-            status = rb.backup_status_verified(d.name, total, state, dest, self._trip_name)
-            rec = state.get(d.name)
-            if status == "not_copied" and dest and rb.count_copied(d, dest, self._trip_name) > 0:
-                status = "legacy"
-            self._rows.append({"dir": d, "total": total, "status": status, "rec": rec})
+        self._rows = day_statuses(self._day_dirs, self._trip_root, self._trip_name)
 
         self._table.blockSignals(True)
         self._table.setRowCount(len(self._rows))
@@ -359,7 +379,7 @@ class RawBackupDialog(QDialog):
         days = [self._rows[i]["dir"] for i in picked]
 
         self._run_btn.setEnabled(False)
-        self._close_btn.setEnabled(False)
+        self.busy_changed.emit(True)
         self._cancel_btn.setEnabled(True)
         self._summary.setText("Copying…")
         QApplication.processEvents()
@@ -397,9 +417,11 @@ class RawBackupDialog(QDialog):
     def _on_finished(self, out, error):
         self._thread.quit()
         self._thread.wait()
+        self._thread = None
         self._run_btn.setEnabled(True)
-        self._close_btn.setEnabled(True)
         self._cancel_btn.setEnabled(False)
+        self.busy_changed.emit(False)
+        self.run_done.emit()
         if error:
             self._summary.setText(f"❌ {error}")
             QMessageBox.warning(self, "Back up pictures",
