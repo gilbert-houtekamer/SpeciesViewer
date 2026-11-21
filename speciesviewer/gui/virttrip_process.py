@@ -48,9 +48,9 @@ def require_full_master(parent) -> bool:
             parent, "Design albums on the main machine",
             "This machine holds a partial copy of the master (a SmallMaster install), "
             "so it can view and publish albums but not create or redesign them.\n\n"
-            "An album is a live query over the WHOLE master by date range, which isn't "
-            "available here — designing one would silently leave pictures out. Create "
-            "and edit albums on the machine that has the full master.")
+            "An album is a query over the SmallMaster by date range, so it does not "
+            "reflect changes made on the master since this SmallMaster was last "
+            "updated.")
         return False
     return True
 

@@ -24,12 +24,12 @@ ingest, freeze or commit. There is only writing it up and publishing it.
 | Import Album | A master |
 | Delete Album… | |
 
-> **Full master required — for now.** Find Trips, Select or Update and Create
-> Album are greyed out on a laptop with a SmallMaster. That is stricter than it
-> needs to be: a SmallMaster carries every row of the master's lists, so the
-> dates, the counts and *Check Range* would come out the same. Only what needs a
-> RAW — a banner cut from the RAW, *Add new renders*, a suggested crop — needs the
-> full master. Backlog 1.15.
+> **Albums on a laptop with a SmallMaster.** You can import, view and publish
+> albums there; you create and redesign them (Find Trips, Select or Update, Create
+> Album) on the computer with the full master. An imported album is identical to
+> the one on the full master, as long as the master has not changed since the
+> SmallMaster was last updated: the album is a query by date range, so it shows
+> the master as the SmallMaster holds it.
 
 ---
 
@@ -248,10 +248,10 @@ in an album to zip.
 Unpacks an album export on this machine and makes it the active album. The
 album then reads this machine's master by its dates.
 
-On a laptop with a SmallMaster this works: the lists are complete, so the days,
-counts and blogs come out the same; the viewers show the pictures that have a
-JPG, because those are the ones the SmallMaster carries. Not yet covered by a
-test (backlog 1.15).
+On a laptop with a SmallMaster this works the same: the lists are complete, so
+the days, counts and blogs come out identical to the full master as it was when
+the SmallMaster was last updated. The viewers show the pictures that have a JPG,
+because those are the ones the SmallMaster carries.
 
 ### Delete Album…
 

@@ -178,7 +178,8 @@ Work down this list; the first "no" is almost always the answer.
    master path greys out the Master menu, half of To Master, and both Album
    creation items.
 3. **Is this a SmallMaster install?** Then Create Album and Retire Trip stay
-   greyed by design.
+   greyed: you do those on the computer with the full master. Importing, viewing
+   and publishing albums work as usual.
 4. **For a pipeline step: has the previous step run for this day?** Hover the
    item — the tooltip says what is missing. Or look at the day's row in the
    Trip panel.

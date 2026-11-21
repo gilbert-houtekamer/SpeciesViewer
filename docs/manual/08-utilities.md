@@ -104,10 +104,10 @@ answer "have I had this before?" without carrying terabytes.
 
 Unpacks and configures a Small Master on this machine.
 
-> A SmallMaster install is **read-only-locked**. Actions that would write to the
-> collection as a whole — Create Album, Retire Trip to Album — check for a *full*
-> master and stay greyed. This is deliberate: a partial collection must never
-> become the authority.
+> A SmallMaster install is **read-only-locked**: it is a copy for viewing,
+> publishing and importing albums and trips. What changes the collection as a
+> whole — Create Album, Retire Trip to Album — you do on the computer with the full
+> master, so there is always one master that is the original.
 
 ---
 
