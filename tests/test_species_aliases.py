@@ -80,7 +80,7 @@ def test_merge_into_a_missing_table_creates_it(tmp_path):
     _write(src, FIELDS, [["tivoka", "local", "coua cristata", "local name", ""]])
     dest = tmp_path / "new" / "speciesnames.csv"
     assert merge_alias_files(str(src), str(dest)) == 1
-    assert read_aliases(str(dest))[0] == FIELDS
+    assert read_aliases(str(dest))[0] == FIELDS + ["Removed", "Changed"]   # new columns at the END
 
 
 def test_trip_zip_carries_the_table(tmp_path):
@@ -94,3 +94,44 @@ def test_trip_zip_carries_the_table(tmp_path):
     with zipfile.ZipFile(tmp_path / "old.zip", "w") as zf:
         zf.writestr("trip.ini", "")
     assert trip_transfer.merge_aliases(str(tmp_path / "old.zip"), str(dest)) is None
+
+
+# ── removing a name (backlog 1.1): the row stays, marked; merges carry it ─────
+
+def _names(path):
+    from engine.species_aliases import is_removed
+    return {r["Name"]: is_removed(r) for r in read_aliases(str(path))[1]}
+
+
+def test_remove_marks_the_row_and_the_reader_skips_it(tmp_path):
+    from engine.species_aliases import remove_aliases
+    t = tmp_path / "speciesnames.csv"
+    _write(t, FIELDS, [["drijfsijs", "local", "anas platyrhynchos", "local name", "x"]])
+    assert remove_aliases([str(t)], [("drijfsijs", "local", "anas platyrhynchos")]) == 1
+    assert _names(t) == {"drijfsijs": True}
+    assert read_aliases(str(t))[0][-2:] == ["Removed", "Changed"]
+
+
+def test_a_removal_survives_a_merge_from_an_older_copy(tmp_path):
+    from engine.species_aliases import remove_aliases
+    master, trip = tmp_path / "m.csv", tmp_path / "t.csv"
+    row = ["drijfsijs", "local", "anas platyrhynchos", "local name", "x"]
+    _write(master, FIELDS, [row])
+    _write(trip, FIELDS, [row])                         # the trip still has it, unmarked
+    remove_aliases([str(master)], [tuple(row[:3])])
+    merge_alias_files(str(trip), str(master))           # trip comes home
+    assert _names(master) == {"drijfsijs": True}        # not revived
+    merge_alias_files(str(master), str(trip))           # laptop gets the master's table
+    assert _names(trip) == {"drijfsijs": True}          # the removal travelled
+
+
+def test_adding_a_removed_name_again_brings_it_back(tmp_path):
+    import time
+    from engine.species_aliases import remove_aliases
+    t = tmp_path / "speciesnames.csv"
+    _write(t, FIELDS, [["tivoka", "local", "coua cristata", "local name", ""]])
+    remove_aliases([str(t)], [("tivoka", "local", "coua cristata")])
+    time.sleep(1.1)                                     # Changed has 1 s resolution
+    add_alias([str(t)], "tivoka", "coua cristata")
+    assert _names(t) == {"tivoka": False}
+    assert len(read_aliases(str(t))[1]) == 1            # no second row

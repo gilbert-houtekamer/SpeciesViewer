@@ -28,6 +28,7 @@ organised in six blocks, separated by dividers:
 | Delete a Blog… | | An active trip |
 | Trip Species Viewer | | An active trip |
 | Edit Species List | | An active trip |
+| Other Species Names… | | A master |
 | Publish Species Names | | An active trip **and** a master |
 | Species per Day… | | An active trip |
 | Trash (deleted pictures)… | | An active trip |

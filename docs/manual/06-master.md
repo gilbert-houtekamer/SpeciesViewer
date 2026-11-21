@@ -11,6 +11,7 @@ What remains is what you do *with* and *to* the collection itself.
 |---|---|
 | Masters ▸ … | Nothing |
 | Edit Species List | A master |
+| Other Species Names… | A master |
 | Add Pictures to Master… | A master |
 | Species Viewer | A master |
 | Species Map | A master |
@@ -59,13 +60,40 @@ the English and Dutch names. The same one list as
 and what happens to the active trip's copy when you save.
 
 The list also keeps **local names**: the name a guide used ("koereiger" for a
-cattle egret). They are not shown in this editor; you add one when you name a
-picture and SpeciesViewer does not know the name — choose **Local name…** and
-pick the species it means. From then on that name finds the species everywhere.
+cattle egret). They are not shown in this editor, but in **Other Species
+Names…** (below). You add one when you name a picture and SpeciesViewer does not
+know the name — choose **Local name…** and pick the species it means. From then
+on that name finds the species everywhere.
 
 Each master has its own list. A new master starts with SpeciesViewer's starter
 list (birds and mammals in the order of the world lists, with their Dutch and
 English names), and learns every new species you name from then on.
+
+## Other Species Names…
+
+*Needs: a master.*
+
+Every other name that leads to a species, one row per name: the name, its
+language, the species it means with that species' English and Dutch name, what
+kind of name it is, and where it came from. Two kinds live here:
+
+- **Your local names** — added with *Local name…* while naming a picture, or
+  with **Add a name…** in this window.
+- **Names the taxonomy update left behind** — old scientific names, older Dutch
+  names, subspecies that became a species. Untick *Only names you added* to
+  see them.
+
+These names only help you **find** a species when you type one; they never
+appear on a website.
+
+The **filter** looks in every column, so typing *wilde eend* shows every name
+that leads to the mallard. To remove a wrong name: right-click it ▸ **Remove…**
+(or the Delete key). *Add to selection* in the same menu removes several at once.
+
+A removed name **stays in the list, greyed, with the date**. The names table
+travels with every trip and to the laptop, and is merged back each time; a name
+that was simply deleted would come back with the next merge. Marked as removed,
+the removal travels too. Adding the same name again brings it back.
 
 ---
 

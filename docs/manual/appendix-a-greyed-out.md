@@ -89,6 +89,7 @@ the work was done on another machine.
 | Delete a Blog… | an active trip |
 | Trip Species Viewer | an active trip |
 | Edit Species List | an active trip |
+| Other Species Names… *(Trips)* | a master |
 | Publish Species Names | a trip and a master |
 | Species per Day… | an active trip |
 | Trash (deleted pictures)… | an active trip |
@@ -113,6 +114,7 @@ the work was done on another machine.
 | Masters ▸ Restore Master… | a master that was removed |
 | Masters ▸ Create Master Collection… | a master without a collection |
 | Edit Species List | a master |
+| Other Species Names… | a master |
 | Add Pictures to Master… | a master |
 | Species Viewer | a master |
 | Species Map | a master |

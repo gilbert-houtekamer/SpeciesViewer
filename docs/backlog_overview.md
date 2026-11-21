@@ -16,7 +16,6 @@ to understand than it needs to be.
 
 | # | What | Size |
 |---|------|------|
-| 1.1 | **A local name can't be seen or removed.** Edit Species List doesn't show local names, so a wrong one stays for good. | S–M |
 | 1.18 | **Help in every window.** A *Help* button (or F1) that opens the manual at the section for that window. Builds on Help ▸ Reference Manual (done 21 Nov). | M |
 | 1.19 | **Standard Windows selection as well.** Click, Ctrl+click and Shift+click in the grids, next to the `[` `]` keys and *Add to selection* — as an extra, never the only way, and only where it does not clash with existing clicks. | S–M |
 | 1.20 | **Sex / age / plumage is weak.** Fine for most birds, but no age classes for large birds (1st–4th year) and nothing for insects (larva, pupa, adult…). Settle the vocabulary per group, then document it. | M |

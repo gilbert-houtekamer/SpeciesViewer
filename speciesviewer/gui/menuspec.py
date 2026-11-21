@@ -846,6 +846,20 @@ def build_menu_spec(main_window):
         showsubdirectory=False,
     )
 
+    # The names that lead to a species (local, old scientific, older Dutch) —
+    # see, add, remove (backlog 1.1). The master's table; no trip needed.
+    def _species_names():
+        from gui.species_names_dialog import open_species_names
+        open_species_names(main_window)
+
+    species_names_item = MenuSpec(
+        callback=_species_names,
+        title="Other Species Names…",
+        enabled=has_master,
+        showsubdirectory=False,
+        tooltip="Local and older names that lead to a species: see, add or remove them",
+    )
+
     def _manage_caches():
         from gui.cache_manager import ManageCachesDialog
         ManageCachesDialog(main_window).exec()
@@ -1924,6 +1938,7 @@ def build_menu_spec(main_window):
             "Rating Editor": rating_editor,                    # shows "Trip Species Viewer"
             # Browsing this trip by taxonomy lives in the Browser menu.
             "Edit Species List": edit_trip_species,            # same list as under Master
+            "Other Species Names…": species_names_item,
             "Publish Species Names": merge_trip_species,       # also under To Master
             "Count Species": count_species,
             "Trash (deleted pictures)…": trip_trash,
@@ -1959,6 +1974,7 @@ def build_menu_spec(main_window):
             "Masters": masters_menu(main_window),
             f"{MenuSpec.separator()}_master_switch": None,
             "Edit Species List": edit_master_species,
+            "Other Species Names…": species_names_item,
             f"{MenuSpec.separator()}_master_0": None,
             "Add Pictures to Master…": add_pictures_to_master_item,
             f"{MenuSpec.separator()}_master_1": None,

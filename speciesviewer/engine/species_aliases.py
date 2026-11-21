@@ -1,15 +1,22 @@
 """The alias table, speciesnames.csv (ch.6): other names that point at a species.
 
-ONE JOB: add a name to the table, and merge two tables, without ever losing a row.
+ONE JOB: add a name to the table, remove one, and merge two tables, without ever
+losing a row.
 
 INVARIANTS
   - An alias points at a SCIENTIFIC name in the species list, never at another
     common name, so no chains form.
   - A name that is already a species, or already means another species, is
     refused — better unresolved than filed under the wrong bird.
-  - A merge is a UNION: a row is never dropped or changed. Two rows that give
-    one name to two species may both land; the reader (speciesclassification.
-    _readAliases) then refuses that name, which is the safe answer.
+  - A merge is a UNION: a row is never dropped. Two rows that give one name to
+    two species may both land; the reader (speciesclassification._readAliases)
+    then refuses that name, which is the safe answer.
+  - REMOVING a name never deletes its row: it gets a Removed date, and every
+    reader skips it. Only that way can a removal survive the union merges — a
+    deleted row would come back from the next trip or laptop table (backlog 1.1).
+    Removed and Changed are the last two columns (new columns go at the END).
+    In a merge, of two copies of one row the one with the later Changed wins, so
+    a removal travels, and so does adding the name back afterwards.
 
 Who calls what: the species step adds a local name a guide used (to the master
 AND the trip, at once); svr5 merges a trip's table into its master; the trip
@@ -24,7 +31,21 @@ import tempfile
 logger = logging.getLogger("speciesviewer")
 
 ALIAS_FILE = "speciesnames.csv"
-FIELDS = ["Name", "Language", "PointsTo", "Kind", "Source"]
+FIELDS = ["Name", "Language", "PointsTo", "Kind", "Source", "Removed", "Changed"]
+
+
+def _now():
+    import datetime
+    return datetime.datetime.now().isoformat(timespec="seconds")
+
+
+def is_removed(row) -> bool:
+    return bool((row.get("Removed") or "").strip())
+
+
+def _with_all_fields(header):
+    """The file's own header, with any of FIELDS it lacks appended at the end."""
+    return list(header) + [f for f in FIELDS if f not in header]
 
 
 def alias_path(repo_root):
@@ -52,6 +73,7 @@ def _write_aliases(path, header, rows):
     half-written table behind."""
     folder = os.path.dirname(path)
     os.makedirs(folder, exist_ok=True)
+    header = _with_all_fields(header)
     fd, tmp = tempfile.mkstemp(suffix=".csv", dir=folder)
     try:
         with os.fdopen(fd, "w", encoding="utf-8", newline="") as f:
@@ -93,7 +115,8 @@ def add_alias(paths, name, sci, *, language="local", kind="local name", source="
     table that already has it. Returns the paths actually written. Raises on a
     write failure — the caller tells the user."""
     row = {"Name": name.strip().lower(), "Language": language,
-           "PointsTo": sci.strip().lower(), "Kind": kind, "Source": source}
+           "PointsTo": sci.strip().lower(), "Kind": kind, "Source": source,
+           "Removed": "", "Changed": _now()}
     written = []
     seen = set()
     for path in paths:
@@ -104,9 +127,15 @@ def add_alias(paths, name, sci, *, language="local", kind="local name", source="
             continue
         seen.add(norm)
         header, rows = read_aliases(path)
-        if any(_key(r) == _key(row) for r in rows):
+        same = [r for r in rows if _key(r) == _key(row)]
+        if same and not any(is_removed(r) for r in same):
             continue
-        _write_aliases(path, header, rows + [row])
+        if same:                          # removed before: bring it back
+            for r in same:
+                r["Removed"], r["Changed"] = "", row["Changed"]
+            _write_aliases(path, header, rows)
+        else:
+            _write_aliases(path, header, rows + [row])
         written.append(path)
     if written:
         logger.info(f"Remembered “{row['Name']}” as a name for {row['PointsTo']} "
@@ -114,25 +143,64 @@ def add_alias(paths, name, sci, *, language="local", kind="local name", source="
     return written
 
 
+def remove_aliases(paths, keys) -> int:
+    """Mark the rows with these (name, language, points-to) keys as removed in
+    each table of `paths` (master first). The rows stay — see the invariant.
+    Returns how many rows were marked in the first table. Raises on a write
+    failure; the caller tells the user."""
+    keys = {tuple((x or "").strip().lower() for x in k) for k in keys}
+    stamp = _now()
+    first = None
+    seen = set()
+    for path in paths:
+        if not path or not os.path.isfile(path):
+            continue
+        norm = os.path.normcase(os.path.normpath(path))
+        if norm in seen:
+            continue
+        seen.add(norm)
+        header, rows = read_aliases(path)
+        n = 0
+        for r in rows:
+            if _key(r) in keys and not is_removed(r):
+                r["Removed"], r["Changed"] = stamp[:10], stamp
+                n += 1
+        if n:
+            _write_aliases(path, header, rows)
+        if first is None:
+            first = n
+    if first:
+        logger.info(f"Removed {first} other name(s) from the species names table.")
+    return first or 0
+
+
 def merge_alias_files(src, dest):
-    """Fold every row of `src` that `dest` lacks into `dest` (a union; nothing
-    in `dest` changes). Returns the number of rows added. A missing `src` adds
-    nothing; a missing `dest` becomes a copy of `src`."""
+    """Fold `src` into `dest`: every row `dest` lacks is added (a union), and of
+    a row both hold, the copy with the later Changed wins — that is how a
+    removal, or a name added back, travels. Returns the number of rows added or
+    changed. A missing `src` adds nothing; a missing `dest` becomes a copy."""
     _, src_rows = read_aliases(src)
     if not src_rows:
         return 0
     header, dest_rows = read_aliases(dest)
-    have = {_key(r) for r in dest_rows}
-    new = []
+    at = {_key(r): r for r in dest_rows}
+    new, changed = [], 0
     for r in src_rows:
         k = _key(r)
-        if k[0] and k[2] and k not in have:
-            have.add(k)
+        if not (k[0] and k[2]):
+            continue
+        mine = at.get(k)
+        if mine is None:
+            at[k] = r
             new.append(r)
-    if new:
+        elif (r.get("Changed") or "") > (mine.get("Changed") or "") \
+                and is_removed(r) != is_removed(mine):
+            mine["Removed"], mine["Changed"] = r.get("Removed") or "", r.get("Changed")
+            changed += 1
+    if new or changed:
         _write_aliases(dest, header, dest_rows + new)
-        logger.info(f"Merged {len(new)} name(s) into {dest}.")
-    return len(new)
+        logger.info(f"Merged {len(new) + changed} name(s) into {dest}.")
+    return len(new) + changed
 
 
 def merge_alias_text(text, dest):

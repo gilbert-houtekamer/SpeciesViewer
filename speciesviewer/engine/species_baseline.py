@@ -320,6 +320,8 @@ def translate_baseline(trip_repo, master_repo):
     targets = {}
     with open(aliases_csv, encoding="utf-8", newline="") as f:
         for row in csv.DictReader(f, delimiter=";"):
+            if (row.get("Removed") or "").strip():
+                continue
             if (row.get("Language") or "") == "sci":
                 name = (row.get("Name") or "").strip().lower()
                 targets.setdefault(name, set()).add((row.get("PointsTo") or "").strip().lower())

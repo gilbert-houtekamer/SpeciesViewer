@@ -352,6 +352,8 @@ class SpeciesClassification:
         indices = {'nl': self.dutch_dict, 'en': self.english_dict}
         with open(path, encoding='utf-8', newline="") as f:
             for row in csv.DictReader(f, delimiter=';'):
+                if (row.get('Removed') or "").strip():
+                    continue                 # removed by hand (backlog 1.1)
                 name = (row.get('Name') or "").strip().lower()
                 to = (row.get('PointsTo') or "").strip().lower()
                 if name and to in self.sc_dict and name not in self.sc_dict:
