@@ -28,6 +28,7 @@ python -m pytest tests/test_countries.py::test_name   # single test
 python tools/sv_card_empty_selftest.py   # hand-run self-test: emptying a card
 python tools/svr_extension_audit.py      # invariant: RAW extensions live in ONE table
 python tools/svr_manual_build.py --open  # build the reference manual into one HTML page
+python tools/svr_manual_build.py --technical --open   # same for the technical manual
 python tools/svr_build_zip.py            # PyInstaller one-folder build + pinned exiftool → build/
 ```
 

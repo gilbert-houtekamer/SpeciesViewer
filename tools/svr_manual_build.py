@@ -37,6 +37,10 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parent.parent
 MANUAL_DIR = REPO / "docs" / "manual"
 DEFAULT_OUT = MANUAL_DIR / "SpeciesViewer_Manual.html"
+# The technical manual (for people who work on the code) is built the same way,
+# from its own folder, into its own page: --technical.
+TECHNICAL_DIR = REPO / "docs" / "technical"
+TECHNICAL_OUT = TECHNICAL_DIR / "SpeciesViewer_Technical.html"
 
 MERMAID_CDN = "https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"
 
@@ -485,7 +489,8 @@ if(location.hash) setTimeout(syncToHash,0);
 """
 
 
-def build(manual_dir: Path, out: Path, mermaid: bool = True) -> Path:
+def build(manual_dir: Path, out: Path, mermaid: bool = True,
+          title: str = "Reference Manual") -> Path:
     files = chapter_files(manual_dir)
     if not files:
         raise SystemExit(f"No .md files found in {manual_dir}")
@@ -556,12 +561,12 @@ def build(manual_dir: Path, out: Path, mermaid: bool = True) -> Path:
     page = f"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>SpeciesViewer — Reference Manual</title>
+<title>SpeciesViewer — {title}</title>
 <style>{CSS}</style></head>
 <body><div id="layout">
 <nav id="side">
   <h1>SpeciesViewer</h1>
-  <div class="sub">Reference Manual · built {date.today().isoformat()}</div>
+  <div class="sub">{title} · built {date.today().isoformat()}</div>
   <input id="filter" type="search" placeholder="Filter sections…" autocomplete="off">
   {notes_html}
   <div id="toc">{toc_html}</div>
@@ -669,8 +674,10 @@ def main(argv=None):
 
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--manual-dir", type=Path, default=MANUAL_DIR)
-    ap.add_argument("--out", type=Path, default=DEFAULT_OUT)
+    ap.add_argument("--technical", action="store_true",
+                    help="build the technical manual (docs/technical) instead")
+    ap.add_argument("--manual-dir", type=Path, default=None)
+    ap.add_argument("--out", type=Path, default=None)
     ap.add_argument("--no-mermaid", action="store_true",
                     help="omit the mermaid script tag (diagrams stay as code)")
     ap.add_argument("--open", action="store_true", help="open the result in a browser")
@@ -679,6 +686,11 @@ def main(argv=None):
     ap.add_argument("--vendor-mermaid", action="store_true",
                     help="download mermaid.js once so later builds need no network")
     a = ap.parse_args(argv)
+    title = "Technical Manual" if a.technical else "Reference Manual"
+    if a.manual_dir is None:
+        a.manual_dir = TECHNICAL_DIR if a.technical else MANUAL_DIR
+    if a.out is None:
+        a.out = TECHNICAL_OUT if a.technical else DEFAULT_OUT
 
     if a.feedback:
         extract_feedback(a.manual_dir)
@@ -687,7 +699,7 @@ def main(argv=None):
     if a.vendor_mermaid:
         vendor_mermaid()
 
-    out = build(a.manual_dir, a.out, mermaid=not a.no_mermaid)
+    out = build(a.manual_dir, a.out, mermaid=not a.no_mermaid, title=title)
     n = len(chapter_files(a.manual_dir))
     size = out.stat().st_size / 1024
     note = f", {len(_NOTES)} note{'s' if len(_NOTES) != 1 else ''}" if _NOTES else ""

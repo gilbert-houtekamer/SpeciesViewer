@@ -14,6 +14,9 @@ pictures, read its section *What you must never break*.
 | 3 | [Menu items and their batch modules](03-batch-modules.md) | Which `sv*` module each menu item runs — for reading the log. |
 | 4 | [Page freshness](04-page-freshness.md) | What a published page is built from, and the Brazil case that taught it. |
 
+Build it into one browsable page (offline, printable to PDF) with
+`python tools/svr_manual_build.py --technical --open`.
+
 Related: [configuration inventory](../configuration_inventory.md) (where a new
 setting belongs), [plans](../plans/), [design docs](../design-docs/),
 [CLAUDE.md](../../CLAUDE.md) (commands and hard rules).

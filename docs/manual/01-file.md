@@ -254,16 +254,6 @@ routine Read & Summarize.
 Run it after a large external change to the master's files. It is slow — it is a
 full pass over the collection.
 
-> GH: is this related to "rebuild the master"?  Does the rebuild include the
-> Rescan master EXIF cache
-> As you already noted, recount, rebuild etc are all maintenance tasks that 
-> are scattered in the menu.
->
-> Claude: not related — and worse: nothing in the program reads the cache this
-> item fills. Only *Manage caches* shows its size. It is a leftover; proposal:
-> remove the menu item and the cache (backlog 1.8). Gathering the maintenance
-> items (Recount, Refresh, Rebuild, Empty Trash, Undo) in one place is 1.9.
-
 ---
 
 ## Developer Tools

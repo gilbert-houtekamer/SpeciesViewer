@@ -75,6 +75,7 @@ docs/pdf/
 # The Markdown is the source; the HTML is a one-command rebuild, so it is not
 # tracked (a 150 KB blob rewritten on every doc edit is pure diff noise).
 docs/manual/SpeciesViewer_Manual.html
+docs/technical/SpeciesViewer_Technical.html
 docs/manual/pdf/
 # Vendored mermaid.js (3 MB, MIT) fetched by --vendor-mermaid so the built
 # page needs no network. Re-fetchable in one command; not worth tracking.
