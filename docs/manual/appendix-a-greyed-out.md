@@ -66,6 +66,7 @@ the work was done on another machine.
 | Copy Day from Card… | — |
 | Review & Rate Pictures… | an active day |
 | Add to Master | an active day |
+| Trash (deleted pictures)… *(Days)* | an active day |
 | Remove from List | an active day |
 
 ### Trips

@@ -16,6 +16,11 @@ the selection or takes it out — no key to hold, and any number of separate
 pictures. Thumbnails are read only for the cards on screen, as you scroll, and a
 restore takes its cards off the grid without reloading anything.
 
+ONE DAY mode (day_folder=…, Days ▸ Trash): a day outside a trip keeps its
+deletes inside itself, <day>/.trash/<picture>/ (engine.trip_trash.own_trash_*).
+Same grid and the same two actions; no published-day lock and no Read & Summarize
+to reset — a Day is read from its folder each time it is opened.
+
 Deliberately not the Image Viewer: that grid's colour bar, delete buttons and
 species keys mean nothing for a deleted picture. Double-click (or z) opens Quick
 View read-only for a big look.
@@ -130,15 +135,15 @@ class _SizeWorker(QObject):
     # 245 GB trash overflowed to "990 MB".
     done = pyqtSignal(object, object)
 
-    def __init__(self, pictures_root):
+    def __init__(self, measure):
         super().__init__()
-        self._root = pictures_root
+        self._measure = measure              # () -> (pictures, bytes)
 
     def run(self):
         try:
-            n, size = trip_trash.trash_size(self._root)
+            n, size = self._measure()
         except OSError as e:
-            logger.warning(f"Trip trash: could not measure {self._root}: {e}")
+            logger.warning(f"Trash: could not measure: {e}")
             n, size = -1, 0
         self.done.emit(n, size)
 
@@ -160,11 +165,13 @@ class _ToggleGrid(QListWidget):
 
 
 class TripTrashDialog(QDialog):
-    def __init__(self, parent, trip_root, pictures_root, trip_name: str = ""):
+    def __init__(self, parent, trip_root, pictures_root, trip_name: str = "",
+                 day_folder=None):
         super().__init__(parent)
         self._main_window = parent
-        self._trip_root = Path(trip_root)
-        self._pictures_root = Path(pictures_root)
+        self._day_folder = Path(day_folder) if day_folder else None   # ONE DAY mode
+        self._trip_root = Path(trip_root) if trip_root else None
+        self._pictures_root = Path(pictures_root) if pictures_root else None
         self._coll = None
         self._keys: list = []
         self._folder_of: dict = {}           # key -> picture folder in the trash
@@ -187,6 +194,10 @@ class TripTrashDialog(QDialog):
 
         lay = QVBoxLayout(self)
         lay.addWidget(wrapped(
+            "Pictures deleted in this day. Right-click a picture to add it to the "
+            "selection (right-click again to take it out), then Restore puts them "
+            "back in the day folder. Double-click a picture for a big look."
+            if self._day_folder else
             "Pictures deleted on this trip's days. Right-click a picture to add it "
             "to the selection (right-click again to take it out), then Restore puts "
             "them back in their day; that day then needs Read & Summarize again. "
@@ -252,8 +263,40 @@ class TripTrashDialog(QDialog):
         self._fill_days()
         self._measure()
 
+    # ── where the trash is: a trip's days, or one Day's own ──────────────────
+    def _trash_days(self) -> list:
+        if self._day_folder:
+            return [self._day_folder.name] if trip_trash.own_trash_pictures(
+                self._day_folder) else []
+        return trip_trash.trash_days(self._pictures_root)
+
+    def _day_count(self, day: str) -> int:
+        if self._day_folder:
+            return len(trip_trash.own_trash_pictures(self._day_folder))
+        return trip_trash.trash_day_count(self._pictures_root, day)
+
+    def _pictures(self, day: str) -> list:
+        if self._day_folder:
+            return trip_trash.own_trash_pictures(self._day_folder)
+        return trip_trash.trash_pictures(self._pictures_root, day)
+
+    def _target(self, day: str) -> Path:
+        return self._day_folder or (self._pictures_root / day)
+
+    def _day_size(self, day: str) -> int:
+        if self._day_folder:
+            return trip_trash.own_trash_size(self._day_folder)[1]
+        return trip_trash.trash_day_size(self._pictures_root, day)
+
+    def _discard(self, day: str, tick) -> int:
+        if self._day_folder:
+            return trip_trash.discard_own_trash(self._day_folder, progress_cb=tick)
+        return trip_trash.discard_day(self._pictures_root, day, progress_cb=tick)
+
     # ── days ─────────────────────────────────────────────────────────────────
     def _day_locked(self, day: str) -> bool:
+        if self._day_folder:
+            return False                     # a Day is never published
         from gui.day_freeze import day_is_frozen
         return day_is_frozen(self._trip_root, day)[0]
 
@@ -264,8 +307,8 @@ class TripTrashDialog(QDialog):
     def _fill_days(self, keep: str = ""):
         self._day_combo.blockSignals(True)
         self._day_combo.clear()
-        for day in trip_trash.trash_days(self._pictures_root):
-            n = trip_trash.trash_day_count(self._pictures_root, day)
+        for day in self._trash_days():
+            n = self._day_count(day)
             self._day_combo.addItem(self._day_label(day, n), day)
         self._day_combo.blockSignals(False)
         idx = self._day_combo.findData(keep) if keep else -1
@@ -289,7 +332,7 @@ class TripTrashDialog(QDialog):
         if not day:
             self._update_buttons()
             return
-        pictures = trip_trash.trash_pictures(self._pictures_root, day)
+        pictures = self._pictures(day)
         self._coll = _TrashCollection(pictures, self._loader)
         files_of = {p.name: (p, fs) for p, fs in pictures}
         for key in self._coll.all_keys():
@@ -405,7 +448,7 @@ class TripTrashDialog(QDialog):
         keys = self._selected_keys()
         if not keys or not day or self._day_locked(day):
             return
-        day_folder = self._pictures_root / day
+        day_folder = self._target(day)
         done, clashes = [], []
         for key in keys:
             folder = self._folder_of.get(key)
@@ -422,9 +465,9 @@ class TripTrashDialog(QDialog):
                 done.append(key)
         if done:
             self._mark_day_for_reread(day)
-        logger.info(f"Trip trash: restored {len(done)} picture(s) to {day_folder}.")
+        logger.info(f"Trash: restored {len(done)} picture(s) to {day_folder}.")
         msg = f"{len(done)} picture(s) restored to {day}."
-        if done:
+        if done and not self._day_folder:
             msg += "\n\nRun Read & Summarize for this day to bring them back into the trip."
         if clashes:
             msg += ("\n\nNot restored (a file with the same name is already in the day "
@@ -437,7 +480,15 @@ class TripTrashDialog(QDialog):
 
     def _mark_day_for_reread(self, day: str):
         """The restored files are on disk but not in the day's data yet: reset
-        Read & Summarize (and everything after it) so the overview says so."""
+        Read & Summarize (and everything after it) so the overview says so.
+        A Day has no such state: refresh the Days panel instead."""
+        if self._day_folder:
+            try:
+                from gui.days_process import _refresh_panel
+                _refresh_panel(self._main_window)
+            except Exception as e:
+                logger.debug(f"Day trash: could not refresh the Days panel: {e}")
+            return
         from engine.statemachine import StateMachine
         sm = StateMachine(str(self._trip_root), day, readState=True)
         if not sm.Taskstate:
@@ -458,7 +509,7 @@ class TripTrashDialog(QDialog):
             return
         QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
         try:
-            size = trip_trash.trash_day_size(self._pictures_root, day)
+            size = self._day_size(day)
         finally:
             QApplication.restoreOverrideCursor()
         box = QMessageBox(self)
@@ -490,7 +541,7 @@ class TripTrashDialog(QDialog):
         self._grid.clear()                  # release thumbnails/handles first
         self._items, self._coll = {}, None
         try:
-            removed = trip_trash.discard_day(self._pictures_root, day, progress_cb=tick)
+            removed = self._discard(day, tick)
         except OSError as e:
             prog.close()
             QMessageBox.warning(self, "Discard this day", f"Stopped on an error:\n{e}")
@@ -506,7 +557,12 @@ class TripTrashDialog(QDialog):
     def _measure(self):
         self._size_lbl.setText("Measuring the trash…")
         thread = QThread()
-        worker = _SizeWorker(self._pictures_root)
+        if self._day_folder:
+            d = self._day_folder
+            worker = _SizeWorker(lambda: trip_trash.own_trash_size(d))
+        else:
+            r = self._pictures_root
+            worker = _SizeWorker(lambda: trip_trash.trash_size(r))
         worker.moveToThread(thread)
         pair = (thread, worker)
         _RUNNING.add(pair)

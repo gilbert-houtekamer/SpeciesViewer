@@ -15,6 +15,7 @@ administration, for nothing in return.
 | Copy Day from Card… | | Copy off a card into dated folders |
 | Review & Rate Pictures… | An active day | Cull, rate, name, geotag |
 | Add to Master | An active day | **The commit** — copies keepers into the master |
+| Trash (deleted pictures)… | An active day | Restore pictures deleted in this day, or empty its trash |
 | Remove from List | An active day | Forget the folder; pictures untouched |
 
 The whole lane in one line:
@@ -101,6 +102,17 @@ and stops with nothing copied if it has not.
 **Delete originals after commit** — tick this box to remove the day's files once
 they are in the master. Only files the master holds an exact copy of are
 deleted; anything else is kept and listed in the log.
+
+## Trash (deleted pictures)…
+
+*Needs: an active day.*
+
+The pictures you deleted while reviewing this day. They wait in a `.trash` folder
+inside the day folder until you empty it. The same window as a trip's
+[Trash](04-trips.md#trash-deleted-pictures): right-click pictures to select them,
+then **Restore selected** puts them back in the day folder; nothing already
+there is ever overwritten. **Discard this day…** deletes them for good, after
+naming the count and size.
 
 ## Remove from List
 

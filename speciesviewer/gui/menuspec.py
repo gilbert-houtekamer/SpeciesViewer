@@ -1880,6 +1880,11 @@ def build_menu_spec(main_window):
             "Add to Master": MenuSpec(
                 callback=lambda: days_process.add_day_to_master(main_window),
                 title="Add to Master…", enabled=has_active_day, showsubdirectory=False),
+            "Trash (deleted pictures)…": MenuSpec(
+                callback=lambda: days_process.show_day_trash(main_window),
+                title="Trash (deleted pictures)…", enabled=has_active_day,
+                showsubdirectory=False,
+                tooltip="Pictures deleted in this day: restore some, or empty its trash"),
             f"{MenuSpec.separator()}_days1": None,
             "Remove from list": MenuSpec(
                 callback=lambda: days_process.remove_day_from_list(main_window),

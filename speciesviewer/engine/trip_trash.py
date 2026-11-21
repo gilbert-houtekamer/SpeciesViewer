@@ -151,3 +151,64 @@ def discard_day(pictures_root, day: str, progress_cb=None) -> int:
         os.rmdir(day_dir)
     logger.info(f"Trip trash: {done} picture(s) of {day} permanently deleted from {day_dir}.")
     return done
+
+
+# ── A Day's own trash (Days / Unfiled lanes) ─────────────────────────────────
+# A day outside a trip is culled in a viewer that has no trip around it, so its
+# deletes go INSIDE the day folder: <day>/.trash/<picture>/ (some older ones one
+# level deeper, <day>/.trash/<day>/<picture>/). Same one-folder-per-picture
+# shape, so restore_picture() works unchanged; these list, measure and discard it.
+
+def own_trash_dir(day_folder) -> Path:
+    """A Day's own trash: <day>/.trash."""
+    return Path(day_folder) / TRASH_DIRNAME
+
+
+def own_trash_pictures(day_folder) -> list:
+    """[(picture folder, [its files])] in a Day's own trash, by folder name.
+    A folder holding only folders (the older <day>/.trash/<day>/ level) is
+    looked into, not listed."""
+    root = own_trash_dir(day_folder)
+    if not root.is_dir():
+        return []
+    out = []
+    for p in sorted(root.iterdir(), key=lambda x: x.name.casefold()):
+        if not p.is_dir():
+            continue
+        files = sorted(f for f in p.iterdir() if f.is_file())
+        if files:
+            out.append((p, files))
+        elif p.name == Path(day_folder).name:
+            for q in sorted(p.iterdir(), key=lambda x: x.name.casefold()):
+                if q.is_dir():
+                    qf = sorted(f for f in q.iterdir() if f.is_file())
+                    if qf:
+                        out.append((q, qf))
+    return sorted(out, key=lambda pf: pf[0].name.casefold())
+
+
+def own_trash_size(day_folder) -> tuple:
+    """(pictures, bytes) in a Day's own trash."""
+    pics = own_trash_pictures(day_folder)
+    return len(pics), sum(f.stat().st_size for _p, files in pics for f in files)
+
+
+def discard_own_trash(day_folder, progress_cb=None) -> int:
+    """PERMANENTLY delete every picture in a Day's own trash. Same contract as
+    discard_day(); empty folders left behind go too, the day folder never."""
+    pics = [p for p, _f in own_trash_pictures(day_folder)]
+    done = 0
+    for i, pic in enumerate(pics):
+        shutil.rmtree(pic)
+        done += 1
+        if progress_cb and progress_cb(i + 1, len(pics)) is False:
+            break
+    root = own_trash_dir(day_folder)
+    for sub in (root / Path(day_folder).name, root):
+        try:
+            if sub.is_dir() and not any(sub.iterdir()):
+                sub.rmdir()
+        except OSError:
+            pass
+    logger.info(f"Day trash: {done} picture(s) permanently deleted from {root}.")
+    return done

@@ -137,6 +137,21 @@ def geotag_from_tracklog(main_window):
     _refresh_panel(main_window)
 
 
+def show_day_trash(main_window):
+    """The pictures deleted in the active Day (<day>/.trash): look, restore,
+    discard — the trip's Trash window in one-day mode."""
+    folder = _active_day(main_window, "see its deleted pictures")
+    if not folder:
+        return
+    from gui.trip_trash_dialog import TripTrashDialog
+    dlg = TripTrashDialog(main_window, None, None, os.path.basename(folder),
+                          day_folder=folder)
+    main_window._day_trash_dialog = dlg      # keep a ref (PyQt GC)
+    dlg.show()
+    dlg.raise_()
+    dlg.activateWindow()
+
+
 def remove_day_from_list(main_window):
     """Remove the active Day from the list (its pictures are left untouched)."""
     folder = getattr(main_window, "active_day_folder", "")
