@@ -57,7 +57,18 @@ Their now-dangling rows in the master admin are cleared by the next
 **Refresh Master Database — Apply**, so the natural order is: clean orphans,
 then refresh-apply.
 
-## Call Testbed for trip day
+## Legacy Steps ▸
 
-A developer hook that runs the testbed batch against a chosen trip day. Not
-useful in normal operation.
+The individual pipeline steps, from before they were merged into
+*Read & Summarize* and *Publish Day*. They remain for two narrow cases: a
+read-only CSV refresh, and the freeze-only edge case. (They used to sit under
+*Trips ▸ Advanced ▸ Legacy*.)
+
+| Item | Was |
+|---|---|
+| **Read Directory** | The first half of Read & Summarize (`sv2`) |
+| **Write Summary** | The second half of Read & Summarize (`sv3`) |
+| **Freeze Data** | The first half of Publish Day (`sv6`) |
+| **Write Website Commit** | The second half of Publish Day (`sv7`) |
+
+If you are not sure you need one of these, you do not need it.

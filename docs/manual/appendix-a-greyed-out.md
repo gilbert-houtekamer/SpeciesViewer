@@ -49,7 +49,7 @@ the work was done on another machine.
 | Merged Status (all machines)… | a master |
 | Audit Species Counters (dry-run)… | a master |
 | Clean Orphan Sidecars… | a master |
-| Call Testbed for trip day | — |
+| Legacy Steps ▸ Read Directory, Write Summary, Freeze Data, Write Website Commit | an active trip **and** the step's turn |
 | Quit | — |
 
 ### Browser
@@ -86,19 +86,14 @@ the work was done on another machine.
 | 3. Publish Day | an active trip **and** the step's turn |
 | 4. Make the Blogs Clickable | days published |
 | 5. Manage Trip Publication… | an active trip |
-| Reset Trip | an active trip |
+| Reset Trip… | an active trip |
+| Delete a Blog… | an active trip |
 | Trip Species Viewer | an active trip |
 | Edit Species List | an active trip |
 | Publish Species Names | a trip and a master |
 | Species per Day… | an active trip |
 | Trash (deleted pictures)… | an active trip |
-| Advanced ▸ Delete a Blog… | — |
-| Advanced ▸ Recreate Trip Repository | an active trip |
-| Advanced ▸ Delete Trip Completely… | — (it lists every trip) |
-| Advanced ▸ Legacy ▸ Read Directory | an active trip **and** the step's turn |
-| Advanced ▸ Legacy ▸ Write Summary | an active trip **and** the step's turn |
-| Advanced ▸ Legacy ▸ Freeze Data | an active trip **and** the step's turn |
-| Advanced ▸ Legacy ▸ Write Website Commit | an active trip **and** the step's turn |
+| Delete Trip Completely… | — (it lists every trip) |
 
 ### To Master
 

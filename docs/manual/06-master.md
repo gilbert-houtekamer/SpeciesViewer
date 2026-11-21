@@ -16,8 +16,11 @@ What remains is what you do *with* and *to* the collection itself.
 | Species Map | A master |
 | Species Without a Website Picture… | A master |
 | Undo Last Species Move… | A move to undo |
-| Maintain Master Database ▸ … | A master |
+| Geotag from Tracklog (GPX/GPS log)… | A master |
+| Add Missing Location Names… | A master |
+| Manage Trip & Album Publication… | A master |
 | Empty Master Trash… | Deleted master pictures |
+| Maintain Master Database ▸ … | A master |
 
 ---
 
@@ -179,6 +182,43 @@ Puts the pictures you last moved to another species back where they were — fil
 counts and pages — including a species the move emptied or created. Repeat it to
 undo earlier moves, newest first.
 
+## Geotag from Tracklog (GPX/GPS log)…
+
+Brings in **outside** information: it matches master pictures to an external
+**GPX or OM-1 GPS log** by time. Not a repair — the camera simply did not know.
+
+It is the only way to cover:
+
+- a day the camera's own GPS was never switched on, and
+- **altitude**, which the camera never records at all.
+
+Review-first: nothing is written until you confirm.
+
+
+## Add Missing Location Names…
+
+Looks up the place for master pictures that have GPS but **no location, city or
+country** — the ones that show as bare coordinates on the species map.
+
+Review-first: nothing is written until you confirm the table. It only touches
+pictures that have no place name at all.
+
+> **It never overwrites a hand-entered location.** There is one truth for a
+> picture's place, and a name you typed wins over a name a geocoder guessed.
+
+
+## Manage Trip & Album Publication…
+
+The site index seen whole: **everything currently listed** on the website's trip
+index, whether or not you can still open the thing behind it.
+
+Use it to remove a listing whose trip or album no longer exists locally — the
+case the per-trip and per-album publication dialogs cannot help with, because
+they act on something you must first be able to select.
+
+The live index is always the base for any write, so listings published from
+another machine are not silently dropped.
+
 ## Empty Master Trash…
 
 *Needs: deleted master pictures; grey otherwise.*
@@ -193,20 +233,19 @@ Cancel is the default.
 
 ## Maintain Master Database
 
-Master-data repair, grouped. Everything here except **Apply** is
-non-destructive, and everything here is review-first: you see what would change
-before anything changes.
+The **repairs**: tools you only need when something drifted, plus the full
+website rebuild. Everything here except **Apply** is non-destructive, and
+everything here is review-first: you see what would change before anything
+changes. (Planned: one *Check the Master…* window that runs all the checks as a
+report first.)
 
 | Item | Destructive? |
 |---|---|
 | Refresh Master Database — Review… | No |
 | Refresh Master Database — Apply… | **Yes** — the only destructive action in this submenu |
 | Recount Species Counters… | Recounts; backs up first |
-| Add Missing Location Names… | Additive only |
 | Fill Picture GPS from Files… | Additive only |
-| Geotag from Tracklog (GPX/GPS log)… | Review-first |
 | Rebuild Entire Website (all pages)… | HTML only — no data changed |
-| Manage Trip & Album Publication… | Changes the site index only |
 
 ### Refresh Master Database — Review…
 
@@ -253,17 +292,6 @@ pictures, pictures with a JPG — redoes a species' best picture only when that
 picture is gone, and adds up the groups. It shows what would change and asks
 first; the species list is backed up before it is written.
 
-### Add Missing Location Names…
-
-Looks up the place for master pictures that have GPS but **no location, city or
-country** — the ones that show as bare coordinates on the species map.
-
-Review-first: nothing is written until you confirm the table. It only touches
-pictures that have no place name at all.
-
-> **It never overwrites a hand-entered location.** There is one truth for a
-> picture's place, and a name you typed wins over a name a geocoder guessed.
-
 ### Fill Picture GPS from Files…
 
 Copies a coordinate that a picture's **camera files** carry up into the
@@ -277,20 +305,6 @@ read as having no GPS while its RAW holds a perfectly good one.
 **Additive only.** It never changes or removes an existing coordinate. If every
 picture already carries its own, it says so and does nothing.
 
-### Geotag from Tracklog (GPX/GPS log)…
-
-The third GPS repair tool, and the only one that brings in **outside**
-information. Where the other two fill a coordinate from something the master
-already has, this matches pictures to an external **GPX or OM-1 GPS log** by
-time.
-
-It is the only way to cover:
-
-- a day the camera's own GPS was never switched on, and
-- **altitude**, which the camera never records at all.
-
-Review-first, like its siblings.
-
 ### Rebuild Entire Website (all pages)…
 
 Forces a full re-render and upload of **every** master species and taxon page,
@@ -303,14 +317,3 @@ separate from the data pipeline.
 Its album-and-master counterpart is
 [Utilities ▸ Rebuild all Albums and the Master website…](08-utilities.md).
 
-### Manage Trip & Album Publication…
-
-The site index seen whole: **everything currently listed** on the website's trip
-index, whether or not you can still open the thing behind it.
-
-Use it to remove a listing whose trip or album no longer exists locally — the
-case the per-trip and per-album publication dialogs cannot help with, because
-they act on something you must first be able to select.
-
-The live index is always the base for any write, so listings published from
-another machine are not silently dropped.

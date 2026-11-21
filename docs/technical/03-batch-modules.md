@@ -27,10 +27,10 @@ a chain — useful when a step half-fails.
 
 | Menu item | Runs |
 |---|---|
-| Advanced ▸ Legacy ▸ Read Directory | `sv2ReadDirExif` |
-| Advanced ▸ Legacy ▸ Write Summary | `sv3WritePictures` |
-| Advanced ▸ Legacy ▸ Freeze Data | `sv6Freeze` |
-| Advanced ▸ Legacy ▸ Write Website Commit | `sv7WriteCommit` |
+| Developer Tools ▸ Legacy Steps ▸ Read Directory | `sv2ReadDirExif` |
+| Developer Tools ▸ Legacy Steps ▸ Write Summary | `sv3WritePictures` |
+| Developer Tools ▸ Legacy Steps ▸ Freeze Data | `sv6Freeze` |
+| Developer Tools ▸ Legacy Steps ▸ Write Website Commit | `sv7WriteCommit` |
 
 > `sv5BuildWebsite` no longer has its own menu entry. Freeze builds the website
 > itself, so a separate step was redundant — but the module is still wired in and
@@ -41,7 +41,6 @@ a chain — useful when a step half-fails.
 | Menu item | Runs |
 |---|---|
 | Reset Trip | `svu6EmptyTripData` |
-| Advanced ▸ Recreate Trip Repository | `svr8RecreateTripRepository` |
 | Export Trip, step 1 (the trip ZIP) | `svr6ExportTrip`; steps 2 and 3 (metadata and RAW backup) run on their own thread, no batch module |
 
 ## Merge Pictures into Master
@@ -102,7 +101,6 @@ module — listing and un-listing are separate operations, not one toggle.
 | Bird Checklist (Excel)… | `svu2avibase` |
 | PhotoMechanic Keywords… | `svu8PhotoMechanic` |
 | Create Small Master… | `svu9SmallMaster` |
-| Developer Tools ▸ Call Testbed for trip day | `svu7Testbed` |
 
 ## Actions with no batch module
 

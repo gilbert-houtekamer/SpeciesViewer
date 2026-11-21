@@ -9,10 +9,10 @@ from gui.sdcard_read import ReadSDCardDialog
 from gui.trip_process import (ReadDirDialog, ReadSummarizeDialog, TripCreationDialog,
         PublishDayDialog,
         WritePicturesDialog, CreateBlogDialog, FreezeDialog, WriteCommitDialog,
-        CountSpeciesDialog, RedoTripBlogsDialog, RedoTripRepoDialog, MergeTripDialog,
+        CountSpeciesDialog, RedoTripBlogsDialog, MergeTripDialog,
         MasterPipelineDialog, MasterRebuildWebsiteDialog, ConvertAvibaseDialog,
         SyncSidecarsDialog, EmptyTripDataDialog, SpeciesCollectionDialog,
-        TestbedDialog, BlogAdminDialog, PhotoMechanicDialog,
+        BlogAdminDialog, PhotoMechanicDialog,
         SmallMasterDialog, InstallSmallMasterDialog,
         )
 from gui.virttrip_process import (VirtualTripCreationDialog,
@@ -48,14 +48,12 @@ import batch.svr4UpdateTrips
 import batch.svr5MergeSpeciesCollections
 import batch.svr6ExportTrip
 import batch.svr7ArchiveVerdict
-import batch.svr8RecreateTripRepository
 import batch.svr9RedoBlog
 import batch.svu2avibase
 import batch.svu5SyncSidecars
 import batch.svu8PhotoMechanic
 import batch.svu6EmptyTripData
 import batch.svu9SmallMaster
-import batch.svu7Testbed
 import batch.svv1MakeVirtualRepository
 import batch.svv3WriteBlog
 import batch.svv4BuildWebsite
@@ -605,19 +603,6 @@ def build_menu_spec(main_window):
     )
     empty_trip_data.callback = lambda: EmptyTripDataDialog(main_window, empty_trip_data).exec()
 
-    recreate_trip = MenuSpec(
-        callback=None,
-        title="Recreate Trip Repository",
-        enabled=has_active_trip,
-        showsubdirectory=False,
-        batch_parms={
-            'statusname': "",
-            'module_called': batch.svr8RecreateTripRepository.main,
-            'before_msg': "Delete existing repository and rebuild it ...",
-            'after_msg': "✅ Trip recreated."
-        }
-    )
-    recreate_trip.callback = lambda: RedoTripRepoDialog(main_window, recreate_trip).exec()    
 
     # Master updates
     merge_trip_species = MenuSpec(
@@ -1017,17 +1002,6 @@ def build_menu_spec(main_window):
         enabled=has_master,
     )
 
-    testbed = MenuSpec(
-        callback=None,
-        title="Call Testbed for trip day",
-        batch_parms={
-            'statusname': "",
-            'module_called': batch.svu7Testbed.main,
-            'before_msg': "Running testbed for trip day...",
-            'after_msg': "✅ Testbed run complete.",
-        }
-    )
-    testbed.callback = lambda: TestbedDialog(main_window, testbed).exec()
 
     virttrip_create = MenuSpec(
         callback=None,
@@ -1769,22 +1743,20 @@ def build_menu_spec(main_window):
         showsubdirectory=False,
     )
 
-    # Master-data repair (the Refresh Master Database pair + the two GPS fixers)
-    # is grouped under Master ▸ Maintain Master Database — always visible; Apply is
-    # the only destructive action. The consoles / testbed diagnostics live under
-    # File ▸ Developer Tools, shown only when "Enable debug functionality" is on
-    # (Global Settings; read at build time, so toggling takes effect on restart).
+    # By design vs. repair (docs/plans/maintenance_regroup_plan.md, backlog 1.9):
+    # tools needed by design sit in the normal menus; what is left here are the
+    # REPAIRS (plus the website rebuild), until they move into one Check the
+    # Master… window. Apply is the only destructive action. The consoles live
+    # under File ▸ Developer Tools, shown only when "Enable debug functionality"
+    # is on (Global Settings; read at build time, so toggling needs a restart).
     maintain_master_menu = {
         "Refresh Master Database — Review…": refresh_review_item,
         "Refresh Master Database — Apply…": heal_admin_item,
         "Recount Species Counters…": recount_species_item,
         f"{MenuSpec.separator()}_maint_gps": None,
-        "Add Missing Place Names…": add_place_names_item,
         "Fill Picture GPS from Files…": consolidate_gps_item,
-        "Geotag from Tracklog (GPX/GPS log)…": tracklog_geotag_item,
         f"{MenuSpec.separator()}_maint_web": None,
         "Rebuild Entire Website (all pages)…": rebuild_master_web_item,
-        "Manage Site Publication…": manage_site_publication,
     }
     developer_tools_menu = {
         "Trip Status Console…": trip_status_console,
@@ -1793,7 +1765,16 @@ def build_menu_spec(main_window):
         "Audit Species Counters (dry-run)…": audit_species_item,
         "Clean Orphan Sidecars (move to trash)…": clean_orphans_item,
         f"{MenuSpec.separator()}_dev_1": None,
-        "Call Testbed for trip day": testbed,
+        # The individual pipeline steps from before Read & Summarize and Publish
+        # Day merged them; kept for a read-only CSV refresh and the freeze-only
+        # edge case. Not day-to-day work, so not in the Trips menu.
+        "Legacy Steps": {
+            "Read Directory": read_dir,
+            "Write Summary": write_summary,
+            f"{MenuSpec.separator()}_adv1": None,
+            "Freeze Data": freeze_data,
+            "Write Website Commit": commit_website,
+        },
     }
 
     return {
@@ -1916,6 +1897,7 @@ def build_menu_spec(main_window):
             # Unlocks the published days to change and publish them again — a
             # normal step of the cycle, as the panel's button shows (1.13).
             "Reset Trip": empty_trip_data,
+            "Manage Blogs": manage_blogs,                      # shows "Delete a Blog…"
             f"{MenuSpec.separator()}_2": None,
             # Review & edit this trip
             "Rating Editor": rating_editor,                    # shows "Trip Species Viewer"
@@ -1925,26 +1907,14 @@ def build_menu_spec(main_window):
             "Count Species": count_species,
             "Trash (deleted pictures)…": trip_trash,
             f"{MenuSpec.separator()}_advanced": None,
-            # Advanced: rare maintenance + the individual pipeline steps for a
-            # read-only CSV refresh / the freeze-only edge case.
-            "Advanced": {
-                "Manage Blogs": manage_blogs,
-                "Recreate Trip": recreate_trip,
-                # For a trip that never became a real one; the normal end of a
-                # trip is To Master ▸ Retire (docs/plans/force_delete_plan.md).
-                "Delete Trip Completely…": MenuSpec(
-                    callback=_delete_trip_completely,
-                    title="Delete Trip Completely…",
-                ),
-                f"{MenuSpec.separator()}_adv0": None,
-                "Legacy": {
-                    "Read Directory": read_dir,
-                    "Write Summary": write_summary,
-                    f"{MenuSpec.separator()}_adv1": None,
-                    "Freeze Data": freeze_data,
-                    "Write Website Commit": commit_website,
-                },
-            },
+            # For a trip that never became a real one; the normal end of a
+            # trip is To Master ▸ Retire (docs/plans/force_delete_plan.md).
+            # Trips ▸ Advanced is gone (backlog 1.9): Recreate Trip removed,
+            # the Legacy steps moved to File ▸ Developer Tools.
+            "Delete Trip Completely…": MenuSpec(
+                callback=_delete_trip_completely,
+                title="Delete Trip Completely…",
+            ),
         },
         # The whole "into the master" phase (architecture lifecycle steps 4 & 7):
         # the real master merge, then winding the trip down once it lives in the
@@ -1998,8 +1968,13 @@ def build_menu_spec(main_window):
                 tooltip="Put the picture you last moved to another species back "
                         "where it was",
                 showsubdirectory=False),
+            f"{MenuSpec.separator()}_master_places": None,
+            # By design, not repairs (backlog 1.9): outside GPS, place names,
+            # and the site's list of all trips and albums.
+            "Geotag from Tracklog (GPX/GPS log)…": tracklog_geotag_item,
+            "Add Missing Place Names…": add_place_names_item,   # "…Location Names…"
+            "Manage Site Publication…": manage_site_publication,  # "Trip & Album"
             f"{MenuSpec.separator()}_master_maint": None,
-            "Maintain Master Database": maintain_master_menu,
             # A master delete only moves files to <master>/.trash (restorable);
             # this is the step that makes it final. Grey when there is nothing.
             "Empty Master Trash…": MenuSpec(
@@ -2013,6 +1988,9 @@ def build_menu_spec(main_window):
                 tooltip="Permanently delete the master pictures you deleted — "
                         "until then they can still be restored",
                 showsubdirectory=False),
+            f"{MenuSpec.separator()}_master_repair": None,
+            # The repairs, until Check the Master… replaces this submenu.
+            "Maintain Master Database": maintain_master_menu,
         },
         "Albums": {
             "Find Trips in the Master…": find_trips,

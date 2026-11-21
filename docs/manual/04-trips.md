@@ -8,7 +8,7 @@ organised in six blocks, separated by dividers:
 3. **Getting external edits in** — sync Lightroom and PhotoLab metadata
 4. **The pipeline** — the numbered steps 1 to 5, the heart of the menu
 5. **Reviewing and editing the trip** — viewers, species list, counts
-6. **Advanced** — rare maintenance, and the old individual pipeline steps
+6. **Deleting** — a trip that never became a real one (the old *Advanced* submenu is gone: its pipeline steps are under File ▸ Developer Tools)
 
 | Item | Shortcut | Needs |
 |---|---|---|
@@ -24,13 +24,14 @@ organised in six blocks, separated by dividers:
 | 3. Publish Day | | An active trip, and the step's turn |
 | 4. Make the Blogs Clickable | | At least one published day |
 | 5. Manage Trip Publication… | | An active trip |
-| Reset Trip | | An active trip |
+| Reset Trip… | | An active trip |
+| Delete a Blog… | | An active trip |
 | Trip Species Viewer | | An active trip |
 | Edit Species List | | An active trip |
 | Publish Species Names | | An active trip **and** a master |
 | Species per Day… | | An active trip |
 | Trash (deleted pictures)… | | An active trip |
-| Advanced ▸ … | | (see below) |
+| Delete Trip Completely… | | Nothing — it lists every trip |
 
 ---
 
@@ -429,7 +430,7 @@ machine published is not silently dropped.
 > See [the trip-index how-to](howto_trip_index_publication.md).
 >
 > A listing whose trip or album you can no longer open is repaired from
-> [Master ▸ Maintain Master Database ▸ Manage Trip & Album Publication…](06-master.md).
+> [Master ▸ Manage Trip & Album Publication…](06-master.md).
 
 ### Reset Trip — unlock the published days
 
@@ -445,7 +446,7 @@ anything already published stays up. After a reset you can refresh the website.
 Reset is a normal part of working on a trip, not a repair: a published day is
 locked, and Reset is how you go back to it — to add pictures, change a species
 name, or choose different blog pictures. Then run the steps again for the days
-you changed. The menu still has it under *Advanced*.
+you changed. It sits right after step 5 in the menu.
 
 ---
 
@@ -536,27 +537,13 @@ Double-click a picture (or press `z`) for a big look.
 
 ---
 
-## Advanced
+## Delete a Blog…
 
-Rare maintenance. Nothing here is part of a normal trip.
+*Needs: an active trip.* Sits right after *Reset Trip…*.
 
-### Delete a Blog…
+Lists the trip's blog entries and lets you remove one.
 
-The delete-a-blog tool: lists the trip's blog entries and lets you remove one.
-
-### Recreate Trip Repository
-
-*Needs: an active trip.*
-
-Rebuilds the trip's repository and every generated page from scratch. Heavier
-than Reset. Useful after adding a few pictures or renaming species when the site
-is otherwise the way you want it — and after a SpeciesViewer update that changed
-how pages are built (not something that affects you day to day).
-
-> The pictures in `CurrentPictures` are never touched by either action — only the
-> data and pages the pipeline generated from them.
-
-### Delete Trip Completely…
+## Delete Trip Completely…
 
 For a trip that never became a real one — a test, a mistake, or a copy that
 now lives on your other computer. The normal end of a trip is
@@ -579,17 +566,3 @@ A trip of another master in the same Trips folder is shown grey — open that
 master to delete it. A trip an album was made from keeps its web address and
 trip-list row: they belong to the album.
 
-### Advanced ▸ Legacy
-
-The individual pipeline steps, from before they were merged into
-*Read & Summarize* and *Publish Day*. They remain for two narrow cases: a
-read-only CSV refresh, and the freeze-only edge case.
-
-| Item | Was |
-|---|---|
-| **Read Directory** | The first half of Read & Summarize (`sv2`) |
-| **Write Summary** | The second half of Read & Summarize (`sv3`) |
-| **Freeze Data** | The first half of Publish Day (`sv6`) |
-| **Write Website Commit** | The second half of Publish Day (`sv7`) |
-
-If you are not sure you need one of these, you do not need it.

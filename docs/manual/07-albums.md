@@ -269,5 +269,5 @@ and can be rebuilt from the same date range. Tick what goes:
   with a read-only copy of the master they are not offered: deleting a laptop's
   copy there would remove what your big computer published.
 
-The same dialog as *Trips ▸ Advanced ▸ Delete Trip Completely*, for albums. The
+The same dialog as *Trips ▸ Delete Trip Completely*, for albums. The
 delete renames before removing, and retries on Dropbox locks.
