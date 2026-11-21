@@ -35,6 +35,11 @@ datas = [
     (str(ROOT / "LICENSE"), "."),
     (str(ROOT / "NOTICE.md"), "."),
 ]
+# Help ▸ Reference Manual: the one-page manual, built by svr_build_zip.py just
+# before this runs (utils/manual_path.py looks in _internal/manual/).
+MANUAL = ROOT / "docs" / "manual" / "SpeciesViewer_Manual.html"
+if MANUAL.is_file():
+    datas.append((str(MANUAL), "manual"))
 
 a = Analysis(
     [str(SV / "SpeciesViewer.py")],

@@ -1,10 +1,18 @@
 # 9. Help
 
-Three items: the **Setup Checklist** (what SpeciesViewer needs, and why a menu
-is grey), **Connection status** (what works offline and what does not), and
-**About**. None of them needs anything to be set up first.
+Four items: the **Reference Manual** (this manual), the **Setup Checklist**
+(what SpeciesViewer needs, and why a menu is grey), **Connection status** (what
+works offline and what does not), and **About**. None of them needs anything to
+be set up first.
 
 ---
+
+## Reference Manual — `F1`
+
+Opens this manual as one page in your web browser: a sidebar with every chapter
+and section, and a filter box to find a menu item by name. It comes with the
+program, so it works without internet. To print it or save it as a PDF, use the
+browser's *Print* — each chapter starts on a new page.
 
 ## Setup Checklist…
 

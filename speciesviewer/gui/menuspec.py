@@ -876,6 +876,17 @@ def build_menu_spec(main_window):
         showsubdirectory=False,
     )
 
+    def _open_reference_manual():
+        from utils.manual_path import manual_html
+        from utils.open_path import open_in_browser
+        page = manual_html()
+        if page is None:
+            QMessageBox.information(
+                main_window, "Reference Manual",
+                "The manual is not included in this copy of SpeciesViewer.")
+            return
+        open_in_browser(page)
+
     # utilities
         # Master updates
     convert_avibase = MenuSpec(
@@ -1885,6 +1896,9 @@ def build_menu_spec(main_window):
             "Publish Day": publish_day,
             "Make the Blogs Clickable": redo_trip_blogs,      # 4.
             "Manage Trip Publication…": manage_trips,          # 5.
+            # Unlocks the published days to change and publish them again — a
+            # normal step of the cycle, as the panel's button shows (1.13).
+            "Reset Trip": empty_trip_data,
             f"{MenuSpec.separator()}_2": None,
             # Review & edit this trip
             "Rating Editor": rating_editor,                    # shows "Trip Species Viewer"
@@ -1898,7 +1912,6 @@ def build_menu_spec(main_window):
             # read-only CSV refresh / the freeze-only edge case.
             "Advanced": {
                 "Manage Blogs": manage_blogs,
-                "Reset Trip": empty_trip_data,
                 "Recreate Trip": recreate_trip,
                 # For a trip that never became a real one; the normal end of a
                 # trip is To Master ▸ Retire (docs/plans/force_delete_plan.md).
@@ -2071,6 +2084,14 @@ def build_menu_spec(main_window):
                  showsubdirectory=False),
         },
         "Help": {
+            # The whole manual as one page in the browser; shipped with the
+            # program, so it works offline.
+            "Reference Manual": MenuSpec(
+                callback=lambda *_: _open_reference_manual(),
+                shortcut="F1",
+                tooltip="The SpeciesViewer manual, in your web browser — works offline",
+            ),
+            f"{MenuSpec.separator()}_help0": None,
             "Setup Checklist…": MenuSpec(
                 callback=lambda *_: __import__(
                     "gui.setup_checklist", fromlist=["show_checklist"]

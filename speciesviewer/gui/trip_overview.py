@@ -993,8 +993,8 @@ def populate_trip_overview(self):
     publish_trip_btn.clicked.connect(lambda: self.handle_column_run_all(publish_col))
     header_row.addWidget(publish_trip_btn)
 
-    # Reset Trip — already exists at Trips ▸ Advanced ▸ Reset Trip; promoted to a
-    # button here for visibility. Warn-outlined (not filled) so it doesn't blend
+    # Reset Trip — also in the Trips menu, beside the pipeline; a button here
+    # for visibility. Warn-outlined (not filled) so it doesn't blend
     # in with the routine action buttons beside it — it clears the day
     # directories and active data (pictures/master untouched, review-first).
     def _open_reset_trip_dialog():

@@ -40,7 +40,7 @@ a chain — useful when a step half-fails.
 
 | Menu item | Runs |
 |---|---|
-| Advanced ▸ Reset Trip | `svu6EmptyTripData` |
+| Reset Trip | `svu6EmptyTripData` |
 | Advanced ▸ Recreate Trip Repository | `svr8RecreateTripRepository` |
 | Export Trip, step 1 (the trip ZIP) | `svr6ExportTrip`; steps 2 and 3 (metadata and RAW backup) run on their own thread, no batch module |
 

@@ -8,7 +8,7 @@ organised in six blocks, separated by dividers:
 3. **Getting external edits in** — sync Lightroom and PhotoLab metadata
 4. **The pipeline** — the numbered steps 1 to 5, the heart of the menu
 5. **Reviewing and editing the trip** — viewers, species list, counts
-6. **Advanced** — Reset Trip, rare maintenance, and the old individual pipeline steps
+6. **Advanced** — rare maintenance, and the old individual pipeline steps
 
 | Item | Shortcut | Needs |
 |---|---|---|
@@ -24,6 +24,7 @@ organised in six blocks, separated by dividers:
 | 3. Publish Day | | An active trip, and the step's turn |
 | 4. Make the Blogs Clickable | | At least one published day |
 | 5. Manage Trip Publication… | | An active trip |
+| Reset Trip | | An active trip |
 | Trip Species Viewer | | An active trip |
 | Edit Species List | | An active trip |
 | Publish Species Names | | An active trip **and** a master |
@@ -537,8 +538,7 @@ Double-click a picture (or press `z`) for a big look.
 
 ## Advanced
 
-Rare maintenance. Nothing here is part of a normal trip — except Reset Trip,
-which is described with [the pipeline](#reset-trip--unlock-the-published-days).
+Rare maintenance. Nothing here is part of a normal trip.
 
 ### Manage Blogs
 

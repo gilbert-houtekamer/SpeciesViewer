@@ -41,7 +41,7 @@ one row per date that has pictures in the master:
 | Column | Shows | Double-click |
 |---|---|---|
 | **Date** | The day | Open the day's pictures |
-| **Pictures** | Master pictures of that day | Open the day's pictures — today with the JPG filter already on (backlog 1.14) |
+| **Pictures** | Master pictures of that day | Open the day's pictures |
 | **JPEG Files** | How many have a developed JPG | Open the day's JPGs |
 | **GPS** | ✅ all have GPS · 📍 *n* without | The day on the map, to place what is missing |
 | **In Blog** | Does this day get a blog? | |

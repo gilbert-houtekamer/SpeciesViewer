@@ -245,6 +245,9 @@ def _open_day_viewer(parent, day_dir: Path, jpeg_only: bool, virttrip_root: Path
         parent=parent,
         file_list=file_list,
         source_label=str(day_dir),
+        # Pictures / Date open the whole day, JPEG Files only the JPGs — as the
+        # Trip panel does. Without it the viewer's default (JPG only) hid the RAWs.
+        mode="jpg" if jpeg_only else "all",
         readonly=True,
         allow_geotag=parent._master_is_editable(),
         # A suggested crop is written to the master RAW's sidecar for PhotoLab to

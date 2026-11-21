@@ -1184,7 +1184,7 @@ class MainWindow(QMainWindow):
 
     def _find_trip_menu_spec(self, want, menu=None):
         """Find a Trip-menu MenuSpec by its dict key, descending into submenus
-        (e.g. Advanced ▸ Reset Trip, Advanced ▸ Legacy ▸ Write Summary) — a
+        (e.g. Advanced ▸ Manage Blogs, Advanced ▸ Legacy ▸ Write Summary) — a
         plain top-level .get() misses anything demoted into a submenu."""
         if menu is None:
             menu = self.menu_spec.get("Trips", {})

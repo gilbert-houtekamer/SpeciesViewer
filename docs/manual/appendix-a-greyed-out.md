@@ -86,13 +86,13 @@ the work was done on another machine.
 | 3. Publish Day | an active trip **and** the step's turn |
 | 4. Make the Blogs Clickable | days published |
 | 5. Manage Trip Publication… | an active trip |
+| Reset Trip | an active trip |
 | Trip Species Viewer | an active trip |
 | Edit Species List | an active trip |
 | Publish Species Names | a trip and a master |
 | Count Species | an active trip |
 | Trash (deleted pictures)… | an active trip |
 | Advanced ▸ Manage Blogs | — |
-| Advanced ▸ Reset Trip | an active trip |
 | Advanced ▸ Recreate Trip Repository | an active trip |
 | Advanced ▸ Delete Trip Completely… | — (it lists every trip) |
 | Advanced ▸ Legacy ▸ Read Directory | an active trip **and** the step's turn |
@@ -161,6 +161,7 @@ the work was done on another machine.
 
 | Item | Needs |
 |---|---|
+| Reference Manual | — |
 | Setup Checklist… | — |
 | Connection status… | — |
 | About | — |

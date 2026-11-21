@@ -84,6 +84,19 @@ def main() -> int:
         exiftool_zip = find_exiftool_zip(args.exiftool_zip)
         check_exiftool_zip(exiftool_zip)
 
+    # Help ▸ Reference Manual ships the one-page manual. It must work offline
+    # (no CDN on a trip), so the diagrams' script has to be inlined.
+    sys.path.insert(0, str(ROOT / "tools"))
+    import svr_manual_build as manual
+    if not manual.MERMAID_LOCAL.is_file():
+        print("FAILED: the manual's diagram script is not vendored, so Help > "
+              "Reference Manual would need internet.
+"
+              "  Run once: python tools/svr_manual_build.py --vendor-mermaid")
+        return 1
+    manual.build(manual.MANUAL_DIR, manual.DEFAULT_OUT)
+    print(f"Manual built: {manual.DEFAULT_OUT}")
+
     dist, work = BUILD / "pyinstaller-dist", BUILD / "pyinstaller-work"
     rc = subprocess.call([sys.executable, "-m", "PyInstaller", "--noconfirm", "--clean",
                           "--distpath", str(dist), "--workpath", str(work),
@@ -96,6 +109,9 @@ def main() -> int:
     x265 = [p.name for p in folder.rglob("*x265*")]
     if x265:
         print(f"FAILED: libx265 found in the build: {x265}")
+        return 1
+    if not (folder / "_internal" / "manual" / manual.DEFAULT_OUT.name).is_file():
+        print("FAILED: the reference manual is missing from the build")
         return 1
     # matplotlib comes along only because pygbif imports it; its demo pictures
     # (grace_hopper.jpg, …) are no use to anyone and look odd in the folder.
