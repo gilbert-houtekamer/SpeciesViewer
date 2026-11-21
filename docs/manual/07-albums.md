@@ -16,9 +16,9 @@ ingest, freeze or commit. There is only writing it up and publishing it.
 | Write Album Blogs | An active album |
 | Make the Blogs Clickable | An active album |
 | Build Album Website | An active album |
-| Manage Album Publication… | |
+| Manage Album Publication… | An active album |
 | Count Species | An active album |
-| Album Species Viewer | |
+| Album Species Viewer | An active album |
 | Sync Placed GPS into the Index… | An active album |
 | Export Album | An active album |
 | Import Album | A master |
@@ -173,16 +173,13 @@ pages, index — from the master's files.
 
 ### Manage Album Publication…
 
+*Needs: an active album.*
+
 Lists this album on the site's trip index, or removes it from there.
 
 This is the **same dialog** as [Trips ▸ Manage Trip Publication…](04-trips.md) —
 one implementation, two doors. Everything said there about the live index and the
 immutable web slug applies here.
-
-> **Noticed while writing this manual:** unlike every other album item, this one
-> and *Album Species Viewer* are not gated on there being an active album — they
-> stay clickable with nothing selected. Probably an oversight rather than a
-> design decision.
 
 ---
 
@@ -199,6 +196,8 @@ has *New*, the album's shows the best star rating. Save it as a spreadsheet; it
 is saved in the album's folder.
 
 ### Album Species Viewer
+
+*Needs: an active album.*
 
 The album's editable species view: the master's pictures within the album's date
 range, with ratings, colour labels and species assignments editable.

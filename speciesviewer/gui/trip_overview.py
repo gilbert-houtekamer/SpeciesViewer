@@ -821,7 +821,7 @@ def populate_trip_overview(self):
     #   select="cells"    the context menu runs every pipeline cell you selected
     #   edit_cells=False  cells here are plain QTableWidgetItems (editable by
     #                     default); a double-click must run a step, not type
-    #   row_header=True   double-clicking the row number re-runs the day
+    #   row_header=True   the row numbers stay visible (a label, not a button)
     #   min_section/row_height None — 10 columns have to fit a laptop
     self.trip_table = make_overview_table(
         header_labels, rows=len(image_days),
@@ -1021,7 +1021,9 @@ def populate_trip_overview(self):
     self.sync_yellow_to_mode()
 
     self.trip_table.cellDoubleClicked.connect(self.handle_trip_table_double_click)
-    self.trip_table.verticalHeader().sectionDoubleClicked.connect(self.handle_row_rerun)
+    # The row number is a label only: clicking or double-clicking it does
+    # nothing (it used to re-run the day's steps — hidden and easy to hit).
+    self.trip_table.verticalHeader().setSectionsClickable(False)
     self.trip_table.horizontalHeader().sectionDoubleClicked.connect(self.handle_column_run_all)
     self.trip_table.customContextMenuRequested.connect(self.handle_trip_table_context_menu)
     # Keep Trip menu in sync with the selected row

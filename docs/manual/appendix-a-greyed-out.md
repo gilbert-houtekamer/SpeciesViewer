@@ -44,7 +44,6 @@ the work was done on another machine.
 |---|---|
 | Settings… | — |
 | Manage caches… | — |
-| Rescan master EXIF cache | a master |
 | **Developer Tools submenu** | *visible only when debug is enabled — restart to apply* |
 | Trip Status Console… | a master |
 | Merged Status (all machines)… | a master |
@@ -139,8 +138,8 @@ the work was done on another machine.
 | Write Album Blogs | an active album |
 | Make the Blogs Clickable | an active album |
 | Build Album Website | an active album |
-| Manage Album Publication… | — |
-| Album Species Viewer | — |
+| Manage Album Publication… | an active album |
+| Album Species Viewer | an active album |
 | Count Species | an active album |
 | Sync Placed GPS into the Index… | an active album |
 | Export Album | an active album |

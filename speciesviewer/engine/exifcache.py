@@ -116,22 +116,6 @@ def field_fingerprint(selected_fields):
     return hashlib.sha1(blob).hexdigest()[:8]
 
 
-def master_repository(config):
-    """Root of the MASTER BiotaDatabase. During a trip run this is the shared
-    master ([master] MasterBiotaDatabase); on the master itself that key is
-    absent/empty, so fall back to this repo. The global cache lives here so
-    master and every trip share ONE cache and a file read once is never re-read
-    for its trip copies. Reads config only — no Project/Trip side effects."""
-    try:
-        master = config.get("master", "MasterBiotaDatabase")
-    except (configparser.NoSectionError, configparser.NoOptionError):
-        master = ""
-    master = master.replace('"', "").replace("'", "").strip()
-    if not master:
-        master = config.get("repository", "BiotaDatabase")
-    return master.replace('"', "").replace("'", "").strip()
-
-
 def exif_cache_path(config):
     """exif_cache.json in the local EXIF cache dir (per-machine SSD by default;
     relocatable via Manage Caches). Used by day/trip Read Directory; stays small.
@@ -144,10 +128,9 @@ def exif_cache_path(config):
 
 
 def master_cache_path(config):
-    """Separate cache for the master-wide EXIF scan (Master menu > Rescan).
-    Kept distinct from exif_cache.json so warming the full master (~159k files,
-    ~89 MB) never taxes the small day/trip Read Directory cache. Same local
-    EXIF cache dir as exif_cache_path; `config` kept for signature compat."""
+    """LEFTOVER: where the removed *Rescan master EXIF cache* wrote. Nothing
+    reads it any more; kept only so Manage Caches can show and clear an old
+    file still on a machine. `config` kept for signature compat."""
     from utils.cache_paths import cache_root
     return str(cache_root("exif") / "exif_cache_master.json")
 
@@ -419,68 +402,3 @@ def _fmt_duration(seconds):
     seconds = int(round(seconds))
     m, s = divmod(seconds, 60)
     return f"{m} min {s} s" if m else f"{s} s"
-
-
-def rescan(root, cache_path, chunk=2000, workers="auto"):
-    """Warm/refresh a cache file by reading `root` with exiftool: read only the
-    files not already cached (or changed), split across N parallel exiftool
-    workers (auto_worker_count), in super-chunks to bound memory, then save once.
-    No CSV, no XMP writes — a pure cache-population pass for the Master menu's
-    Rescan. Progress is logged for the GUI spinner. A full ~160k-file master
-    reads in a few minutes on a many-core machine (benchmarked ~500 files/s at
-    16 workers, 2026-07-09); later passes re-read only what changed.
-
-    Returns a stats dict that also carries the run's brag numbers
-    (read/workers/elapsed/rate/summary) so the caller can show them."""
-    import exiftool
-    from engine.selected_fields import SELECTED_FIELDS
-    start = time.time()
-    fp = field_fingerprint(SELECTED_FIELDS)
-    cache = load_cache(cache_path)
-    hits, misses, stats = partition(root, cache, fp)
-    total = len(misses)
-    n_workers = auto_worker_count(total, workers) if misses else 0
-    if misses:
-        logger.info(f"EXIF cache rescan of {root}: {len(hits):,} already cached, "
-                    f"{total:,} to read with {n_workers} parallel workers.")
-        # Read in super-chunks so peak memory stays bounded to one group even on
-        # a 159k-file master scan; each group is split across n_workers parallel
-        # exiftool processes (read_metadata_parallel). No logger= on the helper:
-        # pyexiftool would echo every -stay_open command into the GUI log; the
-        # per-group progress lines below are the feedback.
-        group_size = max(chunk, n_workers * 1000)
-        with exiftool.ExifToolHelper(
-                executable=exiftool_exe(),
-                common_args=COMMON_ARGS,
-                encoding="utf-8", check_execute=False) as et:
-            for i in range(0, total, group_size):
-                group = misses[i:i + group_size]
-                gw = auto_worker_count(len(group), workers)
-                for batch in read_metadata_parallel(group, SELECTED_FIELDS, gw, et):
-                    update(cache, batch, fp)
-                done = min(i + group_size, total)
-                logger.info(f"EXIF cache rescan: read {done:,}/{total:,} files "
-                            f"({n_workers} workers)")
-        save_cache(cache_path, cache)
-    else:
-        logger.info(f"EXIF cache rescan of {root}: all {len(hits):,} files "
-                    f"already cached — nothing to read.")
-
-    elapsed = time.time() - start
-    rate = total / elapsed if elapsed > 0 else 0.0
-    if total:
-        summary = (f"{total:,} files processed by {n_workers} workers in "
-                   f"{_fmt_duration(elapsed)} ({rate:,.0f} files/s sustained)")
-    else:
-        summary = (f"all {len(hits):,} files already up to date "
-                   f"({_fmt_duration(elapsed)})")
-    logger.info(f"EXIF cache rescan complete: {summary}. Cache now "
-                f"{len(cache['immutable']):,} immutable + "
-                f"{len(cache['mutable']):,} mutable entries.")
-    stats.update({
-        "read": total, "workers": n_workers, "elapsed": elapsed,
-        "rate": rate, "hits": len(hits),
-        "immutable": len(cache["immutable"]), "mutable": len(cache["mutable"]),
-        "summary": summary,
-    })
-    return stats

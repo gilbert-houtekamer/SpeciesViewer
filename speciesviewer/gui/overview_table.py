@@ -64,9 +64,8 @@ def make_overview_table(headers, *, rows=0, fit_columns=(), stretch_last=False,
                   that builds plain QTableWidgetItems — they are editable by
                   default, and a double-click meant to run a step would open an
                   editor over it instead.
-      row_header  True keeps the vertical header. Trip needs it VISIBLE: a
-                  double-click on a row number re-runs that day's steps
-                  (handle_row_rerun), which is unreachable if it is hidden.
+      row_header  True keeps the vertical header (row numbers) visible. Trip
+                  shows them as labels only; they do nothing when clicked.
     """
     table = QTableWidget()
     table.setColumnCount(len(headers))

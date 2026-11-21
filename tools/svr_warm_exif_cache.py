@@ -12,7 +12,6 @@ no pictures touched.
 
     python tools/svr_warm_exif_cache.py "D:/CurrentPictures/2026/2026 Brazil"
     python tools/svr_warm_exif_cache.py "F:/iphone" "D:/CurrentPictures/2026"
-    python tools/svr_warm_exif_cache.py --master        # the master-rescan cache
 
 Several roots in one run share one cache save, so an overlapping folder read
 twice still only costs one read.
@@ -32,9 +31,8 @@ from engine import exifcache                        # noqa: E402
 from utils import config                            # noqa: E402
 
 
-def warm(roots, use_master_cache=False, recurse=True):
-    path = (exifcache.master_cache_path(config) if use_master_cache
-            else exifcache.exif_cache_path(config))
+def warm(roots, recurse=True):
+    path = exifcache.exif_cache_path(config)
     fingerprint = exifcache.field_fingerprint(SELECTED_FIELDS)
     print(f"cache       : {path}")
     print(f"fingerprint : {fingerprint}  ({len(SELECTED_FIELDS)} fields)")
@@ -83,15 +81,12 @@ def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("roots", nargs="*", help="folder(s) to pre-read")
-    ap.add_argument("--master", action="store_true",
-                    help="warm the master-rescan cache instead of the day/trip one")
     ap.add_argument("--no-recurse", action="store_true",
                     help="read each root's own files only, not its sub-folders")
     args = ap.parse_args(argv)
     if not args.roots:
         ap.error("name at least one folder to pre-read")
-    return warm(args.roots, use_master_cache=args.master,
-                recurse=not args.no_recurse)
+    return warm(args.roots, recurse=not args.no_recurse)
 
 
 if __name__ == "__main__":

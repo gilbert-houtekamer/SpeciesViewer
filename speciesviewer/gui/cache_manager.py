@@ -208,12 +208,12 @@ class ManageCachesDialog(QDialog):
             ),
             dict(
                 kind="exif", pie_index=2,
-                title="EXIF cache — master scan",
-                subtitle="Cached EXIF reads for the master-wide scan",
+                title="Old master EXIF cache — no longer used",
+                subtitle="Left by the removed Rescan master EXIF cache. "
+                         "Nothing reads it; clear it to get the space back.",
                 stat_fn=self._exif_master_stats,
                 clear_fn=self._clear_exif_master,
-                warning="Rebuilds on the next Rescan master EXIF cache "
-                        "(a few minutes).",
+                warning="Nothing uses it; it does not come back.",
                 edit=False,
             ),
         ]
@@ -691,9 +691,8 @@ class ManageCachesDialog(QDialog):
         self._clear_exif_files(
             self._exif_master_files(), self._exif_master_stats(),
             "Clear master EXIF cache",
-            "The master cache rebuilds on the next Rescan master EXIF cache "
-            "(a few minutes). The day/trip cache is untouched. Output is "
-            "unaffected.")
+            "Nothing uses this file any more; it does not come back. "
+            "The day/trip cache is untouched.")
 
     def _clear_exif_files(self, files: list[str], stats, title: str,
                           note: str) -> None:
@@ -728,8 +727,8 @@ class ManageCachesDialog(QDialog):
         msg = f"Delete all cached data ({_fmt(grand_total)} total)?\n\n{lines}"
         exif_present = slice_counts[2] > 0
         if exif_present:
-            msg += ("\n\n⚠  The EXIF caches rebuild on the next Read Directory "
-                    "and Rescan master EXIF cache (slow scans).")
+            msg += ("\n\n⚠  The EXIF cache rebuilds on the next Read Directory "
+                    "(a slow scan).")
         if QMessageBox.question(self, "Clear All Caches", msg) != QMessageBox.StandardButton.Yes:
             return
         from gui.fullres import clear_fullres_cache, clear_preview_cache

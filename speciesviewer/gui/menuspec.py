@@ -13,7 +13,7 @@ from gui.trip_process import (ReadDirDialog, ReadSummarizeDialog, TripCreationDi
         MasterPipelineDialog, MasterRebuildWebsiteDialog, ConvertAvibaseDialog,
         SyncSidecarsDialog, EmptyTripDataDialog, SpeciesCollectionDialog,
         TestbedDialog, BlogAdminDialog, PhotoMechanicDialog,
-        RescanMasterCacheDialog, SmallMasterDialog, InstallSmallMasterDialog,
+        SmallMasterDialog, InstallSmallMasterDialog,
         ExportTripDialog, ImportTripDialog)
 from gui.virttrip_process import (VirtualTripCreationDialog,
                                    VirttripWriteBlogDialog, VirttripRedoBlogDialog,
@@ -60,7 +60,6 @@ import batch.svv1MakeVirtualRepository
 import batch.svv3WriteBlog
 import batch.svv4BuildWebsite
 import batch.svv7ExportVirtualTrip
-import engine.exifcache as exifcache
 from utils.ini_io import read_ini
 from gui.master_switch import masters_menu
 
@@ -876,29 +875,6 @@ def build_menu_spec(main_window):
         title="Manage caches…",
         showsubdirectory=False,
     )
-
-    # Warm the SEPARATE master cache (exif_cache_master.json) by reading EXIF
-    # for every picture under <master>/biota. Kept apart from the day/trip
-    # exif_cache.json so the ~89MB master cache never slows Read Directory.
-    def _rescan_master_exif_cache(args, _mod_config):
-        master = exifcache.master_repository(_mod_config)
-        root = os.path.join(master, "biota")
-        exifcache.rescan(root, exifcache.master_cache_path(_mod_config))
-
-    rescan_master_cache = MenuSpec(
-        callback=None,
-        title="Rescan master EXIF cache",
-        enabled=has_master,
-        showsubdirectory=False,
-        batch_parms={
-            'statusname': "",
-            'module_called': _rescan_master_exif_cache,
-            'before_msg': "Reading EXIF for all master pictures into the cache...",
-            'after_msg': "✅ Master EXIF cache updated.",
-        }
-    )
-    rescan_master_cache.callback = lambda: RescanMasterCacheDialog(
-        main_window, rescan_master_cache).exec()
 
     # utilities
         # Master updates
@@ -1807,7 +1783,6 @@ def build_menu_spec(main_window):
                 ),
                 f"{MenuSpec.separator()}_settings_caches": None,
                 "Manage Caches…": manage_caches,
-                "Rescan master EXIF cache": rescan_master_cache,
             },
             **({"Developer Tools": developer_tools_menu} if debug_enabled() else {}),
             f"{MenuSpec.separator()}_file": None,
@@ -2037,6 +2012,7 @@ def build_menu_spec(main_window):
             "Manage Album Publication…": MenuSpec(
                 callback=lambda: _manage_album_publication(),
                 title="Manage Album Publication…",
+                enabled=has_active_album,
                 tooltip="List this album on the site's trip index, or remove it from there",
             ),
             f"{MenuSpec.separator()}_vt3": None,
@@ -2051,6 +2027,7 @@ def build_menu_spec(main_window):
             "Album Species Viewer": MenuSpec(
                 callback=lambda: main_window.open_virttrip_rating_editor(),
                 title="Album Species Viewer",
+                enabled=has_active_album,
                 showsubdirectory=False,
             ),
             f"{MenuSpec.separator()}_vt_sync": None,

@@ -66,9 +66,7 @@ The pipeline spheres:
 | ❌ | Failed — hover for the reason |
 
 Double-click a **column header** to run that step for every day that is ready.
-Double-click a **row number** to run again every step that day has already done
-(after you changed pictures, say). Right-click selected
-cells for more.
+Right-click selected cells for more.
 
 Above the table:
 

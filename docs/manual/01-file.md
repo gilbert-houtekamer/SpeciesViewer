@@ -92,7 +92,6 @@ at, not documents. Choosing, creating and switching collections lives under
 |---|---|---|
 | Settings ▸ Settings… | `Ctrl+G` | |
 | Settings ▸ Manage caches… | | |
-| Settings ▸ Rescan master EXIF cache | | a master |
 | Developer Tools ▸ … | | *Only visible when debug is enabled* — [Appendix C](appendix-c-developer-tools.md) |
 | Quit | `Ctrl+Q` | |
 
@@ -233,28 +232,15 @@ move it to another folder (a faster or bigger disk). Caches live under
 `%LOCALAPPDATA%\SpeciesViewer\` and are deliberately *not* in Dropbox.
 
 - **Local caches** — full-resolution pictures for the 100% view, preview
-  thumbnails for grids and the Editor, and the two EXIF caches (days and trips;
-  the master scan). Previews that have not been looked at for 90 days, or whose
-  picture is gone, are removed by themselves.
+  thumbnails for grids and the Editor, and the EXIF cache for days and trips.
+  Previews that have not been looked at for 90 days, or whose picture is gone,
+  are removed by themselves. An old *master EXIF cache* may still be listed:
+  nothing uses it any more, so clear it to get the space back.
 - **Upload caches** — one per website: what has already been uploaded, so a
   publish only sends what changed. Clearing one makes the next publish send
   everything again.
 
 Clearing a cache never loses data. It only costs time on the next read.
-
-## Rescan master EXIF cache
-
-*Needs: a configured master.*
-
-Walks every picture under `<master>\biota` and reads its EXIF into the master's
-own cache file (`exif_cache_master.json`). This is kept separate from the
-day/trip EXIF cache precisely so that the large master cache never slows down a
-routine Read & Summarize.
-
-Run it after a large external change to the master's files. It is slow — it is a
-full pass over the collection.
-
----
 
 ## Developer Tools
 
