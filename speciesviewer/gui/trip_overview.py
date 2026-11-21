@@ -471,9 +471,11 @@ def _format_geotag_item(day_name, gpslogs_root):
     The glyph is not just decoration: it says whether this day's tracklog was
     actually FOUND in the GPS logs folder, so the column doesn't promise an
     action it can't complete. Found → 🛰️, ready to run with the log pre-loaded.
-    Not found → a dimmed 🛰️ that still opens the dialog, because browsing to a
-    log by hand (a phone GPX, a log filed under another name) is exactly what
-    that dialog is for. Costs one path lookup per day."""
+    Not found → the faint words "no log", which still open the dialog, because
+    browsing to a log by hand (a phone GPX, a log filed under another name) is
+    exactly what that dialog is for. Words, not a dimmed 🛰️: an emoji is drawn
+    in its own colours and ignores the foreground, so a dimmed one looked the
+    same as a bright one (backlog 1.12). Costs one path lookup per day."""
     from PyQt6.QtGui import QColor
     from gui.overview_table import action_cell
     log_path = ""
@@ -486,7 +488,7 @@ def _format_geotag_item(day_name, gpslogs_root):
     if log_path:
         return action_cell("🛰️", f"Geotag from tracklog — fills missing GPS and "
                                  f"altitude for this day from {Path(log_path).name}.")
-    item = action_cell("🛰️",
+    item = action_cell("no log",
                        "Geotag from tracklog — no log found for this day in the GPS "
                        "logs folder. Opens anyway so you can browse for a GPX or log "
                        "file yourself."

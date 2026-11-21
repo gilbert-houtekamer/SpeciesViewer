@@ -164,6 +164,12 @@ both its UPN and its exact filename. Files classified `keep` (not in the master)
 and `held` (the species is in the master but this particular local render is not)
 are never touched.
 
+**Keep landscapes on this computer** (ticked by default) leaves your landscape
+pictures in the day folders, for instance for a photobook beside the trip's other
+pictures. The master keeps its copy either way, so nothing is at risk; untick it
+to reclaim that space too. The report says how many of the deletable pictures are
+landscapes, and the button counts what goes with your choice.
+
 You get the full report first, and a per-file detail CSV at
 `<trip>\metadata\trip_delete_dryrun.csv`. The red **"Delete N files"** button is
 the confirmation; there is no other.

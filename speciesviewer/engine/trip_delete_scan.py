@@ -108,6 +108,20 @@ def _master_copy_present(local_path, master_path):
         return False
 
 
+def _is_landscape(upn, master_path, master_index):
+    """True when the master files this picture under topics/ (a landscape or
+    other non-species photo), not under biota/. Read from the master's own
+    paths, so it is the master's verdict, not a guess from keywords."""
+    from engine.topics import TOPICS_ROOT
+    paths = [master_path] if master_path else []
+    paths += master_index.get("by_upn", {}).get((upn or "").lower(), [])
+    for mp in paths:
+        parts = mp.replace("\\", "/").lower().split("/")
+        if TOPICS_ROOT in parts:
+            return True
+    return False
+
+
 def _upn_has_confirmed_master_file(upn, master_index):
     """True when at least one of the UPN's master files physically exists — the
     proof that the picture (its RAW) is really backed up. Used for the .dng
@@ -185,7 +199,7 @@ def scan_trip(picture_root, master_root, trip_db):
     days = []
     warnings = []
     tot = {"files": 0, "deletable_files": 0, "keep_files": 0, "held_files": 0,
-           "other_files": 0,
+           "other_files": 0, "landscape_files": 0, "landscape_upns": set(),
            "deletable_upns": set(), "keep_upns": set(), "held_upns": set()}
 
     for day, day_path in _iter_day_dirs(picture_root):
@@ -217,6 +231,12 @@ def scan_trip(picture_root, master_root, trip_db):
                 recreatable_dng = (ext == ".dng" and upn_in_master
                                    and _upn_has_confirmed_master_file(upn, master_index))
                 if file_confirmed or recreatable_dng:
+                    # Flagged, not moved: execute_scan_delete decides with the
+                    # "Keep landscapes" tick (backlog 1.7).
+                    item["landscape"] = _is_landscape(upn, master_path, master_index)
+                    if item["landscape"]:
+                        tot["landscape_files"] += 1
+                        tot["landscape_upns"].add(upn)
                     if recreatable_dng and not file_confirmed:
                         item["reason"] = "recreatable DNG (RAW confirmed in master)"
                     else:
@@ -254,6 +274,8 @@ def scan_trip(picture_root, master_root, trip_db):
         "files_scanned": tot["files"],
         "deletable_files": tot["deletable_files"],
         "deletable_pictures": len(tot["deletable_upns"]),
+        "landscape_files": tot["landscape_files"],
+        "landscape_pictures": len(tot["landscape_upns"]),
         "keep_files": tot["keep_files"],
         "keep_pictures": len(tot["keep_upns"]),
         "keep_with_species": keep_with_species,
@@ -284,6 +306,9 @@ def format_report(report):
     lines.append("")
     lines.append(f"  TOTAL  deletable : {t['deletable_files']} files "
                  f"({t['deletable_pictures']} pictures) - confirmed in master")
+    if t.get("landscape_files"):
+        lines.append(f"         of which  : {t['landscape_files']} files "
+                     f"({t['landscape_pictures']} pictures) are landscapes")
     lines.append(f"         keep      : {t['keep_files']} files "
                  f"({t['keep_pictures']} pictures, not in master "
                  f"- {t.get('keep_with_species', 0)} with a species, "
@@ -297,10 +322,19 @@ def format_report(report):
     return "\n".join(lines)
 
 
-def execute_scan_delete(report):
+def deletable_count(report, keep_landscapes=False):
+    """(files, pictures) execute_scan_delete would remove with this choice."""
+    items = [it for d in report.get("days", []) for it in d.get("deletable", [])
+             if not (keep_landscapes and it.get("landscape"))]
+    return len(items), len({it.get("upn", "") for it in items})
+
+
+def execute_scan_delete(report, keep_landscapes=False):
     """Delete the files classified 'deletable' by scan_trip (each has a byte-
     identical copy confirmed in the master, which is the backup). Removes day
-    folders that become empty. 'keep' and 'held' files are never touched.
+    folders that become empty. 'keep' and 'held' files are never touched, nor
+    landscapes when keep_landscapes is set (for a photobook beside the day's
+    pictures; the master keeps its copy either way).
     Returns (deleted_files, deleted_pictures, errors)."""
     if not report.get("ok"):
         return 0, 0, ["report not ok"]
@@ -310,6 +344,8 @@ def execute_scan_delete(report):
     touched_dirs = set()
     for d in report.get("days", []):
         for it in d.get("deletable", []):
+            if keep_landscapes and it.get("landscape"):
+                continue
             p = it["path"]
             try:
                 if os.path.exists(p):

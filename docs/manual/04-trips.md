@@ -46,7 +46,7 @@ does the same things one step at a time.
 | **Pictures** | Pictures, and a health mark: ✅ all species fine · ⚠️ species name typos · 🔒 a species whose location is hidden on the website | Open the day's pictures |
 | **JPEG Files** | How many developed JPGs | Open the day's JPGs |
 | **GPS** | ✅ every picture has GPS · 📍 *n* pictures without | |
-| **Geotag 🛰️** | Bright: a tracklog was found for the day. Dimmed: none found | Fill missing GPS and altitude from the tracklog; with none found, the window opens so you can choose a log yourself |
+| **Geotag 🛰️** | 🛰️: a tracklog was found for the day. *no log*: none found | Fill missing GPS and altitude from the tracklog; with none found, the window opens so you can choose a log yourself |
 | **Sync Sidecars** | | Bring PhotoLab's and Lightroom's crop and exposure in step for the day — see [Sync Lightroom & PhotoLab Metadata](#sync-lightroom--photolab-metadata) |
 | **In Blog** | A tick: does this day get a blog? Untick a day (the phone pictures, say) to leave it out | |
 | **1 Read & Summarize · 2 Write Blog · 3 Publish Day** | The pipeline, one sphere per step (below) | Run that step for the day |

@@ -1110,7 +1110,7 @@ def build_menu_spec(main_window):
     # Shows the full report; the explicit "Delete N files" button is the confirm.
     def _delete_trip_in_master():
         from PyQt6.QtWidgets import (QApplication, QMessageBox, QDialog, QVBoxLayout,
-                                     QPlainTextEdit, QDialogButtonBox)
+                                     QPlainTextEdit, QDialogButtonBox, QCheckBox)
         from PyQt6.QtCore import Qt
         from PyQt6.QtGui import QFont
         import engine.trip_delete_scan as tds
@@ -1134,7 +1134,6 @@ def build_menu_spec(main_window):
             QMessageBox.warning(main_window, "Delete Trip Files", report.get("error", "Failed."))
             return
         t = report["totals"]
-        n_files = t["deletable_files"]
         text = tds.format_report(report)
         if detail:
             text += f"\n\nPer-file detail written to:\n{detail}"
@@ -1147,21 +1146,37 @@ def build_menu_spec(main_window):
         view.setFont(QFont("Consolas", 10))
         view.setLineWrapMode(QPlainTextEdit.LineWrapMode.NoWrap)
         lay.addWidget(view)
+        # Backlog 1.7: landscapes stay beside the day's pictures (a photobook)
+        # unless the user un-ticks this. On by default — the master keeps its
+        # copy either way, so keeping them risks nothing.
+        n_land = t.get("landscape_pictures", 0)
+        keep_land = QCheckBox(f"Keep landscapes on this computer ({n_land})")
+        keep_land.setChecked(True)
+        keep_land.setToolTip("Landscape pictures stay in the day folders, e.g. for a "
+                             "photobook. The master keeps its copy either way.")
+        keep_land.setEnabled(bool(n_land))
+        lay.addWidget(keep_land)
         bb = QDialogButtonBox()
         bb.addButton(QDialogButtonBox.StandardButton.Cancel)
-        if n_files:
-            del_btn = bb.addButton(f"Delete {n_files} files",
-                                   QDialogButtonBox.ButtonRole.AcceptRole)
-            del_btn.setStyleSheet("color: white; background-color: #b00020; padding: 4px 10px;")
+        del_btn = bb.addButton("Delete", QDialogButtonBox.ButtonRole.AcceptRole)
+        del_btn.setStyleSheet("color: white; background-color: #b00020; padding: 4px 10px;")
+
+        def _count():
+            nf_, _np = tds.deletable_count(report, keep_land.isChecked())
+            del_btn.setText(f"Delete {nf_} files")
+            del_btn.setVisible(bool(nf_))
+            return nf_
+        keep_land.toggled.connect(lambda _on: _count())
+        _count()
         bb.rejected.connect(dlg.reject)
         bb.accepted.connect(dlg.accept)
         lay.addWidget(bb)
-        if dlg.exec() != QDialog.DialogCode.Accepted or not n_files:
+        if dlg.exec() != QDialog.DialogCode.Accepted or not _count():
             return
 
         QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
         try:
-            nf, npx, errs = tds.execute_scan_delete(report)
+            nf, npx, errs = tds.execute_scan_delete(report, keep_land.isChecked())
         finally:
             QApplication.restoreOverrideCursor()
         for e in errs[:20]:
@@ -1173,7 +1188,9 @@ def build_menu_spec(main_window):
         QMessageBox.information(main_window, "Delete Trip Files",
                                f"Deleted {npx} pictures ({nf} files).\n"
                                f"Kept {t['keep_pictures']} pictures not in the master{id_note} and "
-                               f"{t['held_pictures']} held local renders.{extra}")
+                               f"{t['held_pictures']} held local renders"
+                               + (f" and {n_land} landscapes" if n_land and keep_land.isChecked() else "")
+                               + f".{extra}")
 
     delete_trip_item = MenuSpec(
         callback=_delete_trip_in_master,
