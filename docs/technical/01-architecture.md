@@ -4,7 +4,7 @@
 to the master, which code does it, and what must never break.*
 Re-verified against the code on SpeciesViewer04, 2026-11-21. The user's view of
 the same story is [Concepts](../manual/00-concepts.md); the four CSVs in detail are
-[2. Data structures](../manual/appendix-e-data_structures.md).
+[2. Data structures](02-data-structures.md).
 
 ---
 
@@ -102,7 +102,7 @@ The moral: the delete trusted a list that lied; now it trusts the disk.
 
 The user's version is the lifecycle table in [Concepts](../manual/00-concepts.md#how-the-four-fit-together).
 Here each step with what runs and where it writes. Module names per menu item are
-in [Appendix B](../manual/appendix-b-batch-modules.md).
+in [3. Menu items and batch modules](03-batch-modules.md).
 
 | # | Step | Runs | Writes into |
 |---|---|---|---|
@@ -149,7 +149,7 @@ identified picture.
 
 The same four structures exist in every repository. Two describe **biology**, two
 describe **your photos**; they meet at one join, a scientific-name string. Full
-detail: [2. Data structures](../manual/appendix-e-data_structures.md).
+detail: [2. Data structures](02-data-structures.md).
 
 | CSV | In memory | Holds |
 |---|---|---|
@@ -226,7 +226,7 @@ flowchart LR
 On read, *active* wins over an in-flight *review*. On commit, each species'
 per-run counters fold into its totals and reset. Nothing that publishes a page
 looks at the picture folders: pages are built from these CSVs only
-([Appendix F](../manual/appendix-f-page-freshness.md)).
+([4. Page freshness](04-page-freshness.md)).
 
 In a trip all of this is local and disposable: every edit was already written to
 the source sidecars, so the trip repo and its website can be rebuilt from source.

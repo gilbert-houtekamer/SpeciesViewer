@@ -11,9 +11,10 @@ identify (GBIF taxonomy), geotag, write trip blogs, and optionally publish stati
 per-machine read cache. Works with DxO PhotoLab sidecars (`.dop`) and ExifTool.
 
 User docs: [README.md](README.md), [docs/README.md](docs/README.md) (index of all docs),
-[docs/manual/](docs/manual/). **Read [docs/manual/appendix-c-data-architecture.md](docs/manual/appendix-c-data-architecture.md)
+[docs/manual/](docs/manual/) (reference manual, for users). Technical manual, for developers:
+[docs/technical/](docs/technical/README.md). **Read [docs/technical/01-architecture.md](docs/technical/01-architecture.md)
 before touching anything that copies, moves or deletes pictures**, and
-[appendix-e-data_structures.md](docs/manual/appendix-e-data_structures.md) for the four core CSVs.
+[02-data-structures.md](docs/technical/02-data-structures.md) for the four core CSVs.
 
 ## Commands
 

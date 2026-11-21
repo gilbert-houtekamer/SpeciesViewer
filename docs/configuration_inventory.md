@@ -9,7 +9,7 @@ where a new setting goes, and what a backup or a work-backup on a card may
 carry.
 
 Companion documents:
-[manual/appendix-e-data_structures.md](manual/appendix-e-data_structures.md) for how the four picture CSVs
+[technical/02-data-structures.md](technical/02-data-structures.md) for how the four picture CSVs
 reference each other, and
 [manual/howto_trip_index_publication.md](manual/howto_trip_index_publication.md) for the one file whose
 authoritative copy lives on the website.

@@ -1,4 +1,4 @@
-# Appendix B — Menu items and the batch modules they run
+# 3. Menu items and the batch modules they run
 
 When something goes wrong, the log talks in module names (`sv6Freeze`,
 `svr9RedoBlog`) while the menu talks in verbs ("Publish Day", "Make the Blogs
@@ -8,7 +8,7 @@ It is also the honest picture of which menu items are *one* action and which are
 a chain — useful when a step half-fails.
 
 > What these steps read and write — the four CSVs and their columns — is
-> [Appendix E](appendix-e-data_structures.md).
+> [2. Data structures](02-data-structures.md).
 
 ## The trip pipeline
 

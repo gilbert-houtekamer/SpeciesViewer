@@ -65,19 +65,12 @@ as you last saw it (chapters 0–4) or as first written (5–10, never reviewed)
 | Appendix | Answers |
 |---|---|
 | [A — Why is this greyed out?](appendix-a-greyed-out.md) | Every gating rule in the menu, in one table. |
-| [B — The pipeline steps and their batch modules](appendix-b-batch-modules.md) | Which `sv*` script each menu item runs, for reading the log. |
-| [C — Dataflow and architecture](appendix-c-data-architecture.md) | Where pictures physically live and how they move between the four repositories. Tells the same story as [Concepts](00-concepts.md) at a lower level. |
-| [D — Camera support](appendix-d-camera_support.md) | Which camera bodies have been **measured**, and what works on each. Generated — regenerate with `tools/svr_camera_checklist.py`. |
-| [E — Developer reference: Data structures](appendix-e-data_structures.md) | **Developer-facing.** The four CSVs that hold the project's biological knowledge and picture metadata, and the in-memory dictionaries they map to. |
-| [F — Page freshness](appendix-f-page-freshness.md) | Why a blog can be right while the trip's species summary is short, what each page is actually built from, and when Read & Summarize is not optional. |
-| [G — Developer tools](appendix-g-developer-tools.md) | The diagnostics under *File ▸ Developer Tools*, visible only with debug enabled. Report only; for finding faults in the program. |
+| [B — Camera support](appendix-b-camera-support.md) | Which camera bodies have been **measured**, and what works on each. Generated — regenerate with `tools/svr_camera_checklist.py`. |
+| [C — Developer tools](appendix-c-developer-tools.md) | The diagnostics under *File ▸ Developer Tools*, visible only with debug enabled. Report only; for finding faults in the program. |
 
-> **On the appendices.** These were written separately, before the manual, and
-> gathered here because they are the material that already existed. They are not
-> a designed set. C deliberately overlaps [Concepts](00-concepts.md) — it is the
-> lower-level telling of the same story, and useful as a check on whether the
-> user-level version got it right. E is developer-facing and sits here because
-> there is nowhere better, not because a user needs it.
+> **How the program works inside** — where pictures physically live, the four
+> CSVs, which module each menu item runs, what a page is built from — is the
+> [technical manual](../technical/README.md), written for people who work on the code.
 
 ## How to's
 
@@ -191,9 +184,8 @@ and the file is gitignored either way.
 
 These are not part of the manual but answer neighbouring questions:
 
-- [Appendix C](appendix-c-data-architecture.md) — where pictures physically live
-  and how they move. The architectural companion to [Concepts](00-concepts.md).
-- [Appendix E](appendix-e-data_structures.md) — the CSVs behind it all.
+- [Technical manual](../technical/README.md) — where pictures physically live,
+  how they move, and the CSVs behind it all. The companion to [Concepts](00-concepts.md).
 - [../viewer_keybindings.md](../viewer_keybindings.md) — every key in the
   picture viewers, which this manual does not repeat.
 - [../configuration_inventory.md](../configuration_inventory.md) — which setting

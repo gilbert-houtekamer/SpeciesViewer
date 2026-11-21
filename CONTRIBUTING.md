@@ -29,8 +29,8 @@ See [Installing SpeciesViewer](docs/install.md): Python 3.12, ExifTool, then
 The program's own documentation for developers:
 
 - [docs/README.md](docs/README.md): which document explains what.
-- [docs/manual/appendix-c-data-architecture.md](docs/manual/appendix-c-data-architecture.md):
-  where pictures live, and how a trip flows into the master. Read this first.
+- [docs/technical/](docs/technical/README.md): the technical manual — where pictures live,
+  how a trip flows into the master, and what must never break. Read chapter 1 first.
 - [docs/configuration_inventory.md](docs/configuration_inventory.md): every settings file, and
   where a new setting belongs.
 

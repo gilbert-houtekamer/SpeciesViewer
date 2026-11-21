@@ -1,4 +1,4 @@
-# Appendix E — Developer reference: Data structures
+# 2. Data structures — the four CSVs
 
 This is a developer reference for the four CSV files that hold all the project's
 biological knowledge and picture metadata, and the four in-memory dictionaries

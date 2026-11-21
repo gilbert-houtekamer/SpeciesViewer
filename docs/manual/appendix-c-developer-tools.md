@@ -1,4 +1,4 @@
-# Appendix G — Developer tools
+# Appendix C — Developer tools
 
 **Only present when "Enable debug functionality" is on** (Settings ▸ Global), and
 only after a restart. These are diagnostics, written to find faults in the program: they report, they

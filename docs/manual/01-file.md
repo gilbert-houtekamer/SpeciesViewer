@@ -93,7 +93,7 @@ at, not documents. Choosing, creating and switching collections lives under
 | Settings ▸ Settings… | `Ctrl+G` | |
 | Settings ▸ Manage caches… | | |
 | Settings ▸ Rescan master EXIF cache | | a master |
-| Developer Tools ▸ … | | *Only visible when debug is enabled* — [Appendix G](appendix-g-developer-tools.md) |
+| Developer Tools ▸ … | | *Only visible when debug is enabled* — [Appendix C](appendix-c-developer-tools.md) |
 | Quit | `Ctrl+Q` | |
 
 ---
@@ -178,7 +178,7 @@ of the previews in grids. Raise it if previews look soft; lower it if browsing
 feels slow.
 
 > Whether a given camera body decodes at all is measured, not assumed — see
-> [Appendix D](appendix-d-camera_support.md).
+> [Appendix B](appendix-b-camera-support.md).
 
 ### Location
 
@@ -271,7 +271,7 @@ full pass over the collection.
 Only present when *Enable debug functionality* is on (Settings ▸ Global), and
 only after a restart. These are diagnostics written to find faults in the
 program; you will not need them. They are described in
-[Appendix G](appendix-g-developer-tools.md).
+[Appendix C](appendix-c-developer-tools.md).
 
 ---
 

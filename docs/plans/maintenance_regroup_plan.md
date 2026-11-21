@@ -17,7 +17,7 @@ something that crept in earlier. To a user they read as debug tools.
 | **(a) Normal work** | Geotag from Tracklog · Add Missing Place Names · Undo Last Species Move · Empty Master Trash · Species Without a Website Picture · Manage Site Publication | The normal menus, beside the work they belong to |
 | **(b) After an update** | Rebuild Entire Website (all pages) · Utilities ▸ Rebuild all Albums and the Master website | One item, *Rebuild websites…*, with its choices |
 | **(c) Repairs** | Refresh Master Database — Review / Apply · Recount Species Counters · Fill Picture GPS from Files · Audit Species Counters · Clean Orphan Sidecars · album Sync Placed GPS into the Index · the daily health check · Settings ▸ Database ▸ Restore | One window, *Check the master…* |
-| **(d) Developer only** | Trip Status Console · Merged Status · Call Testbed | Developer Tools, documented in Appendix G only |
+| **(d) Developer only** | Trip Status Console · Merged Status · Call Testbed | Developer Tools, documented in Appendix C (Developer tools) only |
 | **Remove** | Rescan master EXIF cache | Nothing reads that cache (1.8) |
 
 ### *Check the master…*

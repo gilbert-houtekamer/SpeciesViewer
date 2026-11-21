@@ -11,7 +11,7 @@ CSV header, so a new column is a schema change to every data_pictures.csv in the
 library; merging into the column that already exists costs nothing and reaches both
 consumers for free.
 
-Where each maker keeps it (measured on the ch.21 corpus, see docs/camera_support.md):
+Where each maker keeps it (measured on the ch.21 corpus, see docs/manual/appendix-b-camera-support.md):
 
     Nikon      MakerNotes:FocusDistance        11.82 m   a single value
     Olympus    MakerNotes:FocusDistance        inf       a single value

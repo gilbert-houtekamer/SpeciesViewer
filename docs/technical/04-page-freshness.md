@@ -1,4 +1,4 @@
-# Appendix F — Page freshness: what a published page is built from
+# 4. Page freshness: what a published page is built from
 
 *Why a blog can be right while the species summary is stale, and what to re-run.*
 Written 2026-09-25 after a real case on the 2026 Brazil trip.
@@ -20,7 +20,7 @@ through — reads exactly this and nothing else:
 | files + pictures, this day | `metadata/review/<day>/data_files.csv`, `data_pictures.csv` |
 
 So a file that exists on disk but is not in a CSV **does not exist** as far as
-publishing is concerned. That is the whole of this appendix; everything below is
+publishing is concerned. That is the whole of this chapter; everything below is
 a consequence.
 
 **Read & Summarize is the only step that turns files on disk into CSV rows.**

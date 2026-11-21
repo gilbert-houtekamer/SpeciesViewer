@@ -83,4 +83,4 @@ fallback) and buckets it `jpg_ok` / `raw_fallback` / `black`. Investigating the
   itself on next use.
 
 See also [`configuration_inventory.md`](../configuration_inventory.md) for the file layout
-and [Appendix E](appendix-e-data_structures.md) for the CSV schemas.
+and [the technical manual](../technical/02-data-structures.md) for the CSV schemas.
