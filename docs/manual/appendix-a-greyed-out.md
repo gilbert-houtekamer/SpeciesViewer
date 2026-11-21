@@ -25,7 +25,7 @@ the work was done on another machine.
 
 | Milestone | Proof it looks for |
 |---|---|
-| **days published** | At least one day folder whose `WriteCommit` step is done |
+| **days published** | At least one day folder whose `Publish Day` (`WriteCommit`) step is done |
 | **merge ready** | At least one day published **and** every day holding JPGs published |
 | **merge done** | A row for this trip's picture root in `<master>\admin\master_commits.csv` |
 | **trip retired** | The `retired_to_album` flag in the trip's `trip.ini` |

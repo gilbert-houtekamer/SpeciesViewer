@@ -50,7 +50,7 @@ sidecars, and lists you can open in a spreadsheet. Nothing is locked inside a
 catalog that only SpeciesViewer can read.
 
 > The same story at a lower level — the physical repositories, the copy gates
-> and the delete arrow — is [Appendix C](appendix-c-data-architecture.md).
+> and the delete arrow — is in the [technical manual](../technical/01-architecture.md).
 
 ## How SpeciesViewer is organised
 
@@ -278,6 +278,25 @@ order: the reporting is in place before anything gets deleted.
 
 Step 7 is cleaning up, not a road pictures travel, so it has no arrow in the
 picture: by then the master holds the pictures and the album holds the story.
+
+---
+
+## Where your work is kept
+
+- **Every change is saved at once.** A rating, colour label, species name or
+  place is written to the sidecar beside the picture (`.xmp`, and for crop and
+  exposure also PhotoLab's `.dop`) the moment you make it. There is no *Save*,
+  and closing the program loses nothing. Because it is the same sidecar,
+  Lightroom and PhotoLab see your changes too.
+- **Speed comes from this computer's caches.** To open a folder fast,
+  SpeciesViewer keeps copies of what it read and of the previews on this computer,
+  outside Dropbox. They are only copies: delete them and they are rebuilt.
+- **A full disk stops a copy before it starts.** Before a card read, a backup,
+  Publish Day or a merge, the free space is checked against the exact size, so
+  nothing is ever left half-copied.
+- **Originals are deleted only against the real copy.** *Delete Local Files*
+  looks on the disk for each picture's copy in the master, the same size, before
+  it removes your original, and even then it goes to a `.trash` folder first.
 
 ---
 

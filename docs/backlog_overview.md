@@ -1,4 +1,4 @@
-# Backlog overview — what is still open
+    # Backlog overview — what is still open
 
 *Made 27 Oct 2026 from `SpeciesViewer_Backlog.html` (ch. 1–24), checked against the code
 on SpeciesViewer04; completed items removed 19 Nov 2026. The HTML stays the full record;
@@ -38,6 +38,7 @@ to understand than it needs to be.
 | 1.20 | **Sex / age / plumage is weak.** Fine for most birds, but no age classes for large birds (1st–4th year) and nothing for insects (larva, pupa, adult…). Settle the vocabulary per group, then document it. | M |
 | 1.21 | **The map as a viewer of its own.** Beside a grid or the Editor it does what Lightroom and PhotoLab cannot; give it a proper place in the menus and its own manual section (bubbles, moving, travel path). | M |
 | 1.22 | **No Trash window for Days.** A trip has *Trips ▸ Trash (deleted pictures)…*; pictures deleted in a day outside a trip go to a `.trash` folder inside that day folder, but there is no window to restore them (only Explorer). | S |
+| 1.23 | **Temp and debug files pile up in the master's `admin` folder** — 2.4 GB in Dropbox (21 Nov). **Later, and with great care:** `admin` also holds files that exist nowhere else (`trip_admin.csv`, `master_commits.csv`, `blog_admin.csv`, `TransCache.csv`, and `status/backup/` (1.5 GB) — the master CSV backups that saved us on 12 Nov). First make an inventory that sorts every file into *only copy / keep* vs *rebuildable / debug*; nothing is touched before that is reviewed. Candidates: old `review_*`/`preview_*` dry-run folders in `status/` (~160 MB each), `display_status.csv`, `ghost_files.csv`, `console/`, the 46 MB `taxonomy_convert_*.csv`, `trip_admin - Copy*.csv`, `temp/`. Then: a retention rule for backups (keep the last N), a dry-run → review → move to `.trash`, and tools that write debug output to app-data instead of Dropbox. | S–M |
 
 ## 2. Built, waiting for a live test
 
