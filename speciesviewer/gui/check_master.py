@@ -35,11 +35,31 @@ logger = logging.getLogger("speciesviewer")
 
 
 # ── the checks: pure, no Qt — (count, plain sentence) ─────────────────────────
+# Each check also leaves a few examples in SAMPLES[key] (file or species names),
+# so the start-up check can log WHAT drifted, not only how much.
+SAMPLES: dict[str, list[str]] = {}
+_N_SAMPLES = 10
+
+
+def _first_names(csv_path, n=_N_SAMPLES):
+    import os
+    if not os.path.exists(csv_path):
+        return []
+    with open(csv_path, encoding="utf-8", errors="replace") as fh:
+        rows = fh.read().splitlines()[1:n + 1]
+    return [r.split(";", 1)[0] for r in rows if r]
+
 
 def check_lists_vs_disk(master):
+    import os
     import engine.admin_rebuild as ar
     with tempfile.TemporaryDirectory(prefix="sv_check_") as tmp:
         p = ar.plan_rebuild(master, out_dir=tmp)
+        SAMPLES["disk"] = (
+            [f"gone: {x}" for x in _first_names(os.path.join(tmp, "rebuild_remove.csv"))]
+            + [f"moved: {x}" for x in _first_names(os.path.join(tmp, "rebuild_repoint.csv"))]
+            + [f"other species: {x}" for x in
+               _first_names(os.path.join(tmp, "rebuild_species_change.csv"))])
     if not p.get("ok"):
         raise RuntimeError(p.get("error", "failed"))
     n = p["remove"] + p["repoint"] + p["species_change"]
@@ -51,6 +71,9 @@ def check_species_counters(master):
     import engine.master_recount as mr
     p = mr.plan(master)
     n = p["species"]
+    SAMPLES["counters"] = [f"{name}: {old} → {new}" for lvl, name, col, old, new
+                           in p.get("changes", []) if lvl == "Level.SPECIES"
+                           and col == "iPictureCollectionCount"][:_N_SAMPLES]
     return n, (f"{n:,} species count other numbers than their pictures"
                + (f"; {p['picks']} best pictures no longer exist" if p["picks"] else ""))
 
@@ -78,6 +101,7 @@ def check_orphan_sidecars(master):
     import engine.admin_rebuild as ar
     info = ar.find_orphan_sidecars(master)
     n = info.get("orphan_files", 0)
+    SAMPLES["orphans"] = list(info.get("paths", []))[:_N_SAMPLES]
     by = ", ".join(f"{v} .{k}" for k, v in sorted(info.get("by_ext", {}).items()))
     return n, f"{n:,} .xmp/.dop files whose picture is gone" + (f" ({by})" if by else "")
 
@@ -95,6 +119,7 @@ def check_read_copy(master):
     lines = [f"[{'PROBLEM' if f.level == 'error' else 'warning'}] {f.what}"
              + (f" — {f.detail}" if f.detail else "") for f in findings]
     check_read_copy.details = "\n".join(lines) or "No problems found."
+    SAMPLES["readcopy"] = lines[:_N_SAMPLES]
     return len(findings), f"The master is {rep.summary()}"
 
 

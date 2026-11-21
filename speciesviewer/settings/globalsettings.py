@@ -22,6 +22,15 @@ class GlobalSettingsDialog(QDialog):
         self.splash_switch.setChecked(splash_enabled)
         layout.addWidget(self.splash_switch)
 
+        self.validate_switch = QCheckBox("Validate the master's lists at start")
+        self.validate_switch.setToolTip(
+            "Runs the quick checks of Master ▸ Check the Master in the background "
+            "when SpeciesViewer starts.\nSilent when all is well; a warning in the "
+            "log when something drifted, so you can see what caused it.")
+        self.validate_switch.setChecked(
+            _config.get("Global", "startup_check_master", fallback="yes") == "yes")
+        layout.addWidget(self.validate_switch)
+
         self.debug_switch = QCheckBox("Enable debug functionality")
         self.debug_switch.setToolTip(
             "Shows the diagnostic tools under File ▸ Developer Tools (status consoles, "
@@ -128,6 +137,8 @@ class GlobalSettingsDialog(QDialog):
     def save_settings(self):
         _config.set("Global", "splash_enabled", "yes" if self.splash_switch.isChecked() else "no")
         _config.set("Global", "debug_tools", "yes" if self.debug_switch.isChecked() else "no")
+        _config.set("Global", "startup_check_master",
+                    "yes" if self.validate_switch.isChecked() else "no")
         set_global_profile(self.names_combo.currentData())
         if not _config.has_section("translate"):
             _config.add_section("translate")

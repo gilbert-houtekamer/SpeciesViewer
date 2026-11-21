@@ -289,6 +289,10 @@ a minute or two, and rarely finds anything, so it waits until you press its
 At the bottom: **Restore the Master's Lists from a Backup…** — see below.
 *Settings ▸ Database* opens the same window.
 
+The quick checks (all but the on-request one) also run at every start, silently
+unless something drifted: *File ▸ Settings ▸ Global ▸ Validate the master's lists
+at start*.
+
 ### Lists vs. Files on Disk — Review…
 
 Compares the master's admin CSVs against the pictures actually on disk, and

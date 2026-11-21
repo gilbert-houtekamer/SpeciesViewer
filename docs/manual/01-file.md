@@ -107,7 +107,7 @@ this section: [Where your settings and data are kept](#where-your-settings-and-d
 
 | Tab | What you set there |
 |---|---|
-| **Global** | Splash screen, debug tools, species names under each picture, translation key, and where your website goes |
+| **Global** | Splash screen, start-up check, debug tools, species names under each picture, translation key, and where your website goes |
 | **Look & Feel** | Label colours, card corners, the culling grid, Make JPG size |
 | **Database** | How the master's fast read-copy is doing, and the master's deleted pictures |
 | **Decode quality** | How a RAW is turned into the picture you look at |
@@ -117,6 +117,12 @@ this section: [Where your settings and data are kept](#where-your-settings-and-d
 ### Global
 
 - **Enable Splash** — the picture shown while SpeciesViewer starts.
+- **Validate the master's lists at start** — on by default. Runs the quick checks
+  of [Check the Master](06-master.md#check-the-master) in the background (a few
+  seconds). Silent when all is well; when something drifted, the log shows a
+  warning per check with examples, whether it is new since the last start, and
+  when this computer last found everything clean — so the stretch of log to
+  search for the cause is short.
 - **Enable debug functionality** — reveals *File ▸ Developer Tools*. The menu is
   built at start-up, so **this takes effect after a restart**.
 - **Species names and text translation**
