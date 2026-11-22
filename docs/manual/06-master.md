@@ -4,7 +4,8 @@ The master **as a collection**: the shared name list, adding pictures directly,
 the viewers, and keeping it healthy.
 
 The trip-to-master merge is not here — it lives in [To Master](05-to-master.md).
-Browsing by taxonomy is not here either — it lives in [Browser](02-browser.md).
+Browsing by taxonomy and the Species Map are not here either — they live in
+[Browser](02-browser.md).
 What remains is what you do *with* and *to* the collection itself.
 
 | Item | Needs |
@@ -14,7 +15,6 @@ What remains is what you do *with* and *to* the collection itself.
 | Other Species Names… | A master |
 | Add Pictures to Master… | A master |
 | Species Viewer | A master |
-| Species Map | A master |
 | Species Without a Website Picture… | A master |
 | Undo Last Species Move… | A move to undo |
 | Geotag from Tracklog (GPX/GPS log)… | A master |
@@ -165,28 +165,16 @@ Its scopes, filters and the master card context menu are in
 
 ## Species Map
 
-*Needs: a master.*
-
-A distribution map: pick one to four species and see their GPS points, on a
-native OpenStreetMap slippy map.
+Now in the **Browser** menu: *Browser ▸ Species Map…*. What it does, including
+placing pictures without GPS, is in
+[10. The viewers ▸ The map](10-viewers.md#the-map).
 
 This is the screen that makes missing GPS visible. Pictures whose *picture row*
-carries no coordinate simply do not appear here, even if the RAW file itself has
-one — which is exactly what
-[Check the Master ▸ GPS in the Files, Not in the List](#check-the-master)
-is for.
-
-Pictures of the chosen species **without** GPS wait in a tray beside the map.
-Drag one onto the map to place it, or find a place by name (it starts from the
-place already written on the picture). Right-click a tray picture — or press
-`o` — for **Select this outing**: every tray picture taken in the same run (no
-gap over 30 minutes), so one drop places the whole outing. A position the camera
-recorded itself is never moved.
-
-*Suggest a position* guesses the spot from the pictures with GPS taken just
-before and after. A guess is only a guess: when there is a GPS log for the day,
+carries no coordinate do not appear on it, even if the RAW file itself has one.
+[Check the Master ▸ GPS in the Files, Not in the List](#check-the-master) fixes
+that. When there is a GPS log for the day,
 [Geotag from Tracklog](#geotag-from-tracklog-gpxgps-log) gives the real
-position.
+position, better than any guess.
 
 ## Species Without a Website Picture…
 

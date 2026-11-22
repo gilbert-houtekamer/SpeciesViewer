@@ -1,6 +1,6 @@
 # 10. The viewers
 
-Four picture surfaces, reached from several menus. The menu chapters say *how to
+Five picture surfaces, reached from several menus. The menu chapters say *how to
 open* them; this chapter says *what they can do* — and in particular what each
 one's filters mean, because the filters are how a day of 800 frames becomes a
 decision.
@@ -16,6 +16,7 @@ The keys are documented separately and are not repeated here:
 | **Species Viewer** | Trips / Master / Albums | One species at a time, across a scope | Yes |
 | **Culling grid** | Day review, the Days / Trip / Album panels | One day's pictures, all species | Yes |
 | **Editor** | Double-click any card | One picture, big | Yes |
+| **Map** | [Browser](02-browser.md) menu, or **🗺 Map** in a grid or panel | Where the pictures were taken, and your route | Only to place pictures without GPS |
 
 They share a card, a selection model and a key set, so what you learn in one
 transfers. The differences are in the filters, and those follow from the job:
@@ -362,39 +363,6 @@ where it is. A published day refuses, in both directions. Afterwards this day
 re-reads when you close the viewer, and the other day's **Read & Summarize**
 shows as needed in the trip overview.
 
-### Placing pictures without GPS on the map
-
-A map opened from a trip, an Album or the Master Species Viewer shows a strip
-of the pictures **without GPS** above the map, in the order they were taken.
-Give them a position by dragging them onto the map, or with these actions (in
-the right-click menu of a picture in the strip, or as a key):
-
-| Action | Key | Does |
-|---|---|---|
-| **Suggest a position** | `p` | Guesses the spot from the pictures with GPS taken just before and after. |
-| **Find a place by name…** | `n` | Looks a place up on OpenStreetMap. It starts with the place already written on the picture, if any. |
-| **Select this outing** | `o` | Selects the whole outing the picture belongs to (see below). |
-| Peek | `z` | Shows the pictures large, read-only, to remind you where they were taken. |
-| Select a range | `[` … `]` | Click the first picture, press `[`, click the last, press `]`. |
-
-Each of these acts on all selected pictures. Nothing is written yet: a pin
-appears that you can still drag to the exact spot. Then **Place here** (or
-`Enter`) writes the position, and **Cancel** (or `Esc`) drops it.
-
-**An outing** is a run of pictures taken in one go: each picture was taken at
-most **30 minutes** after the one before it. A longer gap starts a new outing.
-An afternoon on one beach is usually one outing; a drive to the next spot
-usually starts a new one. A picture without a capture time is an outing of its
-own. Placing a whole outing with one pin is right for old pictures, where the
-spot only needs to be roughly correct. When the outing caught pictures from two
-places (a short drive), click the extra ones out of the selection before you
-place.
-
-A position placed by hand can be dragged again later, or removed. GPS the
-camera recorded never moves. In the Master Species Viewer the map only shows
-the pictures of that species; to place several species at once, open the map
-of an Album that covers those days.
-
 ### In what order?
 
 Any order. Some do one thorough pass at home; others pick the five best of the
@@ -507,6 +475,113 @@ trip and its sidecar.
 
 ---
 
+## The map
+
+The map shows **where** the pictures were taken. Lightroom and PhotoLab show a
+map too, but not the things that matter on a trip: the route you took, the
+pictures that ended up without GPS, and a quick way to give them a position.
+When every picture has GPS it is simply a viewer; when some have none, it is
+where you place them.
+
+### Opening it
+
+| From | Shows |
+|---|---|
+| *Browser ▸ Trip Map…* · **🗺 Map whole trip** on the Trip panel | Every picture of the active trip, with the travel path |
+| *Browser ▸ Album Map…* · **🗺 Map whole trip** on the Album panel | Every picture of the active album. Right-click a day on the Album panel ▸ **🗺 Map this day** for one day. |
+| **🗺 Map** in the culling grid | The pictures the grid shows now, all species |
+| **Map…** in a Species Viewer | The pictures of this species now shown |
+| *Browser ▸ Species Map…* | One to four species of the master, each in its own colour |
+
+The map is a window of its own. Keep the grid and the Editor open beside it:
+on a map opened from a grid, a picture you place gets its 📍 in that grid
+straight away.
+
+### Reading it
+
+- **Bubbles.** Pictures taken at the same spot share one bubble, with the number
+  of pictures in it. Zoomed out, nearby spots merge; zoom in (mouse wheel) to
+  split them. Double-click a bubble that covers several spots to zoom in on it.
+- **Click a bubble** to see its pictures in the strip below the map; click one
+  there to open it in the Editor.
+- **Right-click a bubble ▸ Hide** takes its pictures off the map (a picture with
+  a wrong position that is in the way). **Show all** brings them back. Hiding
+  changes nothing in the files.
+- **Travel path.** A line through the pictures in time order, coloured by day
+  from light (first day) to dark (last day). Hover a leg for its date. On by
+  default on a whole-trip map.
+- **All / Species.** Every picture, or only those that carry a species (without
+  the landscapes and context shots).
+- **Basemap.** *Terrain* (relief; the Species Map starts with it) or *Standard*
+  (OpenStreetMap; the trip and album maps start with it). **Google Maps** opens the same view in your browser, where
+  place names can be read and copied. **Fit** zooms to all pictures.
+- In a Trip Species Viewer the trip's own pictures are **pink**, the master's
+  pictures of the same species teal.
+
+### Moving pictures
+
+Drag a bubble to a new spot: a pin appears there, and **Place here** (or
+`Enter`) moves all pictures of that bubble; **Cancel** (or `Esc`) leaves them.
+When the bubble covers several spots you are warned first, so zoom in if you
+meant one.
+
+On a trip map any bubble can be moved. On an Album map and in the master, only
+a position **placed by hand** can be moved; GPS the camera recorded never is.
+A position placed by hand can also be removed again: right-click the picture in
+a grid ▸ **Remove GPS + place…**.
+
+### Placing pictures without GPS on the map
+
+A map opened from a trip, an Album or the Master Species Viewer shows a strip
+of the pictures **without GPS** above the map, in the order they were taken.
+What you can do depends on what the picture still knows:
+
+| The picture has… | Then |
+|---|---|
+| **A capture time**, with pictures with GPS shortly before and after | **Suggest a position** (`p`) puts it between them. The pin's colour says how sure the guess is: green confident, amber approximate, red a rough guess. |
+| **A place written on it** (typed in, or from an old trip) | **Find a place by name…** (`n`) starts with that text, so often one click finds it. Several pictures with the same text: **Select same place** (`s`), then place them all at once. |
+| **Nothing** | Drag it onto the map yourself. **Zoom map to around this time** in its right-click menu shows where you were just before and after, if it has a capture time. |
+
+The actions, in the right-click menu of a picture in the strip, or as a key:
+
+| Action | Key | Does |
+|---|---|---|
+| **Suggest a position** | `p` | Guesses the spot from the pictures with GPS taken just before and after. |
+| **Find a place by name…** | `n` | Looks a place up on OpenStreetMap. It starts with the place already written on the picture, if any. |
+| **Select this outing** | `o` | Selects the whole outing the picture belongs to (see below). |
+| **Select same place** | `s` | Selects every picture in the strip with the same place written on it (case and spacing don't matter). Offered when there are at least two. |
+| Peek | `z` | Shows the pictures large, read-only, to remind you where they were taken. |
+| Select a range | `[` … `]` | Click the first picture, press `[`, click the last, press `]`. |
+| Select several | `Ctrl+click`, `Shift+click` | The usual Windows clicks. |
+
+Each of these acts on all selected pictures. Nothing is written yet: a pin
+appears that you can still drag to the exact spot. Then **Place here** (or
+`Enter`) writes the position, and **Cancel** (or `Esc`) drops it.
+
+**An outing** is a run of pictures taken in one go: each picture was taken at
+most **30 minutes** after the one before it. A longer gap starts a new outing.
+An afternoon on one beach is usually one outing; a drive to the next spot
+usually starts a new one. A picture without a capture time is an outing of its
+own. Placing a whole outing with one pin is right for old pictures, where the
+spot only needs to be roughly correct. When the outing caught pictures from two
+places (a short drive), click the extra ones out of the selection before you
+place.
+
+A position placed by hand can be dragged again later, or removed. GPS the
+camera recorded never moves. In the Master Species Viewer the map only shows
+the pictures of that species; to place several species at once, open the map
+of an Album that covers those days.
+
+In the grid, right-click ▸ **Get GPS from location** does the same lookup as
+**Find a place by name…** for a whole selection at once, without the map: each
+picture gets the coordinate of the place written on it (to about 30 m), marked
+as placed by hand.
+
+Before writing, `z` shows the selected strip pictures large, read-only, as a
+reminder of where they were taken.
+
+---
+
 ## The master card context menu
 
 Right-click a card backed by the master — in the Species Viewer, the album day
@@ -545,6 +620,4 @@ The selector is a **per-session override**. The lasting default is in
 
 ---
 
-> Not described yet: the **sex / age / plumage** qualifiers (backlog 1.20), and
-> the **map** as a viewer in its own right — bubbles, moving, travel path
-> (backlog 1.21).
+> Not described yet: the **sex / age / plumage** qualifiers (backlog 1.20).

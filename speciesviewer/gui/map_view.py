@@ -169,6 +169,20 @@ def outing_run(keyed_times: list, key: str, gap_min: int = OUTING_GAP_MIN) -> li
     return order[i:j + 1]
 
 
+def same_place_run(keyed_places: list, key: str) -> list:
+    """The pictures whose written place is the same as `key`'s — one placement
+    then covers them all (an old trip: no GPS, but "Helgoland" on twenty shots).
+    `keyed_places` = [(key, place text), …] in tray order; the comparison
+    ignores case and spacing. [] when `key` carries no place text."""
+    def norm(t):
+        return " ".join(str(t or "").split()).casefold()
+    places = {k: norm(t) for k, t in keyed_places}
+    mine = places.get(key, "")
+    if not mine:
+        return []
+    return [k for k, _ in keyed_places if places[k] == mine]
+
+
 def _haversine_m(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     """Great-circle distance in metres between two (lat, lon) points. Used to
     judge how tightly a no-GPS picture's time-neighbours cluster — a tight cluster
@@ -1685,6 +1699,12 @@ def place_queries(fields: dict) -> list[str]:
     return list(dict.fromkeys(out))
 
 
+def _short_place(text: str, limit: int = 40) -> str:
+    """A written place shortened for a menu line."""
+    text = " ".join(str(text or "").split())
+    return text if len(text) <= limit else text[:limit - 1] + "…"
+
+
 class PlaceSearchDialog(QDialog):
     """Look a place up BY NAME and get its coordinate — forward geocoding.
 
@@ -2556,6 +2576,12 @@ class TripMapView(QDialog):
             outing_act = menu.addAction(
                 f"⏱ Select this outing: {len(outing)} pictures, "
                 f"{self._outing_span(outing)}  (o)")
+        same, same_text = self._same_place_of(key)
+        same_act = None
+        if len(same) > 1:
+            same_act = menu.addAction(
+                f"🏷 Select same place: “{_short_place(same_text)}”, "
+                f"{len(same)} pictures  (s)")
         zoom_act = menu.addAction("Zoom map to around this time" if has_time
                                   else "Zoom to around this time — no timestamp")
         zoom_act.setEnabled(has_time)   # a screenshot with no capture time can't bracket
@@ -2570,6 +2596,8 @@ class TripMapView(QDialog):
             self._find_place(sel)
         elif outing_act is not None and chosen == outing_act:
             self._tray.select_keys(outing, current=key)
+        elif same_act is not None and chosen == same_act:
+            self._tray.select_keys(same, current=key)
         elif chosen == zoom_act and has_time:
             self._zoom_to_time(key)
         elif del_act is not None and chosen == del_act:
@@ -2669,6 +2697,12 @@ class TripMapView(QDialog):
             self._select_outing()
             ev.accept()
             return
+        if (k == Qt.Key.Key_S
+                and not ev.modifiers() & Qt.KeyboardModifier.ControlModifier
+                and not text_input_focused()):
+            self._select_same_place()
+            ev.accept()
+            return
         if (k in (Qt.Key.Key_P, Qt.Key.Key_N)
                 and not ev.modifiers() & Qt.KeyboardModifier.ControlModifier
                 and not text_input_focused()):
@@ -2736,6 +2770,41 @@ class TripMapView(QDialog):
         run = self._outing_of(cur)
         if run:
             self._tray.select_keys(run, current=cur)
+
+    def _same_place_of(self, key: str) -> tuple[list[str], str]:
+        """(tray pictures with the same written place as `key`, that place).
+        Reads the in-memory rows the providers already hold — no file reads."""
+        reader = getattr(self._coll, "read_location", None)
+        if self._tray is None or reader is None:
+            return [], ""
+        keyed = []
+        for k in self._tray.tray_keys():
+            try:
+                q = place_queries(reader(k))
+            except Exception:
+                q = []
+            keyed.append((k, q[0] if q else ""))
+        text = dict(keyed).get(key, "")
+        return same_place_run(keyed, key), text
+
+    def _select_same_place(self):
+        """`s` — select every tray picture with the same written place as the
+        last-clicked one, ready to be placed with one pin."""
+        if self._tray is None:
+            return
+        cur = self._tray.current_key()
+        if cur is None:
+            QMessageBox.information(
+                self, "Select same place",
+                "Click a picture in the no-GPS strip first.")
+            return
+        same, _text = self._same_place_of(cur)
+        if not same:
+            QMessageBox.information(
+                self, "Select same place",
+                "This picture has no place written on it.")
+            return
+        self._tray.select_keys(same, current=cur)
 
     def _tray_selection(self, key: str) -> list[str]:
         """The tray pictures a menu action should act on: the whole current

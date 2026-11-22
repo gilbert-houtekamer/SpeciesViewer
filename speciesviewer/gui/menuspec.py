@@ -1849,6 +1849,15 @@ def build_menu_spec(main_window):
                 tooltip="Flat, searchable index of every species in this trip; "
                         "click one to see its pictures",
                 showsubdirectory=False),
+            # The map is a viewer like the others (backlog 1.21): every picture
+            # of the trip, the travel path, and the pictures without GPS to place.
+            "Trip Map…": MenuSpec(
+                callback=lambda: main_window.open_trip_map(),
+                title="Trip Map",
+                enabled=lambda: bool(_cfg("trip", "tripbiotadatabase")),
+                tooltip="Every picture of this trip on a map, with the travel path; "
+                        "place the pictures without GPS",
+                showsubdirectory=False),
             f"{MenuSpec.separator()}_browse_album": None,
             "Album Browser…": MenuSpec(
                 callback=lambda: main_window.open_album_biota_browser(),
@@ -1864,6 +1873,13 @@ def build_menu_spec(main_window):
                 tooltip="Flat, searchable index of every species in this album; "
                         "click one to see its pictures",
                 showsubdirectory=False),
+            "Album Map…": MenuSpec(
+                callback=lambda: main_window.open_virttrip_map(),
+                title="Album Map",
+                enabled=has_active_album,
+                tooltip="Every picture of this album on a map, with the travel path; "
+                        "place the pictures without GPS",
+                showsubdirectory=False),
             f"{MenuSpec.separator()}_browse_master": None,
             "Master Browser…": MenuSpec(
                 callback=lambda: main_window.open_biota_browser(),
@@ -1878,6 +1894,12 @@ def build_menu_spec(main_window):
                 enabled=has_master,
                 tooltip="Flat, searchable index of every master species; "
                         "click one to see its pictures",
+                showsubdirectory=False),
+            "Species Map…": MenuSpec(
+                callback=lambda: main_window.open_species_map(),
+                title="Species Map",
+                enabled=has_master,
+                tooltip="Distribution map — pick 1–4 species and see their GPS points",
                 showsubdirectory=False),
         },
         "Days": {
@@ -1983,14 +2005,8 @@ def build_menu_spec(main_window):
                 title="Species Viewer",
                 enabled=has_master,
                 showsubdirectory=False),
-            # Browsing the master by taxonomy / as a flat species index lives in
-            # the Browser menu.
-            "Species Map…": MenuSpec(
-                callback=lambda: main_window.open_species_map(),
-                title="Species Map",
-                enabled=has_master,
-                tooltip="Distribution map — pick 1–4 species and see their GPS points",
-                showsubdirectory=False),
+            # Browsing the master by taxonomy / as a flat species index, and the
+            # Species Map, live in the Browser menu.
             "Species Without a Website Picture…": no_display_item,
             # A species move (card menu ▸ Move to another species) is reversible
             # here, newest first. Grey when there is nothing to undo.

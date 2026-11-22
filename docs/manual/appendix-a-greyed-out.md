@@ -55,8 +55,11 @@ the work was done on another machine.
 | Item | Needs |
 |---|---|
 | Trip Browser… / All Species in the Trip… | an active trip, or a configured standalone repository |
+| Trip Map… | an active trip |
 | Album Browser… / All Species in the Album… | an active album |
+| Album Map… | an active album |
 | Master Browser… / All Species in the Master… | a master |
+| Species Map… | a master |
 
 ### Days
 
@@ -117,7 +120,6 @@ the work was done on another machine.
 | Other Species Names… | a master |
 | Add Pictures to Master… | a master |
 | Species Viewer | a master |
-| Species Map | a master |
 | Species Without a Website Picture… | a master |
 | Undo Last Species Move… | a species move to undo |
 | Check the Master… | a master |

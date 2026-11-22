@@ -14,8 +14,11 @@ actions.
 |---|---|
 | **Browser** | The taxonomy tree — Kingdom → Phylum → … → Species. Drill down to a species to see its pictures. |
 | **All Species** | A flat, searchable index of every species in the scope. Click one to see its pictures. |
+| **Map** | Where the pictures were taken, and the route you travelled. A trip or album map shows every picture; the Species Map shows one to four species of the master. |
 
-Both are **read-only**. Nothing you do in a browser changes data. To edit, use
+The browsers are **read-only**: nothing you do in them changes data. The maps
+change one thing only: they let you **place pictures that have no GPS**. To edit
+anything else, use
 the corresponding Species Viewer ([Trips](04-trips.md), [Albums](07-albums.md))
 or the master's [Species Viewer](06-master.md).
 
@@ -43,6 +46,15 @@ content, filtered to those dates. Nothing is copied.
 
 The whole collection. This is the browser you will use most: it is the answer to
 "have I photographed this before, and what did I get?"
+
+## Trip Map… / Album Map… / Species Map…
+
+*Needs: an active trip / an active album / a master.*
+
+The pictures on a map. **Trip Map…** and **Album Map…** show every picture of the
+trip or album, with the travel path. **Species Map…** shows one to four species
+of the master, each in its own colour. All three are described in
+[10. The viewers ▸ The map](10-viewers.md#the-map).
 
 ---
 

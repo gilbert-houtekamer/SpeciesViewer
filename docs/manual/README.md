@@ -23,7 +23,7 @@ as you last saw it (chapters 0–4) or as first written (5–10, never reviewed)
 |---|---|
 | [Concepts](00-concepts.md) | **What SpeciesViewer is**, and where it fits next to Photo Mechanic, Lightroom and PhotoLab (new); the website lives on this computer or on a server; what is deleted in the picture folders; several masters; a new section **Species and their names** (order, subspecies, uncertain IDs, local names, landscapes); "yellow panel" became *the panel* and names its four kinds. |
 | [1. File](01-file.md) | **Settings** is one window with tabs — rewritten tab by tab; the Species tab is gone; **Manage caches** has local and upload caches. |
-| [2. Browser](02-browser.md) | The trip website shows only species with a JPG; species-list order, subspecies, country chips. |
+| [2. Browser](02-browser.md) | **Trip Map, Album Map, Species Map** now here; the trip website shows only species with a JPG; species-list order, subspecies, country chips. |
 | [3. Days](03-days.md) | **The Days panel** (new); Add to Master's free-space check and *Delete originals after commit*. |
 | [4. Trips](04-trips.md) | **The Trip panel** (new — every column and sphere); Read SD-card rewritten (day table, time-zone warning, unreadable pictures, "all arrived"); Empty a Card's three steps; Write Blog's configuration; Publish Day (order no longer matters); Count Species; **Trash (deleted pictures)** (new). |
 | [5. To Master](05-to-master.md) | Merge: free-space check, *Nothing to add* on a second merge. |
@@ -31,7 +31,7 @@ as you last saw it (chapters 0–4) or as first written (5–10, never reviewed)
 | [7. Albums](07-albums.md) | **The Album panel** (new); album picture and banner; **Count Species** (new). |
 | [8. Utilities](08-utilities.md) | Rebuild all: its four choices. |
 | [9. Help](09-help.md) | The four connection lamps; About's credits. |
-| [10. The viewers](10-viewers.md) | **Naming a picture** (new — local names, groups, probable/possible, landscapes); type-to-search in all three species viewers; the sort that stays put; Add to selection; the purple **?** filter; Quick View. |
+| [10. The viewers](10-viewers.md) | **Naming a picture** (new — local names, groups, probable/possible, landscapes); type-to-search in all three species viewers; the sort that stays put; Add to selection; the purple **?** filter; Quick View; **The map** (new — bubbles, travel path, moving, placing pictures without GPS). |
 | Appendices A, B, C, E, F | New menu items and gates; free-space guard; certainty column; publishing order no longer matters. |
 
 ## Read this first
