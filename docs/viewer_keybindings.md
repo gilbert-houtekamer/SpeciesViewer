@@ -25,6 +25,18 @@ when bindings change.
 
 (`[` … `]` select an inclusive range in display order.)
 
+The usual Windows clicks work in the grids as well — an extra, never the only
+way ([`gui/click_select.py`](../speciesviewer/gui/click_select.py)):
+
+| Click | Action |
+|-------|--------|
+| `Ctrl+click` | Add the picture to the selection, or take it out |
+| `Shift+click` | Select the range from the last clicked picture to this one (like `[` … `]`) |
+| `Ctrl+Shift+click` | Add that range to the selection |
+
+A plain click only moves the cursor; it never clears the selection.
+Right-click ▸ **Add to selection** does the same as `Ctrl+click` without a key.
+
 In the **Editor**, right-clicking the image, the panel or a filmstrip
 thumbnail opens the **same menu as the grid it was opened from**, for the
 current selection (or just that one picture, if nothing's selected) — no need

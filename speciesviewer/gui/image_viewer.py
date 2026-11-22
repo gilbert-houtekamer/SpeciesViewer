@@ -1566,6 +1566,7 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
         self.species_dialog.show()
 
     def _on_card_cursor(self, key):
+        self._apply_click_selection(key)
         prev = self._bound.get(self._last_clicked_key) if self._last_clicked_key else None
         if prev:
             prev.set_cursor_focus(False)
@@ -1783,6 +1784,26 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
                 pass   # large view was closed/destroyed
 
     # ── Multi-select ────────────────────────────────────────────────────────
+
+    def _apply_click_selection(self, key):
+        """Ctrl+click / Shift+click on a card — the standard Windows selection,
+        as an extra beside [ ] and Add to selection (gui/click_select.py). A
+        plain click leaves the selection alone."""
+        from PyQt6.QtWidgets import QApplication
+        from gui.click_select import ClickSelector
+        if getattr(self, "_click_selector", None) is None:
+            self._click_selector = ClickSelector()
+        mods = QApplication.keyboardModifiers()
+        res = self._click_selector.click(
+            self._order, self._selected_keys, self._last_clicked_key, key,
+            ctrl=bool(mods & Qt.KeyboardModifier.ControlModifier),
+            shift=bool(mods & Qt.KeyboardModifier.ShiftModifier))
+        if res is None:
+            return
+        self._selected_keys = res.selected
+        if res.brackets is not None:
+            self._bracket_left, self._bracket_right = res.brackets
+        self._update_selection_display()
 
     def _update_selection_display(self):
         for c in list(self._bound.values()):

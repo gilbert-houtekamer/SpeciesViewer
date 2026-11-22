@@ -3817,6 +3817,7 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
         self._status.setText(f"Saved {upn_key}")
 
     def _on_card_cursor(self, upn_key: str):
+        self._apply_click_selection(upn_key)
         prev = self._bound.get(self._last_clicked_key) if self._last_clicked_key else None
         if prev:
             prev.set_cursor_focus(False)
@@ -3945,6 +3946,25 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
         self._update_selection_display()
 
     # ── Multi-select ────────────────────────────────────────────────────────
+
+    def _apply_click_selection(self, upn_key: str):
+        """Ctrl+click / Shift+click — twin of image_viewer.py's; see
+        gui/click_select.py. A plain click leaves the selection alone."""
+        from PyQt6.QtWidgets import QApplication
+        from gui.click_select import ClickSelector
+        if getattr(self, "_click_selector", None) is None:
+            self._click_selector = ClickSelector()
+        mods = QApplication.keyboardModifiers()
+        res = self._click_selector.click(
+            self._order, self._selected_keys, self._last_clicked_key, upn_key,
+            ctrl=bool(mods & Qt.KeyboardModifier.ControlModifier),
+            shift=bool(mods & Qt.KeyboardModifier.ShiftModifier))
+        if res is None:
+            return
+        self._selected_keys = res.selected
+        if res.brackets is not None:
+            self._bracket_left, self._bracket_right = res.brackets
+        self._update_selection_display()
 
     def _update_selection_display(self):
         # Off-screen cards need no repaint here — _relayout applies
@@ -4177,6 +4197,13 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
             act_addfiles = menu.addAction(f"Add new files (scan folder)…  ({lbl})")
         master_block("add", "pin", "delete_jpg")
 
+        # Build a selection of separate pictures without holding a key — the
+        # culling grid's entry; the manual promised it here too (1.19).
+        menu.addSeparator()
+        in_sel = upn_key in self._selected_keys
+        act_select = menu.addAction("Remove from selection" if in_sel
+                                    else "Add to selection")
+
         # 5 — removing it
         master_block("delete", "delete_file")
         if (is_master and self._album_mode and not master_handlers
@@ -4186,6 +4213,13 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
             info.setEnabled(False)
         chosen = menu.exec(QCursor.pos())
         if chosen is None:
+            return set()
+        if chosen == act_select:
+            if in_sel:
+                self._selected_keys.discard(upn_key)
+            else:
+                self._selected_keys.add(upn_key)
+            self._update_selection_display()
             return set()
         acted = set(keys_for_action)
         if chosen in master_handlers:

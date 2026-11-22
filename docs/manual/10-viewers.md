@@ -177,7 +177,8 @@ again to re-sort. The choice is remembered per viewer.
 
 Select one or more cards and **right-click** one of them; the menu acts on the
 whole selection. To build a selection without holding a key, right-click a card
-▸ **Add to selection** (and *Remove from selection*). Two of the menu's entries
+▸ **Add to selection** (and *Remove from selection*). The usual **Ctrl+click**
+and **Shift+click** work too; a plain click never clears the selection. Two of the menu's entries
 name the pictures:
 
 | Menu item | Does |
@@ -323,7 +324,8 @@ These stack on top of whichever view filter is active, and on each other:
 
 Select cards and **right-click** one to act on the whole selection;
 **Esc** clears it. Right-click ▸ **Add to selection** picks pictures one by one
-without holding a key. In the same menu, **Use as album/trip banner…** cuts the
+without holding a key; **Ctrl+click** and **Shift+click** work as in Windows.
+In the same menu, **Use as album/trip banner…** cuts the
 wide banner for the album's or trip's web pages from that picture (see
 [Albums](07-albums.md#select-or-update-album)).
 
