@@ -167,6 +167,21 @@ def select(pics, s: Settings) -> list[list[dict]]:
     return groups
 
 
+def apply_overrides(pics, overrides: dict) -> int:
+    """Your own say over the suggestion, after select(): {UniquePictureName:
+    KEEP | PURPLE}. Only a candidate can be overridden (a keeper or a Blue/
+    Purple picture is yours already); sets p["yours"]. Returns how many apply."""
+    n = 0
+    for p in pics:
+        p["yours"] = False
+        want = overrides.get(p["upn"])
+        if want in (KEEP, PURPLE) and is_candidate(p):
+            p["verdict"] = want
+            p["yours"] = True
+            n += 1
+    return n
+
+
 # ── the numbers ──────────────────────────────────────────────────────────────
 
 def statistics(pics) -> dict:
@@ -200,6 +215,8 @@ def outcome(pics, groups) -> dict:
         "keep": sum(1 for p in pics if p.get("verdict") == KEEP),
         "purple": len(purple),
         "purple_bytes": sum(p["bytes"] for p in purple),
+        "yours_keep": sum(1 for p in pics if p.get("yours") and p["verdict"] == KEEP),
+        "yours_purple": sum(1 for p in pics if p.get("yours") and p["verdict"] == PURPLE),
     }
 
 

@@ -4,7 +4,9 @@ Status: AGREED (2026-11-22). Steps 1 + 2 built 2026-11-22 (`engine/picture_score
 `engine/redundancy.py`, `gui/suggest_dialog.py`, "AI…" in the master Species Viewer),
 committed 3884210. Review in the grid built 2026-11-22: bins / green frames on the
 cards while the dialog is open, a day picked in the table moves the grid there — awaiting
-GH's test. Next: refuse/add a bin per card, then "Mark the bins Purple" (+ undo). Nothing is marked or deleted
+GH's test — committed 27f61d6. Your say per card built 2026-11-22: k = keep, b = bin
+(card menu too, dashed frame, same key again = back), awaiting GH's test. Next: the 4th Editor
+tab "Sharpness" with the 100 % sharpest block (step 4 + 5), then "Mark the bins Purple" (+ undo). Nothing is marked or deleted
 before step 3, and step 3 only ever sets Purple on candidates, with an exact undo.
 
 ## Problem

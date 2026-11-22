@@ -425,10 +425,11 @@ class _FramedPhoto(QLabel):
         self._veil = None   # the suggestion overlay (set_suggestion), made on first use
         self._bin = None    # its bin, placed on the line of the bottom badges
 
-    def set_suggestion(self, state: str | None) -> None:
+    def set_suggestion(self, state: str | None, yours: bool = False) -> None:
         """Draw the AI… dialog's suggestion over the photo: "purple" = a bin on a
         greyed photo (could go), "keep" = a green frame (the suggestion keeps
-        it), None = nothing. Purely a view — no colour is written."""
+        it), None = nothing; `yours` = you decided it (k / b), drawn dashed.
+        Purely a view — no colour is written."""
         if state not in ("purple", "keep"):
             if self._veil is not None:
                 self._veil.hide()
@@ -443,11 +444,13 @@ class _FramedPhoto(QLabel):
             self._bin.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
             self._bin.setStyleSheet("background: transparent; color: #e8dcff;"
                                     " font-size: 18px; padding: 0; margin: 0;")
+        line = "dashed" if yours else "solid"
         if state == "purple":
-            self._veil.setStyleSheet("background: rgba(30,30,30,.45); border: 3px solid #9370DB;")
+            self._veil.setStyleSheet(
+                f"background: rgba(30,30,30,.45); border: 3px {line} #9370DB;")
             self._bin.show()
         else:
-            self._veil.setStyleSheet("background: transparent; border: 3px solid #4caf50;")
+            self._veil.setStyleSheet(f"background: transparent; border: 3px {line} #4caf50;")
             self._bin.hide()
         self._veil.show()
         self._place_veil()
@@ -1578,10 +1581,10 @@ class PictureCard(QFrame):
         self._cursor = active
         self._update_frame_style()
 
-    def set_suggestion(self, state: str | None) -> None:
+    def set_suggestion(self, state: str | None, yours: bool = False) -> None:
         """The AI… suggestion over the photo (framed cards only; a view only)."""
         if isinstance(self._thumb, _FramedPhoto):
-            self._thumb.set_suggestion(state)
+            self._thumb.set_suggestion(state, yours)
 
     def request_thumb_if_needed(self):
         """Ask the provider for this card's thumbnail — idempotent. The culling
@@ -1930,6 +1933,7 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
         # The AI… dialog's suggestion, drawn over the cards: {grid key: "purple" |
         # "keep"} for the species `_suggestion_sci`. A view only — nothing written.
         self._suggestion: dict[str, str] = {}
+        self._suggestion_yours: set[str] = set()   # keys you decided yourself (k / b)
         self._suggestion_sci = ""
         self._master_root: str | None = None
         # Album (read-only) source: the master read live by the album's date
@@ -3314,7 +3318,7 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
             card.move(col * (cw + gap), row * (ch + gap))
             card.set_selected(key in self._selected_keys)
             card.set_cursor_focus(key == self._last_clicked_key)
-            card.set_suggestion(self._suggestion_for(key))
+            card.set_suggestion(self._suggestion_for(key), key in self._suggestion_yours)
             card.show()
             new_bound[key] = card
         self._bound = new_bound
@@ -3707,23 +3711,54 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
             return None                   # another species is in view now
         return self._suggestion.get(key)
 
-    def show_suggestions(self, sci: str, by_upn: dict) -> int:
+    def show_suggestions(self, sci: str, by_upn: dict, yours=()) -> int:
         """Draw a suggestion ({UniquePictureName: "purple" | "keep"}) over the
         cards of `sci`; repaints the cards on screen. Returns how many of the
         suggested pictures a view filter hides now (JPG only hides them all)."""
         col = self._collection
         keys = col.keys_by_upn() if col is not None and hasattr(col, "keys_by_upn") else {}
         self._suggestion = {keys[u.lower()]: v for u, v in by_upn.items() if u.lower() in keys}
+        self._suggestion_yours = {keys[u.lower()] for u in yours if u.lower() in keys}
         self._suggestion_sci = sci
         for key, card in self._bound.items():
-            card.set_suggestion(self._suggestion_for(key))
+            card.set_suggestion(self._suggestion_for(key), key in self._suggestion_yours)
         in_view = set(self._order)
         return sum(1 for k, v in self._suggestion.items() if v == "purple" and k not in in_view)
 
     def clear_suggestions(self) -> None:
         self._suggestion, self._suggestion_sci = {}, ""
+        self._suggestion_yours = set()
         for card in self._bound.values():
             card.set_suggestion(None)
+
+    def _suggest_live(self):
+        """The open AI… dialog when it is about the species in view, else None."""
+        dlg = getattr(self, "_suggest_dlg", None)
+        try:
+            if dlg is None or not dlg.isVisible():
+                return None
+        except RuntimeError:              # already deleted
+            return None
+        return dlg if dlg._sci == self._current_sci() else None
+
+    def _upns_of(self, keys) -> list[str]:
+        """Grid keys -> UniquePictureName (the dialog's names)."""
+        col = self._collection
+        by_key = {k: u for u, k in col.keys_by_upn().items()} if col is not None else {}
+        out = []
+        for k in keys:
+            if k in by_key:
+                out.append(str(col._upn_row(k).get("UniquePictureName") or k))
+        return out
+
+    def _suggest_override(self, keys, want) -> None:
+        """k / b / the card menu: your own say over the AI… suggestion."""
+        dlg = self._suggest_live()
+        if dlg is None or not keys:
+            return
+        if not dlg.override(self._upns_of(keys), want):
+            self._status.setText("Only a picture without stars that is Green or has no "
+                                 "colour can be kept or binned here.")
 
     def jump_to_upns(self, upns) -> tuple[int, int]:
         """Put the cursor on the first of `upns` the grid shows, with its row at
@@ -4350,6 +4385,18 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
         act_select = menu.addAction("Remove from selection" if in_sel
                                     else "Add to selection")
 
+        # The AI… dialog is open on this species: your own say per picture.
+        act_ai_keep = act_ai_bin = act_ai_back = None
+        dlg = self._suggest_live()
+        if dlg is not None:
+            ups = self._upns_of(keys_for_action)
+            if any(dlg.can_override(u) for u in ups):
+                menu.addSeparator()
+                act_ai_keep = menu.addAction(f"Keep, whatever the suggestion  ({lbl})\tK")
+                act_ai_bin = menu.addAction(f"Bin it, whatever the suggestion  ({lbl})\tB")
+                if any(dlg.override_state(u) for u in ups):
+                    act_ai_back = menu.addAction(f"Back to the suggestion  ({lbl})")
+
         # 5 — removing it
         master_block("delete", "delete_file")
         if (is_master and self._album_mode and not master_handlers
@@ -4359,6 +4406,14 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
             info.setEnabled(False)
         chosen = menu.exec(QCursor.pos())
         if chosen is None:
+            return set()
+        if chosen is not None and chosen in (act_ai_keep, act_ai_bin, act_ai_back):
+            from engine.redundancy import KEEP, PURPLE
+            if chosen == act_ai_back:
+                self._suggest_live().override(self._upns_of(keys_for_action), None)
+            else:
+                self._suggest_override(keys_for_action,
+                                       KEEP if chosen == act_ai_keep else PURPLE)
             return set()
         if chosen == act_select:
             if in_sel:
@@ -5333,6 +5388,15 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
             return
         if event.key() == Qt.Key.Key_X and not text_input_focused():
             self._cull_set_color_quick("Blue")
+            event.accept()
+            return
+        if (event.key() in (Qt.Key.Key_K, Qt.Key.Key_B) and not text_input_focused()
+                and not event.modifiers() and self._suggest_live() is not None):
+            # k = keep / b = bin, whatever the AI… suggestion says (again = undo)
+            from engine.redundancy import KEEP, PURPLE
+            keys = (set(self._selected_keys) if self._selected_keys
+                    else {self._last_clicked_key} if self._last_clicked_key else set())
+            self._suggest_override(keys, KEEP if event.key() == Qt.Key.Key_K else PURPLE)
             event.accept()
             return
         k = event.key()

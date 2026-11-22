@@ -216,6 +216,18 @@ Species Image Preview grid, which is the one that carries the colour-filter bar.
 `g` exists because picking the three keeper colours from the toolbar is three
 separate grid rebuilds; `g` is one.
 
+## The AI… suggestion (master Species Viewer, while the AI… dialog is open)
+
+| Key | Does |
+|---|---|
+| `k` | **Keep** the picture (or the selection), whatever the suggestion says — the bin goes, a dashed green frame shows it is your choice |
+| `b` | **Bin** it, whatever the suggestion says — a bin with a dashed purple frame |
+
+Press the same key again to give the picture back to the suggestion; the card's
+right-click menu has the same three choices. Only a picture without stars that
+is Green or has no colour takes them — your keepers and your Blue/Purple pictures
+are yours already. Nothing is written: your choices last while the dialog is open.
+
 ## Dialogs (apply to the selection, else the focused picture)
 
 | Key | Action |

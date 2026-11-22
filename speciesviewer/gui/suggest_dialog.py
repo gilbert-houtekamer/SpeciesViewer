@@ -82,6 +82,9 @@ class SuggestDialog(QDialog):
         super().__init__(parent)
         self._grid, self._sci = grid, sci
         self._filling = False
+        # Your own say, per picture, over the suggestion: {UPN: KEEP | PURPLE}.
+        # Kept while the dialog is open; a setting change does not undo it.
+        self._overrides: dict[str, str] = {}
         self.setWindowTitle(f"Suggest — {name}")
         self.resize(900, 720)
         self._pics: list[dict] = []
@@ -257,11 +260,19 @@ class SuggestDialog(QDialog):
                                      "is instant.")
             return
         groups = rd.select(self._pics, self._settings())
+        rd.apply_overrides(self._pics, self._overrides)
         out = rd.outcome(self._pics, groups)
+        yours = []
+        if out["yours_keep"]:
+            yours.append(f"{out['yours_keep']} kept by you")
+        if out["yours_purple"]:
+            yours.append(f"{out['yours_purple']} binned by you")
         self._result.setText(
             f"{out['poses']} poses. Keep <b>{out['keep']}</b> besides yours; "
             f"suggest Purple <b>{out['purple']}</b>, which frees "
-            f"<b>{rd.gb(out['purple_bytes'])}</b>.")
+            f"<b>{rd.gb(out['purple_bytes'])}</b>."
+            + (f" Of these, {' and '.join(yours)} (a dashed frame in the viewer)."
+               if yours else ""))
         self._show_on_grid()
         rows = rd.per_day_rows(self._pics)
         self._day_rows = rows
@@ -285,8 +296,9 @@ class SuggestDialog(QDialog):
             return
         by_upn = {p["upn"]: p["verdict"] for p in self._pics
                   if p.get("verdict") in (rd.PURPLE, rd.KEEP)}
+        yours = {p["upn"] for p in self._pics if p.get("yours")}
         try:
-            hidden = self._grid.show_suggestions(self._sci, by_upn)
+            hidden = self._grid.show_suggestions(self._sci, by_upn, yours)
         except RuntimeError:              # the viewer was closed
             self._grid = None
             return
@@ -295,6 +307,33 @@ class SuggestDialog(QDialog):
             f"— “JPG only” hides every one of them; turn it off to see the bins."
             if hidden else "In the viewer: a bin on each picture that could go, a green "
                            "frame on the ones kept. Pick a day below to go there.")
+
+    def override(self, upns, want: str | None) -> int:
+        """From the viewer: keep (KEEP) or bin (PURPLE) these pictures whatever
+        the suggestion says; the same choice again, or None, gives them back
+        to the suggestion. Only pictures that could be suggested take it.
+        Returns how many changed."""
+        if not self._scored:
+            return 0
+        cand = {p["upn"] for p in self._pics if rd.is_candidate(p)}
+        upns = [u for u in upns if u in cand]
+        if not upns:
+            return 0
+        if want is not None and all(self._overrides.get(u) == want for u in upns):
+            want = None                   # pressed again: back to the suggestion
+        for u in upns:
+            if want is None:
+                self._overrides.pop(u, None)
+            else:
+                self._overrides[u] = want
+        self._recompute()
+        return len(upns)
+
+    def override_state(self, upn: str) -> str | None:
+        return self._overrides.get(upn)
+
+    def can_override(self, upn: str) -> bool:
+        return self._scored and any(p["upn"] == upn and rd.is_candidate(p) for p in self._pics)
 
     def _on_day_picked(self):
         if self._filling or self._grid is None:

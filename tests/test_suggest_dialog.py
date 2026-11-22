@@ -84,8 +84,8 @@ class _FakeGrid:
     def __init__(self):
         self.shown, self.jumps, self.cleared = None, [], 0
 
-    def show_suggestions(self, sci, by_upn):
-        self.shown = dict(by_upn)
+    def show_suggestions(self, sci, by_upn, yours=()):
+        self.shown, self.yours = dict(by_upn), set(yours)
         return 0
 
     def jump_to_upns(self, upns):
@@ -129,3 +129,28 @@ def test_framed_photo_overlay():
     assert not ph._bin.isVisibleTo(ph)
     ph.set_suggestion(None)
     assert not ph._veil.isVisibleTo(ph)
+
+
+def test_your_say_overrides_the_suggestion(tmp_path):
+    from PyQt6.QtWidgets import QApplication
+    app = QApplication.instance() or QApplication([])
+    from gui.suggest_dialog import SuggestDialog
+    grid = _FakeGrid()
+    dlg = SuggestDialog(None, _FakeDB(_master(tmp_path)), str(tmp_path), "passer simplex",
+                        "Desert sparrow", grid=grid)
+    _wait(app, dlg)
+    dlg._per_day.setValue(1)
+    dlg._per_pose.setValue(1)
+    binned = sorted(u for u, v in grid.shown.items() if v == "purple")
+    kept = [u for u, v in grid.shown.items() if v == "keep"][0]
+    assert dlg.override([binned[0]], "keep") == 1          # k on a bin
+    assert dlg.override([kept], "purple") == 1             # b on a kept one
+    assert grid.shown[binned[0]] == "keep" and grid.shown[kept] == "purple"
+    assert grid.yours == {binned[0], kept}
+    assert "1 kept by you and 1 binned by you" in dlg._result.text()
+    dlg._per_day.setValue(3)                               # a setting does not undo it
+    assert grid.shown[binned[0]] == "keep" and grid.shown[kept] == "purple"
+    assert dlg.override([binned[0]], "keep") == 1          # k again: back to the suggestion
+    assert grid.yours == {kept}
+    assert dlg.override(["na122807"], "purple") == 0       # your Red keeper: refused
+    dlg.close()
