@@ -5,7 +5,13 @@ keepers, the candidates) and what the suggestion would do with the settings you
 choose — overall and per day — so you can judge the cut-offs. Opened from the
 master Species Viewer's "AI…" button. Plan: docs/plans/picture_score_plan.md.
 
-INVARIANT: this dialog changes nothing — not a colour, not a file, not a list.
+With a `grid` (the Species Viewer that opened it) the suggestion is also drawn
+over its cards — a bin on what could go, a green frame on what is kept — and a
+day picked in the table moves the grid to that day's pictures. Closing the
+dialog takes the bins away again.
+
+INVARIANT: this dialog changes nothing — not a colour, not a file, not a list;
+the bins on the grid's cards are a view.
 The measuring (engine.picture_score) runs on a background thread and is cached
 under app-data; the choosing (engine.redundancy) is recomputed instantly when a
 setting changes.
@@ -72,8 +78,10 @@ def _date(t) -> str:
 
 
 class SuggestDialog(QDialog):
-    def __init__(self, parent, master_db, master_root, sci: str, name: str):
+    def __init__(self, parent, master_db, master_root, sci: str, name: str, *, grid=None):
         super().__init__(parent)
+        self._grid, self._sci = grid, sci
+        self._filling = False
         self.setWindowTitle(f"Suggest — {name}")
         self.resize(900, 720)
         self._pics: list[dict] = []
@@ -135,6 +143,9 @@ class SuggestDialog(QDialog):
         lay.addWidget(self._bar)
         self._result = wrapped("")
         lay.addWidget(self._result)
+        self._note = wrapped("")
+        self._note.setStyleSheet(f"color:{_th.INK_FAINT}")
+        lay.addWidget(self._note)
 
         self._table = QTableWidget(0, 7)
         self._table.setHorizontalHeaderLabels(
@@ -144,6 +155,11 @@ class SuggestDialog(QDialog):
         hh = self._table.horizontalHeader()
         hh.setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
         hh.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        self._table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+        self._table.setSelectionMode(QTableWidget.SelectionMode.SingleSelection)
+        if grid is not None:              # mouse or arrow keys: the grid follows
+            self._table.setToolTip("Pick a day to see its pictures in the viewer")
+            self._table.itemSelectionChanged.connect(self._on_day_picked)
         lay.addWidget(self._table, 1)
 
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
@@ -246,7 +262,10 @@ class SuggestDialog(QDialog):
             f"{out['poses']} poses. Keep <b>{out['keep']}</b> besides yours; "
             f"suggest Purple <b>{out['purple']}</b>, which frees "
             f"<b>{rd.gb(out['purple_bytes'])}</b>.")
+        self._show_on_grid()
         rows = rd.per_day_rows(self._pics)
+        self._day_rows = rows
+        self._filling = True
         self._table.setRowCount(len(rows))
         for i, r in enumerate(rows):
             vals = [f"{r['day']:%Y-%m-%d}" if r["day"] else "no date", r["places"],
@@ -257,6 +276,57 @@ class SuggestDialog(QDialog):
                 if c >= 2:
                     it.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
                 self._table.setItem(i, c, it)
+        self._filling = False
+
+    # ── the grid ────────────────────────────────────────────────────────────
+
+    def _show_on_grid(self):
+        if self._grid is None:
+            return
+        by_upn = {p["upn"]: p["verdict"] for p in self._pics
+                  if p.get("verdict") in (rd.PURPLE, rd.KEEP)}
+        try:
+            hidden = self._grid.show_suggestions(self._sci, by_upn)
+        except RuntimeError:              # the viewer was closed
+            self._grid = None
+            return
+        self._note.setText(
+            f"{hidden} of the pictures that could go are hidden in the viewer by a filter "
+            f"— “JPG only” hides every one of them; turn it off to see the bins."
+            if hidden else "In the viewer: a bin on each picture that could go, a green "
+                           "frame on the ones kept. Pick a day below to go there.")
+
+    def _on_day_picked(self):
+        if self._filling or self._grid is None:
+            return
+        rows = self._table.selectionModel().selectedRows()
+        if not rows or rows[0].row() >= len(getattr(self, "_day_rows", [])):
+            return
+        day = self._day_rows[rows[0].row()]["day"]
+        pics = [p for p in self._pics if rd.day_of(p) == day]
+        # To the first picture that could go — what you want to look at — or,
+        # on a day with none, to the day's first picture.
+        pics = [p for p in pics if p.get("verdict") == rd.PURPLE] or pics
+        try:
+            shown, hidden = self._grid.jump_to_upns([p["upn"] for p in pics])
+        except RuntimeError:
+            self._grid = None
+            return
+        if not shown:
+            self._note.setText("The pictures of that day are hidden in the viewer by a "
+                               "filter (JPG only, a colour or a camera).")
+
+    def _clear_grid(self):
+        if self._grid is not None:
+            try:
+                self._grid.clear_suggestions()
+            except RuntimeError:
+                pass
+            self._grid = None
+
+    def done(self, r):                    # any way the dialog closes: the bins go
+        self._clear_grid()
+        super().done(r)
 
     def _stop_thread(self):
         if self._thread.isRunning():
@@ -265,6 +335,7 @@ class SuggestDialog(QDialog):
 
     def closeEvent(self, e):
         self._stop_thread()
+        self._clear_grid()
         super().closeEvent(e)
 
     def reject(self):                    # Esc / Close do not pass through closeEvent

@@ -802,6 +802,13 @@ class RatingEditorCollection(PictureCollection):
         from db.master_mutate import delete_jpg
         return delete_jpg(self._master_db, self._master_root, key, fname)
 
+    def keys_by_upn(self) -> dict[str, str]:
+        """{lower-case UniquePictureName: grid key} for every master picture of the
+        species in view — also the ones a view filter (JPG only, colour, camera)
+        hides right now, so a caller can tell 'hidden' from 'not this species'."""
+        return {str(row.get("UniquePictureName") or key).lower(): key
+                for key, row in self._master_upn.items()}
+
     def _upn_row(self, key: str) -> dict:
         if key in self._master_keys:
             return self._master_upn.get(key, {})

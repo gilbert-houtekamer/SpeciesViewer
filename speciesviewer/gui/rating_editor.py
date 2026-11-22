@@ -422,6 +422,48 @@ class _FramedPhoto(QLabel):
     def __init__(self):
         super().__init__()
         self._badges = []   # (widget, corner) where corner ∈ {tl,tr,bl,br}
+        self._veil = None   # the suggestion overlay (set_suggestion), made on first use
+        self._bin = None    # its bin, placed on the line of the bottom badges
+
+    def set_suggestion(self, state: str | None) -> None:
+        """Draw the AI… dialog's suggestion over the photo: "purple" = a bin on a
+        greyed photo (could go), "keep" = a green frame (the suggestion keeps
+        it), None = nothing. Purely a view — no colour is written."""
+        if state not in ("purple", "keep"):
+            if self._veil is not None:
+                self._veil.hide()
+                self._bin.hide()
+            return
+        if self._veil is None:
+            self._veil = QLabel(self)
+            self._veil.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+            # The bin sits at the bottom centre, its foot on the line of the date
+            # and Rate badges — in the middle it covered the (usually centred) bird.
+            self._bin = QLabel("🗑", self)
+            self._bin.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+            self._bin.setStyleSheet("background: transparent; color: #e8dcff;"
+                                    " font-size: 18px; padding: 0; margin: 0;")
+        if state == "purple":
+            self._veil.setStyleSheet("background: rgba(30,30,30,.45); border: 3px solid #9370DB;")
+            self._bin.show()
+        else:
+            self._veil.setStyleSheet("background: transparent; border: 3px solid #4caf50;")
+            self._bin.hide()
+        self._veil.show()
+        self._place_veil()
+        self._veil.raise_()
+        self._bin.raise_()
+        for w, _c in self._badges:          # the corner badges stay readable on top
+            w.raise_()
+
+    def _place_veil(self):
+        if self._veil is None:
+            return
+        self._veil.setGeometry(self.rect())
+        self._bin.adjustSize()
+        m = 7                               # the badges' margin (reposition)
+        self._bin.move((self.width() - self._bin.width()) // 2,
+                       self.height() - self._bin.height() - m + 3)
 
     def add_badge(self, w, corner):
         w.setParent(self)
@@ -439,6 +481,7 @@ class _FramedPhoto(QLabel):
     def resizeEvent(self, e):
         super().resizeEvent(e)
         self.reposition()
+        self._place_veil()
 
 
 def _corner_badge(text: str, *, bold: bool = False, rate: bool = False,
@@ -1535,6 +1578,11 @@ class PictureCard(QFrame):
         self._cursor = active
         self._update_frame_style()
 
+    def set_suggestion(self, state: str | None) -> None:
+        """The AI… suggestion over the photo (framed cards only; a view only)."""
+        if isinstance(self._thumb, _FramedPhoto):
+            self._thumb.set_suggestion(state)
+
     def request_thumb_if_needed(self):
         """Ask the provider for this card's thumbnail — idempotent. The culling
         grid calls this as a card scrolls into (or near) the viewport, having
@@ -1879,6 +1927,10 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
         # open after a master rebuild rebuilds from CSV (~2-6s); subsequent
         # opens just attach to the existing DB.
         self._master_db = None    # qt.db.master_db.MasterDB | None
+        # The AI… dialog's suggestion, drawn over the cards: {grid key: "purple" |
+        # "keep"} for the species `_suggestion_sci`. A view only — nothing written.
+        self._suggestion: dict[str, str] = {}
+        self._suggestion_sci = ""
         self._master_root: str | None = None
         # Album (read-only) source: the master read live by the album's date
         # range. Resolved once per dialog by _album_master_source() — days is
@@ -2027,6 +2079,20 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
         self._page_btn.clicked.connect(self._open_species_page)
         top.addWidget(self._page_btn)
 
+        # Master only: which pictures of this species could go — statistics, the
+        # settings and the suggestion per day, shown on the cards (an action, so
+        # it sits with the other actions, not with the view filters further on).
+        # Read-only (gui/suggest_dialog.py).
+        self._suggest_btn = QPushButton("AI…")
+        self._suggest_btn.setToolTip(
+            "Suggest which pictures of this species could go: how many pictures, days "
+            "and places, what you kept, and what a sharpness suggestion would keep — "
+            "shown on the cards; nothing is changed")
+        self._suggest_btn.clicked.connect(self._on_suggest)
+        top.addWidget(self._suggest_btn)
+        if not self._master_only:
+            self._suggest_btn.hide()
+
         # Master-backed only: re-read this species from disk, and republish its
         # page. Both act on the master, so they mean nothing for a trip that owns
         # its own pictures. Visibility follows the write policy (_apply_lock_ui).
@@ -2089,18 +2155,6 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
         if not self._master_only:
             self._uncertain_btn.hide()
 
-        # Master only: which pictures of this species could go — statistics, the
-        # settings and the suggestion per day. Read-only (gui/suggest_dialog.py).
-        self._suggest_btn = QPushButton("AI…")
-        self._suggest_btn.setToolTip(
-            "Suggest which pictures of this species could go: how many pictures, days "
-            "and places, what you kept, and what a sharpness suggestion would keep — "
-            "nothing is changed")
-        self._suggest_btn.clicked.connect(self._on_suggest)
-        top.addWidget(self._suggest_btn)
-        top.addSpacing(8)
-        if not self._master_only:
-            self._suggest_btn.hide()
 
         # Colour filter — the same selector row as the culling grid, so you can
         # narrow the view to one colour (e.g. see exactly what a Blue-delete
@@ -3260,6 +3314,7 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
             card.move(col * (cw + gap), row * (ch + gap))
             card.set_selected(key in self._selected_keys)
             card.set_cursor_focus(key == self._last_clicked_key)
+            card.set_suggestion(self._suggestion_for(key))
             card.show()
             new_bound[key] = card
         self._bound = new_bound
@@ -3645,6 +3700,49 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
         """True only for "Rate ↓ (re-sort)": the one order that follows edits."""
         return self._sort_combo.currentData() == "rate_live"
 
+    # ── the AI… suggestion on the cards (gui/suggest_dialog.py) ─────────────
+
+    def _suggestion_for(self, key: str) -> str | None:
+        if not self._suggestion or self._suggestion_sci != self._current_sci():
+            return None                   # another species is in view now
+        return self._suggestion.get(key)
+
+    def show_suggestions(self, sci: str, by_upn: dict) -> int:
+        """Draw a suggestion ({UniquePictureName: "purple" | "keep"}) over the
+        cards of `sci`; repaints the cards on screen. Returns how many of the
+        suggested pictures a view filter hides now (JPG only hides them all)."""
+        col = self._collection
+        keys = col.keys_by_upn() if col is not None and hasattr(col, "keys_by_upn") else {}
+        self._suggestion = {keys[u.lower()]: v for u, v in by_upn.items() if u.lower() in keys}
+        self._suggestion_sci = sci
+        for key, card in self._bound.items():
+            card.set_suggestion(self._suggestion_for(key))
+        in_view = set(self._order)
+        return sum(1 for k, v in self._suggestion.items() if v == "purple" and k not in in_view)
+
+    def clear_suggestions(self) -> None:
+        self._suggestion, self._suggestion_sci = {}, ""
+        for card in self._bound.values():
+            card.set_suggestion(None)
+
+    def jump_to_upns(self, upns) -> tuple[int, int]:
+        """Put the cursor on the first of `upns` the grid shows, with its row at
+        the top. Returns (shown, hidden by a view filter)."""
+        col = self._collection
+        keys = col.keys_by_upn() if col is not None and hasattr(col, "keys_by_upn") else {}
+        wanted = [keys[u.lower()] for u in upns if u.lower() in keys]
+        in_view = set(self._order)
+        shown = [k for k in wanted if k in in_view]
+        if shown:
+            pos = {k: i for i, k in enumerate(self._order)}
+            first = min(shown, key=pos.__getitem__)       # the first in the grid's order
+            self._last_clicked_key = first
+            row = pos[first] // max(1, self.columns)
+            sb = self._scroll.verticalScrollBar()
+            sb.setValue(min(sb.maximum(), row * ((self._card_h or 300) + self._GRID_GAP)))
+            self._relayout(force=True)
+        return len(shown), len(wanted) - len(shown)
+
     def _on_suggest(self):
         """The read-only suggestion dialog for the species in view (master only)."""
         sci = self._current_sci()
@@ -3657,9 +3755,27 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
                 old.close()
             except RuntimeError:
                 pass
+        # The suggestion is about pictures WITHOUT a JPG, shot in runs: show all
+        # pictures in time order. For this look only — the saved sort is kept.
+        changed = False
+        i = self._sort_combo.findData("time_asc")
+        if i >= 0 and self._sort_combo.currentData() != "time_asc":
+            self._sort_combo.blockSignals(True)
+            self._sort_combo.setCurrentIndex(i)
+            self._sort_combo.blockSignals(False)
+            changed = True
+        if self._jpg_btn.isChecked():
+            self._jpg_btn.blockSignals(True)
+            self._jpg_btn.setChecked(False)
+            self._jpg_btn.blockSignals(False)
+            self._jpg_only = False
+            changed = True
+        if changed:
+            self._rebuild_cards()
         from gui.suggest_dialog import SuggestDialog
         name = self._species_combo.currentData() or sci
-        self._suggest_dlg = SuggestDialog(self, self._master_db, self._master_root, sci, name)
+        self._suggest_dlg = SuggestDialog(self, self._master_db, self._master_root, sci, name,
+                                          grid=self)
         self._suggest_dlg.show()
 
     def _show_species_distribution_map(self):

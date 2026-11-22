@@ -2,7 +2,9 @@
 
 Status: AGREED (2026-11-22). Steps 1 + 2 built 2026-11-22 (`engine/picture_score.py`,
 `engine/redundancy.py`, `gui/suggest_dialog.py`, "AI…" in the master Species Viewer),
-awaiting GH's test. Nothing is marked or deleted
+committed 3884210. Review in the grid built 2026-11-22: bins / green frames on the
+cards while the dialog is open, a day picked in the table moves the grid there — awaiting
+GH's test. Next: refuse/add a bin per card, then "Mark the bins Purple" (+ undo). Nothing is marked or deleted
 before step 3, and step 3 only ever sets Purple on candidates, with an exact undo.
 
 ## Problem

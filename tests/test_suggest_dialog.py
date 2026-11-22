@@ -78,3 +78,54 @@ def test_dialog_with_no_pictures(tmp_path, n):
     app.processEvents()
     assert "No pictures" in dlg._stats.text()
     dlg.close()
+
+
+class _FakeGrid:
+    def __init__(self):
+        self.shown, self.jumps, self.cleared = None, [], 0
+
+    def show_suggestions(self, sci, by_upn):
+        self.shown = dict(by_upn)
+        return 0
+
+    def jump_to_upns(self, upns):
+        self.jumps.append(list(upns))
+        return len(upns), 0
+
+    def clear_suggestions(self):
+        self.cleared += 1
+
+
+def test_dialog_draws_on_the_grid_and_jumps_to_a_day(tmp_path):
+    from PyQt6.QtWidgets import QApplication
+    app = QApplication.instance() or QApplication([])
+    from gui.suggest_dialog import SuggestDialog
+    grid = _FakeGrid()
+    dlg = SuggestDialog(None, _FakeDB(_master(tmp_path)), str(tmp_path), "passer simplex",
+                        "Desert sparrow", grid=grid)
+    _wait(app, dlg)
+    dlg._per_day.setValue(1)
+    dlg._per_pose.setValue(1)
+    assert sorted(grid.shown.values()) == ["keep"] + ["purple"] * 6
+    assert "na122807" not in grid.shown                    # your keeper: no mark
+    dlg._table.selectRow(0)
+    app.processEvents()
+    assert grid.jumps and set(grid.jumps[-1]) == {u for u, v in grid.shown.items()
+                                                  if v == "purple"}
+    dlg.close()
+    assert grid.cleared == 1
+
+
+def test_framed_photo_overlay():
+    from PyQt6.QtWidgets import QApplication
+    app = QApplication.instance() or QApplication([])  # noqa: F841
+    from gui.rating_editor import _FramedPhoto
+    ph = _FramedPhoto()
+    ph.resize(200, 150)
+    ph.set_suggestion("purple")
+    assert ph._veil.isVisibleTo(ph) and ph._bin.isVisibleTo(ph)
+    assert ph._veil.geometry() == ph.rect()
+    ph.set_suggestion("keep")
+    assert not ph._bin.isVisibleTo(ph)
+    ph.set_suggestion(None)
+    assert not ph._veil.isVisibleTo(ph)
