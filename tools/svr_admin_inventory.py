@@ -56,6 +56,7 @@ RULES = [
     ("admin/master_commits.csv",              "KEEP", "which trip days went to the master"),
     ("admin/transcache.csv",                  "KEEP", "translations you checked or typed"),
     ("topics/*",                              "KEEP", "landscape/topic pictures"),
+    ("admin/archive/*",                       "KEEP", "archived evidence (2026 ghost-row loss)"),
     # ── deleted, not yet final ───────────────────────────────────────────────
     ("admin/status/orphan_trash/*",           "TRASH", "orphan sidecars moved aside by a repair"),
     (".trash/*",                              "TRASH", "master trash"),

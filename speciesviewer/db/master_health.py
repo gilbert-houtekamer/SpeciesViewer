@@ -462,6 +462,13 @@ def prune(master_root, keep: int = KEEP_BACKUPS) -> int:
                            f"be retried on the next start.")
     if dropped:
         logger.info(f"master backup: pruned {dropped} backup(s) older than the last {keep}.")
+    # The plain list copies made at each commit / repair had no rotation at all
+    # (5 GB by Nov 2026). Only reached after a backup that passed the check.
+    try:
+        from engine.backup_copies import prune as prune_copies
+        prune_copies(master_root)
+    except Exception as e:                       # housekeeping — never fatal
+        logger.warning(f"backup copies: rotation skipped: {e}")
     return dropped + swept
 
 
