@@ -25,8 +25,12 @@ Formats: RAW via SpeciesViewer's preview path (embedded JPEG, else a decode),
 camera JPG as is, HEIC / PNG / TIFF through Pillow.
 
 Known limit: a sharp twig in front of a soft bird still scores as "sharp".
-A next step would weigh the tiles around the camera's AF point (the OM-1 and
-the Nikons record it), so the score looks where the camera focused.
+The OM System AF point helps where the camera found the subject (--af).
+
+The sheet: click a picture (or Tab + Enter) to see it large (1600 px, the frame
+the score measured, written once beside the sheet in <sheet>_files/), with the
+camera's AF point, the region searched around it and the sharpest tiles drawn on
+top. Keys there: Left/Right, A (AF on/off), T (tiles on/off), Z (full size), Esc.
 
   python tools/svr_picture_score.py "desert sparrow"
   python tools/svr_picture_score.py "african savanna elephant" --per-day 15 --open
@@ -193,24 +197,80 @@ def image_bytes(src: Path) -> bytes | None:
         return None
 
 
+def _resized_jpeg(img, long_edge: int, quality: int) -> bytes:
+    h, w = img.shape[:2]
+    s = long_edge / max(h, w)
+    if s < 1:
+        img = cv2.resize(img, (round(w * s), round(h * s)), interpolation=cv2.INTER_AREA)
+    ok, enc = cv2.imencode(".jpg", img, [cv2.IMWRITE_JPEG_QUALITY, quality])
+    return enc.tobytes() if ok else b""
+
+
 def make_thumb(data: bytes) -> str:
     img = cv2.imdecode(np.frombuffer(data, np.uint8), cv2.IMREAD_COLOR)
     if img is None:
         return ""
-    h, w = img.shape[:2]
-    s = 260 / max(h, w)
-    img = cv2.resize(img, (round(w * s), round(h * s)), interpolation=cv2.INTER_AREA)
-    ok, enc = cv2.imencode(".jpg", img, [cv2.IMWRITE_JPEG_QUALITY, 80])
-    return base64.b64encode(enc.tobytes()).decode() if ok else ""
+    return base64.b64encode(_resized_jpeg(img, 260, 80)).decode()
 
 
-def score_all(pics, cache: Cache, workers: int = 4):
+def large_path(views: Path, p) -> Path:
+    return views / (re.sub(r"[^\w.-]", "_", p["upn"]) + ".jpg")
+
+
+def save_large(data: bytes, dest: Path) -> bool:
+    """The picture at the size the score measured it (LONG_EDGE), so the tile
+    grid and the AF box drawn on it line up with what was scored."""
+    img = cv2.imdecode(np.frombuffer(data, np.uint8), cv2.IMREAD_COLOR)
+    if img is None:
+        return False
+    enc = _resized_jpeg(img, LONG_EDGE, 85)
+    if not enc:
+        return False
+    dest.write_bytes(enc)
+    return True
+
+
+def large_is_fresh(dest: Path, src: Path) -> bool:
+    try:
+        return dest.stat().st_mtime >= src.stat().st_mtime
+    except OSError:
+        return False
+
+
+def make_views(pics, views: Path, workers: int = 4):
+    """A thumbnail (inline) and a large JPG (beside the sheet) for every picture.
+    A large JPG already there and newer than the picture is reused, and the
+    thumbnail is made from it — a second run decodes no RAW."""
+    views.mkdir(parents=True, exist_ok=True)
+
+    def one(p):
+        dest = large_path(views, p)
+        if not large_is_fresh(dest, p["src"]):
+            data = image_bytes(p["src"])
+            if not data or not save_large(data, dest):
+                p["thumb"] = make_thumb(data) if data else ""
+                return
+        if not p.get("thumb"):
+            p["thumb"] = make_thumb(dest.read_bytes())
+        p["large"] = f"{views.name}/{dest.name}"
+
+    t0 = time.time()
+    with ThreadPoolExecutor(workers) as ex:
+        for i, _ in enumerate(ex.map(one, pics), 1):
+            if i % 50 == 0 or i == len(pics):
+                print(f"  pictures for the sheet {i}/{len(pics)}  ({time.time() - t0:.0f} s)")
+
+
+def score_all(pics, cache: Cache, views: Path | None = None, workers: int = 4):
+    if views:
+        views.mkdir(parents=True, exist_ok=True)
+
     def one(p):
         sc = cache.get(p["src"])
         if sc is None:
             data = image_bytes(p["src"])
-            if data:
-                p["thumb"] = make_thumb(data)      # the sheet needs it; read once
+            if data and views:                    # the sheet needs it; read once
+                save_large(data, large_path(views, p))
             sc = score_image(data) if data else None
             if sc:
                 cache.put(p["src"], sc)
@@ -288,18 +348,54 @@ def read_af(pics):
             p["af_found"] = ("Object Found" in track) if track else None
 
 
-def af_sharp(tiles, box, pad: float = 0.08):
-    """Sharpness of the sharpest tile around the AF box (padded: the bird is
-    bigger than the AF point)."""
-    if tiles is None or box is None:
-        return None
+AF_PAD = 0.08                   # the AF score looks this far around the AF box
+
+
+def _af_region(tiles, box, pad: float = AF_PAD):
+    """(r0, r1, c0, c1) tile range searched around the AF box, or None."""
     rows, cols = tiles.shape
     x0, y0, x1, y1 = box
     c0, c1 = max(0, int((x0 - pad) * cols)), min(cols, int(np.ceil((x1 + pad) * cols)))
     r0, r1 = max(0, int((y0 - pad) * rows)), min(rows, int(np.ceil((y1 + pad) * rows)))
-    if c1 <= c0 or r1 <= r0:
+    return (r0, r1, c0, c1) if c1 > c0 and r1 > r0 else None
+
+
+def af_sharp(tiles, box, pad: float = AF_PAD):
+    """Sharpness of the sharpest tile around the AF box (padded: the bird is
+    bigger than the AF point)."""
+    if tiles is None or box is None:
         return None
+    reg = _af_region(tiles, box, pad)
+    if reg is None:
+        return None
+    r0, r1, c0, c1 = reg
     return float(tiles[r0:r1, c0:c1].max())
+
+
+def overlay(p) -> dict:
+    """What the large view draws, in fractions of the frame: the camera's AF box,
+    the region the AF score searched, the tile it took there, and the sharpest
+    tiles the generic score averaged."""
+    out = {"af": None, "region": None, "aftile": None, "top": []}
+    tiles = p.get("tiles")
+    if tiles is None:
+        return out
+    rows, cols = tiles.shape
+    k = max(3, int(tiles.size * TOP_SHARE))
+    for i in np.argsort(tiles.ravel())[-k:]:
+        out["top"].append([int(i % cols) / cols, int(i // cols) / rows, 1 / cols, 1 / rows])
+    box = p.get("af_box")
+    if box is not None:
+        x0, y0, x1, y1 = (float(v) for v in box)
+        out["af"] = [x0, y0, x1 - x0, y1 - y0]
+        reg = _af_region(tiles, box)
+        if reg:
+            r0, r1, c0, c1 = reg
+            out["region"] = [c0 / cols, r0 / rows, (c1 - c0) / cols, (r1 - r0) / rows]
+            sub = tiles[r0:r1, c0:c1]
+            r, c = np.unravel_index(int(np.argmax(sub)), sub.shape)
+            out["aftile"] = [(c0 + c) / cols, (r0 + r) / rows, 1 / cols, 1 / rows]
+    return out
 
 
 def apply_af(pics, mode: str):
@@ -385,17 +481,35 @@ def af_note(p, top) -> str:
 
 
 def write_sheet(out: Path, name: str, pics, groups, args):
+    import json
     top = max((max(p["generic"], p.get("af") or 0) for p in pics), default=1) or 1
     n = {v: sum(1 for p in pics if p["verdict"] == v) for v in ("protected", "keep", "purple")}
     freed = sum(p["bytes"] for p in pics if p["verdict"] == "purple")
+    words = {"protected": "already a keeper", "keep": "keep", "purple": "suggest purple"}
     css = """body{font:13px system-ui;margin:16px;background:#f6f5f1;color:#222}
     h1{font-size:18px} .pose{margin:10px 0;padding:6px;background:#fff;border-radius:6px}
     .pose h3{font-size:12px;margin:0 0 6px;color:#555;font-weight:600}
     .row{display:flex;flex-wrap:wrap;gap:6px} .c{width:264px;font-size:11px}
+    .c button{all:unset;cursor:zoom-in;display:block}
+    .c button:focus-visible img{outline:3px solid #f9a825;outline-offset:1px}
     .c img{width:260px;border:4px solid #ccc;display:block}
     .keep img{border-color:#2e7d32} .protected img{border-color:#1565c0}
     .purple img{border-color:#8e24aa;opacity:.55} .bar{height:4px;background:#2e7d32}
-    .k{display:inline-block;padding:1px 6px;border-radius:3px;color:#fff;margin-right:6px}"""
+    .k{display:inline-block;padding:1px 6px;border-radius:3px;color:#fff;margin-right:6px}
+    #lb{position:fixed;inset:0;background:#111;color:#eee;display:none;flex-direction:column;z-index:9}
+    #lb.on{display:flex} #lbbar{padding:8px 12px;display:flex;gap:14px;align-items:center;flex-wrap:wrap}
+    #lbbar button{background:#333;color:#eee;border:1px solid #555;border-radius:4px;padding:4px 10px;font:inherit;cursor:pointer}
+    #lbbar button.off{opacity:.45} #lbcap{flex:1;min-width:300px}
+    #lbwrap{flex:1;overflow:hidden;display:flex;align-items:center;justify-content:center}
+    #lbwrap.full{overflow:auto;display:block}
+    #stage{position:relative;flex:none} #stage img{width:100%;height:100%;display:block}
+    #stage svg{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
+    .sw{display:inline-block;width:12px;height:12px;vertical-align:-2px;margin-right:4px}"""
+    legend = ("<span><i class=sw style='border:2px solid #ffeb3b'></i>camera AF point</span>"
+              "<span><i class=sw style='border:2px dashed #ffeb3b'></i>searched around it</span>"
+              "<span><i class=sw style='border:2px solid #ff6d00'></i>its sharpest tile</span>"
+              "<span><i class=sw style='border:2px solid #00e5ff'></i>sharpest tiles "
+              "(generic score)</span>")
     parts = [f"<!doctype html><meta charset=utf-8><title>Score: {html.escape(name)}</title>"
              f"<style>{css}</style><h1>{html.escape(name)} — {len(pics)} pictures, "
              f"{len(groups)} poses</h1><p>"
@@ -407,7 +521,10 @@ def write_sheet(out: Path, name: str, pics, groups, args):
              f"{args.per_pose}, new pose after {args.gap:.0f} s or {args.change:.0%} change, "
              f"candidates: no stars and Green or no label. AF: {args.af}.</p>"
              "<p>Bar = subject sharpness relative to the species' sharpest frame. "
-             "iso = how much sharper the subject is than the rest of the frame.</p>"]
+             "iso = how much sharper the subject is than the rest of the frame. "
+             "Click a picture (or Tab to it and press Enter) to see it large with the "
+             "AF point and the tiles the score looked at.</p>"]
+    data = []
     for g in groups:
         t0, t1 = g[0]["time"], g[-1]["time"]
         span = (f"{t0:%Y-%m-%d %H:%M:%S}" + (f" – {t1:%H:%M:%S}" if t1 and t1 != t0 else "")
@@ -415,14 +532,97 @@ def write_sheet(out: Path, name: str, pics, groups, args):
         parts.append(f"<div class=pose><h3>{span} · {len(g)} frame(s)</h3><div class=row>")
         for p in g:
             pct = p["sharp"] / top
+            info = (f"{html.escape(p['src'].name)}<br>sharp {pct:.0%} · iso {p['isolation']:.1f}"
+                    f"{af_note(p, top)}"
+                    f" · {p['label'] or 'no label'}{' · ' + '★' * p['stars'] if p['stars'] else ''}"
+                    f"{' · JPG' if p['jpg'] else ''}")
+            i = len(data)
+            d = {"src": p.get("large") or "", "verdict": p["verdict"],
+                 "cap": f"<b>{words[p['verdict']]}</b> · {span} · {info.replace('<br>', ' · ')}"}
+            d.update(overlay(p))
+            data.append(d)
+            img = f"<img alt='' src='data:image/jpeg;base64,{thumb_b64(p)}'>"
+            if d["src"]:
+                img = f"<button data-i={i} aria-label='Open large'>{img}</button>"
             parts.append(
-                f"<div class='c {p['verdict']}'><img src='data:image/jpeg;base64,{thumb_b64(p)}'>"
-                f"<div class=bar style='width:{max(2, pct * 260):.0f}px'></div>"
-                f"{html.escape(p['src'].name)}<br>sharp {pct:.0%} · iso {p['isolation']:.1f}"
-                f"{af_note(p, top)}"
-                f" · {p['label'] or 'no label'}{' · ' + '★' * p['stars'] if p['stars'] else ''}"
-                f"{' · JPG' if p['jpg'] else ''}</div>")
+                f"<div class='c {p['verdict']}'>{img}"
+                f"<div class=bar style='width:{max(2, pct * 260):.0f}px'></div>{info}</div>")
         parts.append("</div></div>")
+    parts.append(
+        "<div id=lb role=dialog aria-modal=true><div id=lbbar>"
+        "<button id=bprev title='Previous (Left arrow)'>◀</button>"
+        "<button id=bnext title='Next (Right arrow)'>▶</button>"
+        "<button id=baf title='AF point on/off (A)'>AF (A)</button>"
+        "<button id=btiles title='Sharpest tiles on/off (T)'>Tiles (T)</button>"
+        "<button id=bzoom title='Fit / full size (Z)'>Full size (Z)</button>"
+        f"<span id=lbcap></span>{legend}"
+        "<button id=bclose title='Close (Esc)'>Close (Esc)</button></div>"
+        "<div id=lbwrap><div id=stage><img id=lbimg alt=''><svg id=lbsvg viewBox='0 0 1 1' "
+        "preserveAspectRatio=none></svg></div></div></div>")
+    js = """
+const D = %s; let cur = -1, showAF = true, showT = true, full = false;
+const $ = id => document.getElementById(id);
+const lb = $('lb'), img = $('lbimg'), svg = $('lbsvg'), stage = $('stage'), wrap = $('lbwrap');
+function rect(r, colour, dash, w) {
+  return r ? `<rect x="${r[0]}" y="${r[1]}" width="${r[2]}" height="${r[3]}" fill="none"
+    stroke="${colour}" stroke-width="${w}" ${dash ? 'stroke-dasharray="6 4"' : ''}
+    vector-effect="non-scaling-stroke"/>` : '';
+}
+function draw() {
+  const d = D[cur]; let s = '';
+  if (showT) s += d.top.map(r => rect(r, '#00e5ff', false, 2)).join('');
+  if (showAF) s += rect(d.region, '#ffeb3b', true, 2) + rect(d.aftile, '#ff6d00', false, 3)
+                 + rect(d.af, '#ffeb3b', false, 3);
+  svg.innerHTML = s;
+  $('baf').classList.toggle('off', !showAF); $('btiles').classList.toggle('off', !showT);
+  $('baf').disabled = !d.af;
+}
+function layout() {
+  const w = img.naturalWidth, h = img.naturalHeight; if (!w) return;
+  let s = 1;
+  if (!full) s = Math.min(wrap.clientWidth / w, wrap.clientHeight / h);
+  stage.style.width = (w * s) + 'px'; stage.style.height = (h * s) + 'px';
+  wrap.classList.toggle('full', full);
+  $('bzoom').textContent = full ? 'Fit (Z)' : 'Full size (Z)';
+  if (full) {                       // centre on the AF point, else the sharpest tile
+    const d = D[cur], r = d.af || d.top[d.top.length - 1];
+    if (r) { wrap.scrollLeft = (r[0] + r[2] / 2) * w - wrap.clientWidth / 2;
+             wrap.scrollTop = (r[1] + r[3] / 2) * h - wrap.clientHeight / 2; }
+  }
+}
+function show(i) {
+  if (i < 0 || i >= D.length || !D[i].src) return;
+  cur = i; $('lbcap').innerHTML = D[i].cap + ` · ${i + 1}/${D.length}`;
+  img.onload = layout; img.src = D[i].src; draw();
+  lb.classList.add('on'); $('bclose').focus();
+}
+function step(k) { let i = cur + k; while (i >= 0 && i < D.length && !D[i].src) i += k; show(i); }
+function close() {
+  lb.classList.remove('on');
+  const b = document.querySelector(`button[data-i="${cur}"]`);
+  if (b) { b.focus(); b.scrollIntoView({block: 'center'}); }
+}
+document.querySelectorAll('button[data-i]').forEach(b => b.onclick = () => show(+b.dataset.i));
+$('bprev').onclick = () => step(-1); $('bnext').onclick = () => step(1);
+$('baf').onclick = () => { showAF = !showAF; draw(); };
+$('btiles').onclick = () => { showT = !showT; draw(); };
+$('bzoom').onclick = () => { full = !full; layout(); };
+$('bclose').onclick = close;
+addEventListener('resize', layout);
+addEventListener('keydown', e => {
+  if (!lb.classList.contains('on')) return;
+  const k = e.key.toLowerCase();
+  if (k === 'escape') close();
+  else if (k === 'arrowright' || k === ' ') step(1);
+  else if (k === 'arrowleft') step(-1);
+  else if (k === 'a') { showAF = !showAF; draw(); }
+  else if (k === 't') { showT = !showT; draw(); }
+  else if (k === 'z') { full = !full; layout(); }
+  else return;
+  e.preventDefault();
+});
+""" % json.dumps(data)
+    parts.append(f"<script>{js}</script>")
     out.write_text("".join(parts), encoding="utf-8")
 
 
@@ -462,14 +662,15 @@ def main(argv=None) -> int:
     print(f"{len(pics)} pictures of {a.species}.")
     from utils.cache_paths import app_data_dir
     cache = Cache(app_data_dir() / "scores" / "picture_scores.sqlite")
-    score_all(pics, cache)
+    out = app_data_dir() / "reports" / f"score_{re.sub(r'[^\w.-]', '_', a.species)}.html"
+    views = out.parent / (out.stem + "_files")     # the large pictures, beside the sheet
+    score_all(pics, cache, views)
     read_af(pics)
     apply_af(pics, a.af)
     groups = poses(pics, a.gap, a.change)
     select(groups, a.per_day, a.cap, a.per_pose, a.soft)
-    out = app_data_dir() / "reports" / f"score_{a.species.replace(' ', '_')}.html"
-    out.parent.mkdir(parents=True, exist_ok=True)
     print("Building the contact sheet …")
+    make_views(pics, views)
     write_sheet(out, a.species, pics, groups, a)
     print(f"Sheet: {out}")
     if a.open:
