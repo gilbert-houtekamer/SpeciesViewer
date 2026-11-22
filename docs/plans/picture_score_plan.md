@@ -9,7 +9,9 @@ GH's test — committed 27f61d6. Your say per card built 2026-11-22: k = keep, b
 (`gui/sharpness_view.py`) and the pixel-level measure — a 48×36 `fine` grid at the picture's own
 size, stored with the score (SCORE_VERSION 4); within a pose the frames are ranked on the SAME
 spot (the subject area of the pose's sharpest frame, `redundancy.pose_measure`). AF reading moved
-to `engine/af_point.py`. Awaiting GH's test. Next: "Mark the bins Purple" (+ undo). Nothing is marked or deleted
+to `engine/af_point.py`; since 2026-11-22 also the Nikon point (D7100/D7500/D500: named grid
+point placed with a grid measured from ~1600 master pictures, centre pinned to the frame
+centre — an estimate; D90 left out). Awaiting GH's test. Next: "Mark the bins Purple" (+ undo). Nothing is marked or deleted
 before step 3, and step 3 only ever sets Purple on candidates, with an exact undo.
 
 ## Problem

@@ -70,7 +70,7 @@ class _Load(QThread):
                         cache.put(self._src, sc)
             finally:
                 cache.close()
-            af = af_point.lookup(af_point.read([self._src]), self._src)
+            af = af_point.lookup_info(af_point.read([self._src]), self._src)
             self.done.emit(self._gen, {"image": img, "score": sc, "af": af})
         except Exception as e:                       # shown, never fatal
             logger.warning(f"Sharpness tab: {self._src}: {e}", exc_info=True)
@@ -92,6 +92,7 @@ class _Frame(QWidget):
         self.image: QImage | None = None
         self.tiles: list = []        # [(x, y, w, h)] fractions
         self.af = None               # (x0, y0, x1, y1)
+        self.af_focus: list = []     # Nikon D500: the other points that were in focus
         self.spot = None             # (x0, y0, x1, y1)
         self.show_tiles = True
         self.show_af = True
@@ -125,8 +126,11 @@ class _Frame(QWidget):
                 box((t[0], t[1], t[0] + t[2], t[1] + t[3]), "#00e5ff", 1.5)
         if self.spot:
             box(self.spot, "#ff6d00", 2.5)
-        if self.show_af and self.af:
-            box(self.af, "#ffeb3b", 2.5)
+        if self.show_af:
+            for b in self.af_focus:
+                box(b, "#ffeb3b", 1.5, dash=True)
+            if self.af:
+                box(self.af, "#ffeb3b", 2.5)
         # The AI… verdict as on the grid's cards: a purple frame with a bin on a
         # picture that could go, a green frame on one that is kept; dashed = yours.
         if self.verdict in ("purple", "keep"):
@@ -271,7 +275,9 @@ class SharpnessView(QWidget):
             k = max(3, int(tiles.size * TOP_SHARE))
             for i in np.argsort(tiles.ravel())[-k:]:
                 f.tiles.append((int(i % cols) / cols, int(i // cols) / rows, 1 / cols, 1 / rows))
-        f.af = res["af"][0] if res.get("af") else None
+        afi = res.get("af") or {}
+        f.af = afi.get("box")
+        f.af_focus = list(afi.get("in_focus") or [])
 
         # The spot: where you held it, else the subject area of this picture.
         box = subject_box(tiles)
@@ -297,10 +303,17 @@ class SharpnessView(QWidget):
         self._crop.setPixmap(crop)
 
         fine = fine_in(sc.get("fine"), spot)
-        af_box, found = res.get("af") or (None, None)
-        af_txt = ("no AF point recorded" if af_box is None else
-                  "AF: the camera found a subject" if found else
-                  "AF: no subject found" if found is False else "AF point")
+        af_box, found = afi.get("box"), afi.get("found")
+        if af_box is None:
+            af_txt = "no AF point recorded"
+        elif afi.get("estimated"):
+            af_txt = (f"AF point {afi.get('name')} — its place on the frame is estimated "
+                      f"for this camera")
+            if afi.get("in_focus"):
+                af_txt += "; dashed: the other points in focus"
+        else:
+            af_txt = ("AF: the camera found a subject" if found else
+                      "AF: no subject found" if found is False else "AF point")
         mine = " (your choice)" if self._yours else ""
         verdict = {"purple": f"<b style='color:#b39ddb'>AI…: could go{mine}</b> · ",
                    "keep": f"<b style='color:#81c784'>AI…: kept{mine}</b> · "
