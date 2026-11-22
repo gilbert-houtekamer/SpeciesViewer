@@ -168,6 +168,7 @@ again to re-sort. The choice is remembered per viewer.
 | **✦ Species…** | Open this species' page in the Biota Browser (hero, grouped photos, siblings) |
 | **↻** | *(master-backed)* Re-read this species from the master and repaint |
 | **↻ Web** | *(master-backed)* Rebuild this species' website page and upload it |
+| **AI…** | *(Master)* Which pictures of this species could go — a suggestion, nothing is changed. Shows the species' pictures, days and places, what you kept (stars, Red, Yellow, a JPG), and how many pictures without stars that are Green or have no colour could go. It measures how sharp the subject of each picture is (the first time for a species takes a while, then it is instant), groups frames of one pose, and keeps the sharpest of each pose per day; the settings are yours to change, and the result is shown per day. The number kept per day is higher for a species you saw on few days. |
 | **✖ Blue** | Delete all Blue-tagged pictures (to trash) |
 | **✖ Purple** | Delete all Purple-tagged pictures (to trash) |
 

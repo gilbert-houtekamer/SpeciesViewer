@@ -2089,6 +2089,19 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
         if not self._master_only:
             self._uncertain_btn.hide()
 
+        # Master only: which pictures of this species could go — statistics, the
+        # settings and the suggestion per day. Read-only (gui/suggest_dialog.py).
+        self._suggest_btn = QPushButton("AI…")
+        self._suggest_btn.setToolTip(
+            "Suggest which pictures of this species could go: how many pictures, days "
+            "and places, what you kept, and what a sharpness suggestion would keep — "
+            "nothing is changed")
+        self._suggest_btn.clicked.connect(self._on_suggest)
+        top.addWidget(self._suggest_btn)
+        top.addSpacing(8)
+        if not self._master_only:
+            self._suggest_btn.hide()
+
         # Colour filter — the same selector row as the culling grid, so you can
         # narrow the view to one colour (e.g. see exactly what a Blue-delete
         # would target). Local import avoids a circular import with image_viewer.
@@ -3631,6 +3644,23 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
     def _live_resort(self) -> bool:
         """True only for "Rate ↓ (re-sort)": the one order that follows edits."""
         return self._sort_combo.currentData() == "rate_live"
+
+    def _on_suggest(self):
+        """The read-only suggestion dialog for the species in view (master only)."""
+        sci = self._current_sci()
+        if not sci or self._master_db is None or not self._master_root:
+            QMessageBox.information(self, "Suggest", "Pick a species first.")
+            return
+        old = getattr(self, "_suggest_dlg", None)
+        if old is not None:
+            try:
+                old.close()
+            except RuntimeError:
+                pass
+        from gui.suggest_dialog import SuggestDialog
+        name = self._species_combo.currentData() or sci
+        self._suggest_dlg = SuggestDialog(self, self._master_db, self._master_root, sci, name)
+        self._suggest_dlg.show()
 
     def _show_species_distribution_map(self):
         """Every GPS point the master holds for the species in view (Master

@@ -2,6 +2,10 @@
 redundant, as a contact sheet you judge with your own eye. READ-ONLY: nothing
 in the master is written; scores are cached under app-data.
 
+The measuring is engine.picture_score, the choosing engine.redundancy (the same
+code as the Species Viewer's suggestion dialog); this tool adds the camera's AF
+point and the contact sheet. Plan: docs/plans/picture_score_plan.md.
+
 The idea (see the session notes, Nov 2026):
 
   1. SUBJECT SHARPNESS, not image sharpness. The frame is cut into tiles and
@@ -25,7 +29,8 @@ Formats: RAW via SpeciesViewer's preview path (embedded JPEG, else a decode),
 camera JPG as is, HEIC / PNG / TIFF through Pillow.
 
 Known limit: a sharp twig in front of a soft bird still scores as "sharp".
-The OM System AF point helps where the camera found the subject (--af).
+The OM System AF point turned out less consistent than the sharpest tiles; it
+is drawn in the large view but does not count unless --af says so.
 
 The sheet: click a picture (or Tab + Enter) to see it large (1600 px, the frame
 the score measured, written once beside the sheet in <sheet>_files/), with the
@@ -40,16 +45,12 @@ from __future__ import annotations
 
 import argparse
 import base64
-import csv
 import html
 import os
 import re
-import sqlite3
 import sys
-import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "speciesviewer"))
@@ -57,144 +58,31 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "speciesviewer")
 import cv2                      # noqa: E402
 import numpy as np              # noqa: E402
 
-SCORE_VERSION = 3
-LONG_EDGE = 1600                # analyse at this size (embedded previews are larger)
-GRID = (16, 12)                 # tiles across × down
-TOP_SHARE = 0.03                # "the subject" = the sharpest 3% of tiles (≥ 3)
-csv.field_size_limit(10 ** 8)
-
-
-# ── scoring one picture ──────────────────────────────────────────────────────
-
-def score_image(jpeg: bytes) -> dict | None:
-    buf = np.frombuffer(jpeg, np.uint8)
-    img = cv2.imdecode(buf, cv2.IMREAD_GRAYSCALE)
-    if img is None:
-        return None
-    h, w = img.shape
-    s = LONG_EDGE / max(h, w)
-    if s < 1:
-        img = cv2.resize(img, (round(w * s), round(h * s)), interpolation=cv2.INTER_AREA)
-    f = img.astype(np.float32) / 255.0
-    lap = cv2.Laplacian(cv2.GaussianBlur(f, (0, 0), 1.0), cv2.CV_32F, ksize=3)
-    energy = lap * lap
-    gx, gy = GRID
-    th, tw = energy.shape[0] // gy, energy.shape[1] // gx
-    grid = energy[:th * gy, :tw * gx].reshape(gy, th, gx, tw).mean(axis=(1, 3))
-    tiles = np.sort(grid.ravel())
-    k = max(3, int(len(tiles) * TOP_SHARE))
-    top = float(tiles[-k:].mean())
-    med = float(np.median(tiles))
-    clipped = float(((img >= 250) | (img <= 5)).mean())
-    # 8×8 difference hash of a BLURRED frame — the layout (where the bird is,
-    # its shape), not the texture: a 16×16 hash of the sharp frame saw sand grains
-    # and a 1-second camera twitch as a "new picture".
-    coarse = cv2.GaussianBlur(img, (0, 0), max(img.shape) / 150)
-    small = cv2.resize(coarse, (9, 8), interpolation=cv2.INTER_AREA)
-    bits = (small[:, 1:] > small[:, :-1]).ravel()
-    dhash = int("".join("1" if b else "0" for b in bits), 2)
-    return {"sharp": top * 1e4, "isolation": top / (med + 1e-9),
-            "clipped": clipped, "dhash": f"{dhash:016x}",
-            "tiles": (grid * 1e4).astype(np.float32)}     # rows x cols, upright frame
-
-
-def hamming(a: str, b: str) -> float:
-    return bin(int(a, 16) ^ int(b, 16)).count("1") / 64.0
-
-
-# ── cache (app-data, never the master) ───────────────────────────────────────
-
-class Cache:
-    def __init__(self, path: Path):
-        path.parent.mkdir(parents=True, exist_ok=True)
-        self.db = sqlite3.connect(str(path), check_same_thread=False)
-        self.lock = threading.Lock()     # one connection, many scoring threads
-        self.db.execute("create table if not exists score3 (path text primary key, "
-                        "mtime integer, size integer, version integer, sharp real, "
-                        "isolation real, clipped real, dhash text, tiles blob)")
-
-    def get(self, p: Path):
-        st = p.stat()
-        with self.lock:
-            r = self.db.execute("select mtime,size,version,sharp,isolation,clipped,dhash,"
-                                "tiles from score3 where path=?", (str(p),)).fetchone()
-        if r and r[0] == st.st_mtime_ns and r[1] == st.st_size and r[2] == SCORE_VERSION:
-            d = dict(zip(("sharp", "isolation", "clipped", "dhash"), r[3:7]))
-            d["tiles"] = np.frombuffer(r[7], np.float32).reshape(GRID[1], GRID[0])
-            return d
-        return None
-
-    def put(self, p: Path, sc: dict):
-        st = p.stat()
-        with self.lock:
-            self.db.execute("insert or replace into score3 values (?,?,?,?,?,?,?,?,?)",
-                            (str(p), st.st_mtime_ns, st.st_size, SCORE_VERSION,
-                             sc["sharp"], sc["isolation"], sc["clipped"], sc["dhash"],
-                             np.ascontiguousarray(sc["tiles"], np.float32).tobytes()))
-            self.db.commit()
+from engine import redundancy as rd                     # noqa: E402
+from engine.picture_score import (Cache, GRID, LONG_EDGE, TOP_SHARE,   # noqa: E402,F401
+                                  image_bytes, score_pictures)
 
 
 # ── the master's pictures of one species ─────────────────────────────────────
 
-def load_species(master: Path, name: str) -> list[dict]:
-    from utils.raw_extensions import is_raw_or_heic, is_jpeg
+def find_species(master: Path, name: str) -> str:
+    """Scientific name for a scientific, English or Dutch name ('' if unknown)."""
+    import csv
     want = name.strip().lower()
-    out = []
-    with open(master / "metadata" / "active" / "data_pictures.csv",
-              encoding="utf-8", errors="replace", newline="") as fh:
+    with open(master / "metadata" / "active" / "species.csv",
+              encoding="utf-8-sig", errors="replace", newline="") as fh:
         for r in csv.DictReader(fh, delimiter=";"):
-            if want not in {(r.get(c) or "").strip().lower()
-                            for c in ("WetSoortNaam", "EngSoortNaam", "NLSoortNaam")}:
-                continue
-            folder = master / (r.get("TargetPath") or "")
-            try:
-                files = eval(r.get("Files") or "[]", {"__builtins__": {}})   # a list literal
-            except Exception:
-                files = []
-            paths = [folder / f for f in files]
-            src = next((p for p in paths if is_raw_or_heic(p) and p.exists()), None) \
-                or next((p for p in paths if is_jpeg(p) and p.exists()), None)
-            if src is None:
-                continue
-            try:
-                t = datetime.strptime((r.get("DateTimeOriginal") or "")[:19], "%Y:%m:%d %H:%M:%S")
-            except ValueError:
-                t = None
-            label = (r.get("Label") or "").strip()
-            stars = int(float(r.get("Rating") or 0) or 0)
-            out.append({
-                "upn": r["UniquePictureName"], "src": src, "time": t,
-                "label": label, "stars": stars,
-                "jpg": bool((r.get("BestJPG") or "").strip()),
-                "bytes": sum(p.stat().st_size for p in paths if p.exists()),
-            })
-    out.sort(key=lambda p: (p["time"] or datetime.min, p["upn"]))
-    return out
+            if want in {(r.get(c) or "").strip().lower()
+                        for c in ("ScientificName", "EnglishName", "DutchName")}:
+                return (r.get("ScientificName") or "").strip()
+    return ""
 
 
-def image_bytes(src: Path) -> bytes | None:
-    """A JPEG of the picture, whatever the file: a camera JPG as it is, a HEIC
-    (iPhone) / PNG / TIFF converted, a RAW through SpeciesViewer's own preview
-    path (the camera's embedded JPEG, else a decode)."""
-    from utils.raw_extensions import is_jpeg, is_raw
-    try:
-        if is_jpeg(src):
-            return src.read_bytes()
-        if not is_raw(src):
-            import io
-            import pillow_heif
-            from PIL import Image, ImageOps
-            pillow_heif.register_heif_opener()
-            with Image.open(src) as im:
-                im = ImageOps.exif_transpose(im).convert("RGB")
-                buf = io.BytesIO()
-                im.save(buf, "JPEG", quality=90)
-                return buf.getvalue()
-        from gui.preview_extract import preview_jpeg_bytes
-        return preview_jpeg_bytes(src)
-    except Exception as e:
-        print(f"  could not read {src.name}: {e}")
-        return None
+def load_species(master: Path, sci: str) -> list[dict]:
+    from db.master_db import MasterDB
+    db = MasterDB(master)
+    db.ensure_fresh()
+    return rd.from_master_rows(db.pictures_for_species_and_subspecies(sci), master)
 
 
 def _resized_jpeg(img, long_edge: int, quality: int) -> bytes:
@@ -261,29 +149,25 @@ def make_views(pics, views: Path, workers: int = 4):
                 print(f"  pictures for the sheet {i}/{len(pics)}  ({time.time() - t0:.0f} s)")
 
 
-def score_all(pics, cache: Cache, views: Path | None = None, workers: int = 4):
+def score_all(pics, cache: Cache, views: Path | None = None):
+    """Measure (engine.picture_score); a picture decoded for it also gets its
+    large view written, so the sheet never decodes a RAW twice."""
     if views:
         views.mkdir(parents=True, exist_ok=True)
-
-    def one(p):
-        sc = cache.get(p["src"])
-        if sc is None:
-            data = image_bytes(p["src"])
-            if data and views:                    # the sheet needs it; read once
-                save_large(data, large_path(views, p))
-            sc = score_image(data) if data else None
-            if sc:
-                cache.put(p["src"], sc)
-        p.update(sc or {"sharp": 0.0, "isolation": 0.0, "clipped": 0.0, "dhash": "0" * 16,
-                        "tiles": None})
-        p["generic"] = p["sharp"]
-        return p
-
     t0 = time.time()
-    with ThreadPoolExecutor(workers) as ex:
-        for i, _ in enumerate(ex.map(one, pics), 1):
-            if i % 25 == 0 or i == len(pics):
-                print(f"  scored {i}/{len(pics)}  ({time.time() - t0:.0f} s)")
+
+    def progress(i, n):
+        if i % 25 == 0 or i == n:
+            print(f"  scored {i}/{n}  ({time.time() - t0:.0f} s)", flush=True)
+
+    def decoded(p, data):
+        if views:
+            save_large(data, large_path(views, p))
+
+    score_pictures(pics, cache, progress=progress,
+                   on_decoded=decoded if views else None)
+    for p in pics:
+        p["generic"] = p["sharp"]
 
 
 # ── where the camera focused (OM System / Olympus) ───────────────────────────
@@ -412,56 +296,6 @@ def apply_af(pics, mode: str):
         p["af_used"] = bool(use)
 
 
-# ── poses + selection ────────────────────────────────────────────────────────
-
-def poses(pics, gap_s: float, change: float) -> list[list[dict]]:
-    groups: list[list[dict]] = []
-    for p in pics:
-        g = groups[-1] if groups else None
-        if (g and p["time"] and g[-1]["time"]
-                and (p["time"] - g[-1]["time"]).total_seconds() <= gap_s
-                and hamming(p["dhash"], g[-1]["dhash"]) <= change):
-            g.append(p)
-        else:
-            groups.append([p])
-    return groups
-
-
-def is_keeper(p) -> bool:
-    """What you already chose to keep. A candidate is a picture WITHOUT stars
-    that is Green or has no label (Green was the old 'not deleted' default)."""
-    return p["jpg"] or p["stars"] >= 1 or p["label"] in ("Red", "Yellow")
-
-
-def select(groups, per_day: int, cap: int, per_pose: int, soft: float):
-    """Per DAY (an encounter), not per species: a species met on 19 days keeps
-    more than one met once. Within a day: the sharpest frame of each pose, best
-    poses first, then the second-best frames, until the day has `per_day`
-    pictures ON TOP OF your own keepers (those always stay and do not use up
-    the allowance). `cap` > 0 adds a limit for the whole species."""
-    for g in groups:
-        for p in g:
-            p["verdict"] = "protected" if is_keeper(p) else "purple"
-    by_day: dict = {}
-    for g in groups:
-        by_day.setdefault(g[0]["time"].date() if g[0]["time"] else None, []).append(g)
-    total = 0
-    for day_groups in by_day.values():
-        kept = 0
-        ranked = [sorted(g, key=lambda p: p["sharp"], reverse=True) for g in day_groups]
-        ranked.sort(key=lambda g: g[0]["sharp"], reverse=True)
-        for rnd in range(per_pose):
-            for g in ranked:
-                if kept >= per_day or (cap and total >= cap) or rnd >= len(g):
-                    continue
-                p, best = g[rnd], g[0]["sharp"] or 1e-9
-                already = sum(1 for q in g if q["verdict"] != "purple")
-                if p["verdict"] == "purple" and already < per_pose and p["sharp"] >= soft * best:
-                    p["verdict"] = "keep"
-                    kept += 1
-                    total += 1
-
-
 # ── contact sheet ────────────────────────────────────────────────────────────
 
 def thumb_b64(p) -> str:
@@ -483,9 +317,11 @@ def af_note(p, top) -> str:
 def write_sheet(out: Path, name: str, pics, groups, args):
     import json
     top = max((max(p["generic"], p.get("af") or 0) for p in pics), default=1) or 1
-    n = {v: sum(1 for p in pics if p["verdict"] == v) for v in ("protected", "keep", "purple")}
-    freed = sum(p["bytes"] for p in pics if p["verdict"] == "purple")
-    words = {"protected": "already a keeper", "keep": "keep", "purple": "suggest purple"}
+    n = {v: sum(1 for p in pics if p["verdict"] == v)
+         for v in (rd.KEEPER, rd.DECIDED, rd.KEEP, rd.PURPLE)}
+    freed = sum(p["bytes"] for p in pics if p["verdict"] == rd.PURPLE)
+    words = {rd.KEEPER: "your keeper", rd.DECIDED: "already Blue/Purple", rd.KEEP: "keep",
+             rd.PURPLE: "suggest purple"}
     css = """body{font:13px system-ui;margin:16px;background:#f6f5f1;color:#222}
     h1{font-size:18px} .pose{margin:10px 0;padding:6px;background:#fff;border-radius:6px}
     .pose h3{font-size:12px;margin:0 0 6px;color:#555;font-weight:600}
@@ -493,7 +329,7 @@ def write_sheet(out: Path, name: str, pics, groups, args):
     .c button{all:unset;cursor:zoom-in;display:block}
     .c button:focus-visible img{outline:3px solid #f9a825;outline-offset:1px}
     .c img{width:260px;border:4px solid #ccc;display:block}
-    .keep img{border-color:#2e7d32} .protected img{border-color:#1565c0}
+    .keep img{border-color:#2e7d32} .keeper img{border-color:#1565c0} .decided img{border-color:#555;opacity:.4}
     .purple img{border-color:#8e24aa;opacity:.55} .bar{height:4px;background:#2e7d32}
     .k{display:inline-block;padding:1px 6px;border-radius:3px;color:#fff;margin-right:6px}
     #lb{position:fixed;inset:0;background:#111;color:#eee;display:none;flex-direction:column;z-index:9}
@@ -513,9 +349,10 @@ def write_sheet(out: Path, name: str, pics, groups, args):
     parts = [f"<!doctype html><meta charset=utf-8><title>Score: {html.escape(name)}</title>"
              f"<style>{css}</style><h1>{html.escape(name)} — {len(pics)} pictures, "
              f"{len(groups)} poses</h1><p>"
-             f"<span class=k style=background:#1565c0>already a keeper {n['protected']}</span>"
-             f"<span class=k style=background:#2e7d32>keep {n['keep']}</span>"
-             f"<span class=k style=background:#8e24aa>suggest purple {n['purple']}</span>"
+             f"<span class=k style=background:#1565c0>your keepers {n[rd.KEEPER]}</span>"
+             f"<span class=k style=background:#555>already Blue/Purple {n[rd.DECIDED]}</span>"
+             f"<span class=k style=background:#2e7d32>keep {n[rd.KEEP]}</span>"
+             f"<span class=k style=background:#8e24aa>suggest purple {n[rd.PURPLE]}</span>"
              f" — frees {freed / 1e9:.2f} GB. Settings: per day {args.per_day}, "
              f"species cap {args.cap or 'none'}, per pose "
              f"{args.per_pose}, new pose after {args.gap:.0f} s or {args.change:.0%} change, "
@@ -630,8 +467,9 @@ def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("species", help="scientific, English or Dutch name")
     ap.add_argument("--master", help="master folder (default: the configured one)")
-    ap.add_argument("--per-day", type=int, default=10,
-                    help="pictures kept per species per day, besides your own keepers (default 10)")
+    ap.add_argument("--per-day", type=int, default=0,
+                    help="pictures kept per day besides your own keepers (default: by how "
+                         "often you saw the species — 20 for one day, 3 for 67 days)")
     ap.add_argument("--cap", type=int, default=0,
                     help="also a limit for the whole species (default: none)")
     ap.add_argument("--per-pose", type=int, default=2, help="frames kept per pose (default 2)")
@@ -640,9 +478,10 @@ def main(argv=None) -> int:
                     help="how different a frame must look to start a new pose, 0..1 (default 0.25)")
     ap.add_argument("--soft", type=float, default=0.6,
                     help="a frame below this share of its pose's best is never kept (default 0.6)")
-    ap.add_argument("--af", choices=("auto", "always", "off"), default="auto",
-                    help="use the camera's AF area: auto = only where it found the "
-                         "subject (default), always, or off")
+    ap.add_argument("--af", choices=("auto", "always", "off"), default="off",
+                    help="let the camera's AF area count in the score: off (default; it "
+                         "is drawn in the large view anyway), auto = where it found the "
+                         "subject, always")
     ap.add_argument("--open", action="store_true", help="open the sheet in the browser")
     a = ap.parse_args(argv)
     try:
@@ -655,20 +494,24 @@ def main(argv=None) -> int:
         from utils.config import _config
         master = _config.get("master", "masterbiotadatabase", fallback="")
     master = Path(master.strip().strip('"'))
-    pics = load_species(master, a.species)
+    sci = find_species(master, a.species)
+    pics = load_species(master, sci) if sci else []
     if not pics:
         print(f"No master pictures found for “{a.species}”.")
         return 1
     print(f"{len(pics)} pictures of {a.species}.")
     from utils.cache_paths import app_data_dir
-    cache = Cache(app_data_dir() / "scores" / "picture_scores.sqlite")
+    cache = Cache()
     out = app_data_dir() / "reports" / f"score_{re.sub(r'[^\w.-]', '_', a.species)}.html"
     views = out.parent / (out.stem + "_files")     # the large pictures, beside the sheet
     score_all(pics, cache, views)
     read_af(pics)
     apply_af(pics, a.af)
-    groups = poses(pics, a.gap, a.change)
-    select(groups, a.per_day, a.cap, a.per_pose, a.soft)
+    days = len(rd.days_of(pics))
+    a.per_day = a.per_day or rd.per_day_for(days)
+    print(f"Seen on {days} day(s): keeping up to {a.per_day} per day besides your keepers.")
+    groups = rd.select(pics, rd.Settings(per_day=a.per_day, per_pose=a.per_pose, gap=a.gap,
+                                         change=a.change, soft=a.soft, cap=a.cap))
     print("Building the contact sheet …")
     make_views(pics, views)
     write_sheet(out, a.species, pics, groups, a)
