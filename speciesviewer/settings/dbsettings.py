@@ -100,7 +100,8 @@ class DatabaseSettingsDialog(QDialog):
         hrow.addWidget(check_btn)
         backup_btn = QPushButton("Back up now")
         backup_btn.setToolTip(
-            "Gzip the three master CSVs into metadata/active/backup/<date>/.\n"
+            "Gzip the master's lists into metadata/active/backup/<date>/, with the\n"
+            "trip list, blog settings and translations beside them.\n"
             "About 7 MB and a second. Refused if the consistency check fails —\n"
             "a snapshot of a broken master would eventually push out the last good one.")
         backup_btn.clicked.connect(self._backup_now)

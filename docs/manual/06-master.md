@@ -417,3 +417,10 @@ day, confirm, and the read-copy is rebuilt. The lists you replace are kept first
 (`backup/pre-restore-*`), so a restore can be undone. Anything added to the
 master since that day is lost, and the window says so before it starts. Restart
 SpeciesViewer afterwards — it keeps the master in memory.
+
+The same daily copy also holds five small files that exist nowhere else: the
+list of your trips and albums, the blog settings, which days went to the master,
+the translations you checked, and the other species names. They are in the
+backup's `extra` folder. A restore does **not** put these back — an old trip
+list would forget the trips made since. If you ever need one, unzip it from
+`metadata/active/backup/<day>/extra/` by hand.

@@ -48,6 +48,20 @@ _MIRRORED = ("data_pictures.csv", "data_files.csv", "species.csv")
 # pictures on disk. Cheap to keep, expensive to lose.
 _CSVS = _MIRRORED + ("speciescollection.csv",)
 
+# BACKED UP, NOT RESTORED with the lists. Small files that exist nowhere else
+# (backlog 1.23): which trips and albums there are and where, blog settings, which
+# days went to the master, checked translations, the other species names. Kept in
+# `<day>/extra/` so they cannot be mistaken for the lists. restore() leaves them
+# alone ON PURPOSE: rolling the lists back is about the pictures, and putting an
+# old trip_admin.csv back would forget every trip made since. To get one back,
+# unzip it from the backup by hand. (folder under the master, file name)
+_EXTRAS = (("metadata/active", "speciesnames.csv"),
+           ("admin", "trip_admin.csv"),
+           ("admin", "blog_admin.csv"),
+           ("admin", "master_commits.csv"),
+           ("admin", "TransCache.csv"))
+EXTRA_DIR = "extra"
+
 # csv.field_size_limit default is too small for the Files column on some rows.
 csv.field_size_limit(10_000_000)
 
@@ -347,9 +361,12 @@ def make_backup(db, master_root, *, force: bool = False) -> dict:
                                               compresslevel=6) as fo:
             shutil.copyfileobj(fi, fo, 1024 * 1024)
         written += (dest / (name + ".gz")).stat().st_size
+    extras = backup_extras(master_root, dest)
+    written += sum(extras.values())
     (dest / "manifest.json").write_text(json.dumps({
         "taken": datetime.now().isoformat(timespec="seconds"),
         "counts": rep.counts,
+        "extra": sorted(extras),
         "check": rep.summary(),
         "warnings": [f"{f.what}. {f.detail}".strip() for f in rep.warnings],
     }, indent=2), encoding="utf-8")
@@ -359,6 +376,30 @@ def make_backup(db, master_root, *, force: bool = False) -> dict:
     pruned = prune(master_root)
     return {"ok": True, "report": rep, "path": dest, "bytes": written,
             "seconds": dt, "pruned": pruned}
+
+
+def backup_extras(master_root, dest) -> dict:
+    """Gzip the _EXTRAS that exist into `dest/extra/`. Returns {name: gz bytes}.
+
+    A file that is missing is skipped (a new master has no blog_admin.csv yet).
+    A file that cannot be read is logged and skipped — it must never cost the
+    backup of the lists themselves."""
+    out = {}
+    root = Path(master_root)
+    xdir = Path(dest) / EXTRA_DIR
+    for folder, name in _EXTRAS:
+        src = root / folder / name
+        if not src.is_file():
+            continue
+        try:
+            xdir.mkdir(parents=True, exist_ok=True)
+            gz = xdir / (name + ".gz")
+            with open(src, "rb") as fi, gzip.open(gz, "wb", compresslevel=6) as fo:
+                shutil.copyfileobj(fi, fo, 1024 * 1024)
+            out[name] = gz.stat().st_size
+        except OSError as e:
+            logger.warning(f"master backup: could not copy {folder}/{name}: {e}")
+    return out
 
 
 def _sweep_backup_husks(master_root) -> int:
@@ -441,7 +482,9 @@ def restore(master_root, day: str) -> dict:
     `backup/pre-restore-<stamp>/`) — a restore is itself a destructive write, and the
     thing you are restoring over may be the only copy of something you still want.
 
-    The caller MUST force a DB rebuild afterwards: the DB is now stale by construction."""
+    The caller MUST force a DB rebuild afterwards: the DB is now stale by construction.
+    The backup's `extra/` files (trip list, blog settings, …) are NOT put back — see
+    _EXTRAS."""
     src = backup_root(master_root) / day
     if not src.is_dir():
         raise FileNotFoundError(f"No backup for {day}")
