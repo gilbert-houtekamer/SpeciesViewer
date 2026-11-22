@@ -3,6 +3,7 @@ rarity rule, and the sharpness measure itself."""
 from datetime import datetime, timedelta
 
 import numpy as np
+import pytest
 
 from engine import redundancy as rd
 from engine.picture_score import score_image, hamming
@@ -77,3 +78,35 @@ def test_score_finds_the_sharp_subject():
     assert sharp["sharp"] > 5 * soft["sharp"]
     assert sharp["tiles"].shape == (12, 16)
     assert hamming(sharp["dhash"], sharp["dhash"]) == 0
+
+
+def test_pixel_level_breaks_a_tie_within_a_pose():
+    from engine.picture_score import FINE_GRID, GRID
+    t0 = datetime(2024, 10, 12, 9, 0, 0)
+    tiles = np.zeros((GRID[1], GRID[0]), np.float32)
+    tiles[5, 7] = 100.0                                   # the subject, same in both
+    fine_a = np.zeros((FINE_GRID[1], FINE_GRID[0]), np.float16)
+    fine_b = fine_a.copy()
+    fine_a[16, 22] = 50                                   # inside the subject box
+    fine_b[16, 22] = 80                                   # sharper at the pixel level
+    fine_b[0, 0] = 999                                    # sharp, but far from the subject
+    a = _pic(0, t=t0, sharp=100.0)
+    b = _pic(1, t=t0 + timedelta(seconds=1), sharp=100.0)
+    a.update(tiles=tiles, fine=fine_a)
+    b.update(tiles=tiles, fine=fine_b)
+    rd.select([a, b], rd.Settings(per_day=10, per_pose=1, soft=0.0))
+    assert (a["verdict"], b["verdict"]) == (rd.PURPLE, rd.KEEP)
+    assert b["in_pose"] == pytest.approx(80 / 3, rel=0.01)   # top 3 tiles in the box
+
+
+def test_score_keeps_a_fine_grid_at_its_own_size():
+    import cv2
+    from engine.picture_score import FINE_GRID, fine_in, subject_box
+    rng = np.random.default_rng(2)
+    img = np.full((1200, 1800), 128, np.uint8)
+    img[500:700, 800:1000] = rng.integers(0, 255, (200, 200), dtype=np.uint8)
+    sc = score_image(cv2.imencode(".jpg", img)[1].tobytes())
+    assert sc["fine"].shape == (FINE_GRID[1], FINE_GRID[0]) and sc["native"] == 1800
+    box = subject_box(sc["tiles"])
+    assert box[0] <= 900 / 1800 <= box[2] and box[1] <= 600 / 1200 <= box[3]
+    assert fine_in(sc["fine"], box) > 10 * fine_in(sc["fine"], (0, 0, 0.2, 0.2))

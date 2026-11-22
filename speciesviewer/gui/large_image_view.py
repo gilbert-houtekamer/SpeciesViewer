@@ -1340,10 +1340,21 @@ class LargeImageView(QDialog):
         # Tab order: Fit, then the Camera JPEG (the quick zoom — where a Fit
         # double-click lands), then the slower full-sensor decode last. Referenced
         # by name everywhere so the order stays changeable in one place.
-        self._TAB_FIT, self._TAB_EMBED, self._TAB_FULLRES = 0, 1, 2
+        self._TAB_FIT, self._TAB_EMBED, self._TAB_FULLRES, self._TAB_SHARP = 0, 1, 2, 3
         self._view_tabs.addTab(self._stage, "Fit")
         self._view_tabs.addTab(self._embed_view, "Camera JPEG")
         self._view_tabs.addTab(self._fullres_view, self._fullres_scale_label())
+        # Fourth tab: the picture the way the picture score sees it — where it
+        # looked (sharpest tiles, AF point) and the subject spot at 100 % of the
+        # picture's own size (gui/sharpness_view.py). Loaded only when shown.
+        from gui.sharpness_view import SharpnessView
+        self._sharp_view = SharpnessView()
+        self._sharp_key = None
+        self._view_tabs.addTab(self._sharp_view, "Sharpness")
+        self._view_tabs.setTabToolTip(
+            self._TAB_SHARP,
+            "Where the picture score looked: the sharpest tiles, the camera's AF point, "
+            "and the subject spot at 100 % — to judge the AI… suggestion and learn from it")
         self._view_tabs.setTabToolTip(
             self._TAB_EMBED,
             "The JPEG the camera itself wrote inside the RAW. On the Nikons that "
@@ -1709,13 +1720,44 @@ class LargeImageView(QDialog):
                 pass
 
     def _on_view_tab_changed(self, idx):
-        if idx in (self._TAB_EMBED, self._TAB_FULLRES):
+        if idx in (self._TAB_EMBED, self._TAB_FULLRES, self._TAB_SHARP):
             if self._crop_mode:
                 self._exit_crop_mode(reload=True)  # crop is a Fit-tab tool
         if idx == self._TAB_FULLRES:
             self._load_fullres()
         elif idx == self._TAB_EMBED:
             self._load_embedded()
+        elif idx == self._TAB_SHARP:
+            self._load_sharpness()
+
+    def _load_sharpness(self):
+        """Fill the Sharpness tab for the picture on screen (once per picture)."""
+        if (getattr(self, "_view_tabs", None) is None
+                or self._view_tabs.currentIndex() != self._TAB_SHARP or not self._keys):
+            return
+        key = self._keys[self._index]
+        if self._sharp_key == key:
+            return
+        self._sharp_key = key
+        src = None
+        for get in ("raw_path", "jpg_path"):
+            fn = getattr(self._collection, get, None)
+            try:
+                src = fn(key) if fn else None
+            except Exception:
+                src = None
+            if src:
+                break
+        # The AI… verdict for this picture, when the Species Viewer that opened
+        # us has that dialog open (a view only).
+        verdict = ""
+        sugg = getattr(self.parent(), "_suggestion_for", None)
+        if callable(sugg):
+            try:
+                verdict = sugg(key) or ""
+            except Exception:
+                verdict = ""
+        self._sharp_view.set_picture(src, verdict)
 
     def _no_raw_message(self) -> str:
         """What the zoom tabs say when there is no RAW behind the picture. A movie
@@ -2945,6 +2987,7 @@ class LargeImageView(QDialog):
         if getattr(self, "_view_tabs", None) is not None \
                 and self._view_tabs.currentIndex() == self._TAB_FULLRES:
             self._load_fullres()
+        self._load_sharpness()          # only acts while the Sharpness tab shows
 
     def _refresh_crop_row(self, item):
         """The FILE panel's crop row: '⌗ Crop <size>', plus a warning when the
@@ -4240,6 +4283,8 @@ class LargeImageView(QDialog):
 
     def closeEvent(self, event):
         self._close_quick_view()
+        if getattr(self, "_sharp_view", None) is not None:
+            self._sharp_view.stop()
         self._save_description()
         self._save_headline()
         # Species named through the inline species panel were buffered, not

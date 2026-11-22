@@ -13,6 +13,11 @@ ONE JOB: measure a picture and remember the measurement. No selection, no Qt.
     differ little are the same pose.
   - `tiles`: the whole tile grid (rows × cols, upright frame), kept so a view
     can draw where the score looked.
+  - `fine`: the same measure on a finer FINE_GRID, at the picture's OWN size
+    (the camera's embedded JPEG: full size on the Nikons, 3200 px on the OM-1)
+    — the pixel level that 1600 px smooths away, where "equally sharp" frames
+    are told apart. Costs no extra decode: the full-size picture is decoded
+    anyway before it is shrunk. `native` = its long edge in pixels.
 
 INVARIANT: a measurement is cached per file path and is only reused while the
 file's size and modification time are unchanged and SCORE_VERSION is the same.
@@ -33,12 +38,26 @@ import numpy as np
 
 logger = logging.getLogger("speciesviewer")
 
-SCORE_VERSION = 3
+SCORE_VERSION = 4
 LONG_EDGE = 1600                # analyse at this size (embedded previews are larger)
 GRID = (16, 12)                 # tiles across × down
+FINE_GRID = (48, 36)            # the pixel-level grid, at the picture's own size
 TOP_SHARE = 0.03                # "the subject" = the sharpest 3 % of tiles (≥ 3)
 
-EMPTY = {"sharp": 0.0, "isolation": 0.0, "clipped": 0.0, "dhash": "0" * 16, "tiles": None}
+EMPTY = {"sharp": 0.0, "isolation": 0.0, "clipped": 0.0, "dhash": "0" * 16, "tiles": None,
+         "fine": None, "native": 0}
+
+
+def _energy_grid(gray, grid):
+    """Mean Laplacian energy per tile (rows × cols) of a grayscale frame, after
+    a light blur so sensor noise does not count as detail."""
+    import cv2
+    f = gray.astype(np.float32) / 255.0
+    lap = cv2.Laplacian(cv2.GaussianBlur(f, (0, 0), 1.0), cv2.CV_32F, ksize=3)
+    energy = lap * lap
+    gx, gy = grid
+    th, tw = energy.shape[0] // gy, energy.shape[1] // gx
+    return energy[:th * gy, :tw * gx].reshape(gy, th, gx, tw).mean(axis=(1, 3))
 
 
 def score_image(jpeg: bytes) -> dict | None:
@@ -48,15 +67,11 @@ def score_image(jpeg: bytes) -> dict | None:
     if img is None:
         return None
     h, w = img.shape
+    fine = np.clip(_energy_grid(img, FINE_GRID) * 1e4, 0, 65000).astype(np.float16)  # own size
     s = LONG_EDGE / max(h, w)
     if s < 1:
         img = cv2.resize(img, (round(w * s), round(h * s)), interpolation=cv2.INTER_AREA)
-    f = img.astype(np.float32) / 255.0
-    lap = cv2.Laplacian(cv2.GaussianBlur(f, (0, 0), 1.0), cv2.CV_32F, ksize=3)
-    energy = lap * lap
-    gx, gy = GRID
-    th, tw = energy.shape[0] // gy, energy.shape[1] // gx
-    grid = energy[:th * gy, :tw * gx].reshape(gy, th, gx, tw).mean(axis=(1, 3))
+    grid = _energy_grid(img, GRID)
     tiles = np.sort(grid.ravel())
     k = max(3, int(len(tiles) * TOP_SHARE))
     top = float(tiles[-k:].mean())
@@ -70,7 +85,35 @@ def score_image(jpeg: bytes) -> dict | None:
     dhash = int("".join("1" if b else "0" for b in bits), 2)
     return {"sharp": top * 1e4, "isolation": top / (med + 1e-9),
             "clipped": clipped, "dhash": f"{dhash:016x}",
-            "tiles": (grid * 1e4).astype(np.float32)}
+            "tiles": (grid * 1e4).astype(np.float32), "fine": fine, "native": max(h, w)}
+
+
+def subject_box(tiles, pad: int = 1):
+    """Where the subject is: the sharpest tile plus `pad` tiles around it, as
+    fractions (x0, y0, x1, y1) of the frame. None without tiles."""
+    if tiles is None:
+        return None
+    rows, cols = tiles.shape
+    r, c = np.unravel_index(int(np.argmax(tiles)), tiles.shape)
+    return (max(0, c - pad) / cols, max(0, r - pad) / rows,
+            min(cols, c + pad + 1) / cols, min(rows, r + pad + 1) / rows)
+
+
+def fine_in(fine, box, top: int = 3) -> float | None:
+    """Pixel-level sharpness inside `box` (fractions): the mean of its `top`
+    sharpest fine tiles. Comparing frames on the SAME box compares the same
+    part of the scene."""
+    if fine is None or box is None:
+        return None
+    rows, cols = fine.shape
+    x0, y0, x1, y1 = box
+    c0, c1 = int(x0 * cols), max(int(x0 * cols) + 1, int(np.ceil(x1 * cols)))
+    r0, r1 = int(y0 * rows), max(int(y0 * rows) + 1, int(np.ceil(y1 * rows)))
+    sub = np.asarray(fine[r0:r1, c0:c1], np.float32).ravel()
+    if sub.size == 0:
+        return None
+    sub.sort()
+    return float(sub[-top:].mean())
 
 
 def hamming(a: str, b: str) -> float:
@@ -118,9 +161,10 @@ class Cache:
         path.parent.mkdir(parents=True, exist_ok=True)
         self.db = sqlite3.connect(str(path), check_same_thread=False)
         self.lock = threading.Lock()     # one connection, many scoring threads
-        self.db.execute("create table if not exists score3 (path text primary key, "
+        self.db.execute("create table if not exists score4 (path text primary key, "
                         "mtime integer, size integer, version integer, sharp real, "
-                        "isolation real, clipped real, dhash text, tiles blob)")
+                        "isolation real, clipped real, dhash text, tiles blob, "
+                        "fine blob, native integer)")
 
     def get(self, p: Path) -> dict | None:
         try:
@@ -129,20 +173,25 @@ class Cache:
             return None
         with self.lock:
             r = self.db.execute("select mtime,size,version,sharp,isolation,clipped,dhash,"
-                                "tiles from score3 where path=?", (str(p),)).fetchone()
+                                "tiles,fine,native from score4 where path=?",
+                                (str(p),)).fetchone()
         if r and r[0] == st.st_mtime_ns and r[1] == st.st_size and r[2] == SCORE_VERSION:
             d = dict(zip(("sharp", "isolation", "clipped", "dhash"), r[3:7]))
             d["tiles"] = np.frombuffer(r[7], np.float32).reshape(GRID[1], GRID[0])
+            d["fine"] = np.frombuffer(r[8], np.float16).reshape(FINE_GRID[1], FINE_GRID[0])
+            d["native"] = r[9]
             return d
         return None
 
     def put(self, p: Path, sc: dict) -> None:
         st = p.stat()
         with self.lock:
-            self.db.execute("insert or replace into score3 values (?,?,?,?,?,?,?,?,?)",
+            self.db.execute("insert or replace into score4 values (?,?,?,?,?,?,?,?,?,?,?)",
                             (str(p), st.st_mtime_ns, st.st_size, SCORE_VERSION,
                              sc["sharp"], sc["isolation"], sc["clipped"], sc["dhash"],
-                             np.ascontiguousarray(sc["tiles"], np.float32).tobytes()))
+                             np.ascontiguousarray(sc["tiles"], np.float32).tobytes(),
+                             np.ascontiguousarray(sc["fine"], np.float16).tobytes(),
+                             int(sc["native"])))
             self.db.commit()
 
     def close(self) -> None:

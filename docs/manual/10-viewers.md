@@ -376,7 +376,7 @@ work the same either way.
 
 Double-click any card. One picture, as big as the window, with a filmstrip.
 
-Its three tabs, the full-resolution view and the crop tool are documented in
+Its four tabs, the full-resolution view and the crop tool are documented in
 detail in [viewer_keybindings.md](../viewer_keybindings.md); in summary:
 
 | Feature | Notes |
@@ -384,6 +384,7 @@ detail in [viewer_keybindings.md](../viewer_keybindings.md); in summary:
 | **Fit** tab | The embedded preview, fitted to the window |
 | **Camera JPEG** tab | The JPEG the camera itself wrote inside the RAW — on the Nikons full size, and it appears instantly. `f` toggles Fit ⇄ this tab, and a double-click on the Fit image lands here. |
 | **100%** tab | Decoded from the RAW at full sensor resolution — the embedded preview is only ~3200×2400. Lazily decoded, then cached. Click the tab to open it; its label shows the configured render scale. |
+| **Sharpness** tab | The picture the way the AI… suggestion sees it. On the whole frame: the **sharpest tiles** the score looked at (cyan), the camera's **AF point** (yellow, OM System only) and the **spot** (orange) — the subject area, shown beside it at **100 %** of the picture's own size (the camera's JPEG: full size on the Nikons, 3200 px on the OM-1). The numbers: subject sharpness at 1600 px, and sharpness *on the spot* at the picture's own size — that second one is how the suggestion tells the frames of one pose apart. Tick **Keep this spot while stepping** and go through a burst with `←`/`→`: every frame is shown and measured on the same spot. With the AI… dialog open the tab also says whether the picture could go. The numbers mean little on their own; compare them between frames. |
 | **✂ Crop** | Rough-cut a crop to hand to PhotoLab / Lightroom as a starting point. Aspect locked to the camera's nominal ratio. Also on master pictures, when the master may be changed on this computer. |
 | **🖼 Make JPG** | A JPG beside the RAW from the camera's preview + the crop. On a **master** picture it is added to the master straight away and becomes the picture's website photo (change that under *Use this JPG on the website*); then you are asked to update the species page. It never replaces a file: when `<name>.jpg` exists, the new one is `<name>-JPG-2.jpg`. |
 | **↻ Rescan** | Master pictures only. After an export from PhotoLab: adds the new JPG (and its `.dop`) to the master, shows it, and offers to update the species page. |

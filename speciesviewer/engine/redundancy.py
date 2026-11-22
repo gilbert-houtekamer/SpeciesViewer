@@ -26,7 +26,7 @@ from dataclasses import dataclass
 from datetime import date, datetime
 from pathlib import Path
 
-from engine.picture_score import hamming
+from engine.picture_score import fine_in, hamming, subject_box
 
 KEEPER, DECIDED, KEEP, PURPLE = "keeper", "decided", "keep", "purple"
 
@@ -141,6 +141,20 @@ def days_of(pics) -> set:
     return {day_of(p) for p in pics if p["time"]}
 
 
+def pose_measure(g) -> None:
+    """p["in_pose"] for every frame of one pose: how sharp it is at the PIXEL
+    level on the SAME spot — the subject area of the pose's sharpest frame —
+    so frames are compared on the same part of the scene, at the picture's own
+    size. Falls back to the 1600 px score when a frame has no fine grid."""
+    lead = max(g, key=lambda p: p["sharp"])
+    box = subject_box(lead.get("tiles"))
+    fine = [fine_in(p.get("fine"), box) for p in g]
+    use = len(g) > 1 and all(v is not None for v in fine)
+    for p, v in zip(g, fine):
+        p["in_pose"] = v if use else p["sharp"]
+        p["pose_box"] = box if use else None
+
+
 def select(pics, s: Settings) -> list[list[dict]]:
     """Set p["verdict"] on every picture; returns the poses."""
     groups = poses(pics, s.gap, s.change)
@@ -152,15 +166,17 @@ def select(pics, s: Settings) -> list[list[dict]]:
     total = 0
     for day_groups in by_day.values():
         kept = 0
-        ranked = [sorted(g, key=lambda p: p["sharp"], reverse=True) for g in day_groups]
-        ranked.sort(key=lambda g: g[0]["sharp"], reverse=True)
+        for g in day_groups:
+            pose_measure(g)
+        ranked = [sorted(g, key=lambda p: p["in_pose"], reverse=True) for g in day_groups]
+        ranked.sort(key=lambda g: max(p["sharp"] for p in g), reverse=True)
         for rnd in range(s.per_pose):
             for g in ranked:
                 if kept >= s.per_day or (s.cap and total >= s.cap) or rnd >= len(g):
                     continue
-                p, best = g[rnd], g[0]["sharp"] or 1e-9
+                p, best = g[rnd], g[0]["in_pose"] or 1e-9
                 already = sum(1 for q in g if q["verdict"] in (KEEPER, KEEP))
-                if p["verdict"] == PURPLE and already < s.per_pose and p["sharp"] >= s.soft * best:
+                if p["verdict"] == PURPLE and already < s.per_pose and p["in_pose"] >= s.soft * best:
                     p["verdict"] = KEEP
                     kept += 1
                     total += 1

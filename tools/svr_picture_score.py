@@ -172,64 +172,13 @@ def score_all(pics, cache: Cache, views: Path | None = None):
 
 # ── where the camera focused (OM System / Olympus) ───────────────────────────
 
-_BOX = re.compile(r"\((\d+),(\d+)\)-\((\d+),(\d+)\)")
-_PCT = re.compile(r"\((\d+)%,(\d+)%\)")
-
-
-def _upright(box, orientation):
-    """AF coordinates are on the sensor (landscape); the preview is turned upright."""
-    x0, y0, x1, y1 = box
-    if orientation == 6:                     # turned 90 degrees clockwise to view
-        return (1 - y1, x0, 1 - y0, x1)
-    if orientation == 8:                     # turned 270 degrees clockwise
-        return (y0, 1 - x1, y1, 1 - x0)
-    if orientation == 3:
-        return (1 - x1, 1 - y1, 1 - x0, 1 - y0)
-    return box
-
-
 def read_af(pics):
-    """Add p["af_box"] (fractions of the upright frame) and p["af_found"] (the
-    camera's subject detection found something) from ONE batched exiftool read.
-    Only OM System / Olympus ORFs record a usable box; others get None."""
-    import json
-    from engine.exif_writer import run_exiftool_files_parallel
+    """p["af_box"] (fractions of the upright frame) and p["af_found"] — the
+    camera's AF point, from ONE batched exiftool read (engine.af_point)."""
+    from engine import af_point
+    found = af_point.read([p["src"] for p in pics])
     for p in pics:
-        p["af_box"], p["af_found"] = None, None
-    raws = [p for p in pics if p["src"].suffix.lower() == ".orf"]
-    if not raws:
-        return
-    by = {os.path.normcase(os.path.normpath(str(p["src"]))): p for p in raws}
-    res = run_exiftool_files_parallel(
-        ["-j", "-AFAreas", "-AFPointSelected", "-AISubjectTrackingMode", "-Orientation#"],
-        [p["src"] for p in raws])
-    for cp in res:
-        try:
-            rows = json.loads(cp.stdout or "[]")
-        except ValueError:
-            continue
-        for r in rows:
-            p = by.get(os.path.normcase(os.path.normpath(r.get("SourceFile", ""))))
-            if p is None:
-                continue
-            # AFPointSelected is where the camera actually focused — it MOVES with
-            # the tracked subject. AFAreas is only the target frame you set (on the
-            # OM-1 the same centre box in every frame), so it is the fallback.
-            box = None
-            m = _PCT.search(str(r.get("AFPointSelected", "")))
-            if m:
-                x, y = int(m.group(1)) / 100, int(m.group(2)) / 100
-                box = (x - 0.02, y - 0.02, x + 0.02, y + 0.02)
-            else:
-                boxes = [tuple(int(v) / 255 for v in b)
-                         for b in _BOX.findall(str(r.get("AFAreas", "")))]
-                if boxes:
-                    box = (min(b[0] for b in boxes), min(b[1] for b in boxes),
-                           max(b[2] for b in boxes), max(b[3] for b in boxes))
-            if box:
-                p["af_box"] = _upright(box, int(r.get("Orientation") or 1))
-            track = str(r.get("AISubjectTrackingMode", ""))
-            p["af_found"] = ("Object Found" in track) if track else None
+        p["af_box"], p["af_found"] = af_point.lookup(found, p["src"])
 
 
 AF_PAD = 0.08                   # the AF score looks this far around the AF box
