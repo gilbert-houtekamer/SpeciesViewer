@@ -3722,6 +3722,7 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
         self._suggestion_sci = sci
         for key, card in self._bound.items():
             card.set_suggestion(self._suggestion_for(key), key in self._suggestion_yours)
+        self._editor_follow_suggestion()
         in_view = set(self._order)
         return sum(1 for k, v in self._suggestion.items() if v == "purple" and k not in in_view)
 
@@ -3730,6 +3731,16 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
         self._suggestion_yours = set()
         for card in self._bound.values():
             card.set_suggestion(None)
+        self._editor_follow_suggestion()
+
+    def _editor_follow_suggestion(self) -> None:
+        """An open Editor shows the same frames (filmstrip + Sharpness tab)."""
+        lv = getattr(self, "_large_view", None)
+        if lv is not None and hasattr(lv, "refresh_ai"):
+            try:
+                lv.refresh_ai()
+            except RuntimeError:          # the Editor was closed
+                self._large_view = None
 
     def _suggest_live(self):
         """The open AI… dialog when it is about the species in view, else None."""

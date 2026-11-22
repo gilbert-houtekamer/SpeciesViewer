@@ -264,3 +264,9 @@ program; you will not need them. They are described in
 
 Closes the application. Window geometry and the active selections are persisted,
 so you come back to where you were.
+
+Quit closes without asking. The **✕ of the main window asks first** — *Close
+SpeciesViewer?*, with *Keep it open* as the default — because Windows' taskbar
+*Close all windows* sends every SpeciesViewer window the same request as its ✕.
+So closing everything from the taskbar closes the viewers and editors, and
+SpeciesViewer stays, with the main window in front.

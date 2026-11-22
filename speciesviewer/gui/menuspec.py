@@ -1824,7 +1824,7 @@ def build_menu_spec(main_window):
             **({"Developer Tools": developer_tools_menu} if debug_enabled() else {}),
             f"{MenuSpec.separator()}_file": None,
             "Quit": MenuSpec(
-                callback=main_window.close,
+                callback=getattr(main_window, "quit_app", main_window.close),
                 shortcut="Ctrl+Q"
             ),
         },

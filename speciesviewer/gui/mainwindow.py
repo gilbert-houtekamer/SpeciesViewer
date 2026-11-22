@@ -552,7 +552,41 @@ class MainWindow(QMainWindow):
             return
         populate_trip_overview(self)
 
+    def quit_app(self):
+        """File ▸ Quit (Ctrl+Q): you asked for it by name, so no question."""
+        self._quit_confirmed = True
+        self.close()
+
+    def _confirm_close(self) -> bool:
+        """The ✕ of the main window asks first (backlog 1.27). Windows' taskbar
+        "Close all windows" sends every SpeciesViewer window the same request as
+        its ✕ and the two cannot be told apart — so it ends at this question, and
+        SpeciesViewer stays, with the main window in front."""
+        if getattr(self, "_quit_confirmed", False):
+            return True
+        from PyQt6.QtWidgets import QMessageBox
+        if self.isMinimized():
+            self.showNormal()
+        self.raise_()
+        self.activateWindow()
+        box = QMessageBox(self)
+        box.setIcon(QMessageBox.Icon.Question)
+        box.setWindowTitle(f"Close {APP_NAME}")
+        box.setText(f"Close {APP_NAME}?")
+        box.setInformativeText("File ▸ Quit (Ctrl+Q) closes it without asking.")
+        close_btn = box.addButton("Close", QMessageBox.ButtonRole.AcceptRole)
+        keep_btn = box.addButton("Keep it open", QMessageBox.ButtonRole.RejectRole)
+        box.setDefaultButton(keep_btn)
+        box.exec()
+        if box.clickedButton() is close_btn:
+            self._quit_confirmed = True
+            return True
+        return False
+
     def closeEvent(self, event):
+        if not self._confirm_close():
+            event.ignore()
+            return
         # Shutdown below can take a moment (flushing any open culling grids,
         # stopping the persistent exiftool writer) with nothing on screen to
         # say so — same problem, and same fix, as the slow dialogs: show a

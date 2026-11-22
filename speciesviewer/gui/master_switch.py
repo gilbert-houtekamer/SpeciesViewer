@@ -29,7 +29,8 @@ def restart_into(main_window, name: str) -> None:
     started, with SV_MASTER set to the new master (this process's own
     SV_MASTER names the OLD one and would otherwise be inherited)."""
     masters.set_active(name)
-    main_window.close()
+    # Already confirmed by choosing the master: no "Close SpeciesViewer?" here.
+    getattr(main_window, "quit_app", main_window.close)()
     from utils.single_instance import ENV_RESTARTING
     _start_detached({**os.environ, masters.ENV_VAR: name, ENV_RESTARTING: "1"})
 

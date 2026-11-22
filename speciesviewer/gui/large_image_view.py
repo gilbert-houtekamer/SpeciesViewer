@@ -519,6 +519,10 @@ class _StripItem(QWidget):
         self._selected = yes
         self._repaint_border()
 
+    def set_suggestion(self, state, yours: bool = False):
+        """The AI… suggestion over the thumbnail, as on the grid's cards."""
+        self._thumb_lbl.set_suggestion(state or None, yours)
+
     def request_load(self):
         """Ask the provider for the thumbnail (idempotent — fires only once)."""
         if self._requested:
@@ -575,6 +579,8 @@ class FilmstripWidget(QWidget):
         self._current_key: str | None = None
         self._orientation = orientation
         self._viewer_key = viewer_key
+        # key -> (AI… verdict, yours) — set by the Editor; None = no suggestion
+        self.verdict_for = None
         _vert = (orientation == Qt.Orientation.Vertical)
 
         if _vert:
@@ -668,6 +674,8 @@ class FilmstripWidget(QWidget):
         self._strip.layout().replaceWidget(cell, real)
         cell.deleteLater()
         self._cells[key] = real
+        if self.verdict_for is not None:
+            real.set_suggestion(*self.verdict_for(key))
         if key == self._current_key:
             real.set_current(True)
         if key in self._selected_keys:
@@ -742,6 +750,14 @@ class FilmstripWidget(QWidget):
             bar.setValue(lo)
         elif hi > bar.value() + view:
             bar.setValue(hi - view)
+
+    def apply_verdicts(self):
+        """Repaint the AI… frame on every cell that is built (the others get it
+        when they are)."""
+        for key, cell in self._cells.items():
+            if isinstance(cell, _StripItem):
+                cell.set_suggestion(*(self.verdict_for(key) if self.verdict_for
+                                      else ("", False)))
 
     def refresh_item(self, key: str, reload_image: bool = False):
         """Repaint a cell's stars + colour border after an edit; reload_image=True
@@ -1546,6 +1562,9 @@ class LargeImageView(QDialog):
         self._filmstrip_bottom.setMinimumHeight(_ITEM_H + 22)
         self._filmstrip_bottom.item_clicked.connect(self._on_filmstrip_click)
         self._filmstrip_bottom.item_right_clicked.connect(self._on_filmstrip_context)
+        # The AI… suggestion on the strip cells too (when that dialog is open).
+        for _fs in (self._filmstrip_left, self._filmstrip_bottom):
+            _fs.verdict_for = self._ai_verdict
 
         # Content wrapper: image+panel splitter + sep
         # (top pane of _v_splitter in both modes)
@@ -1748,16 +1767,49 @@ class LargeImageView(QDialog):
                 src = None
             if src:
                 break
-        # The AI… verdict for this picture, when the Species Viewer that opened
-        # us has that dialog open (a view only).
-        verdict = ""
-        sugg = getattr(self.parent(), "_suggestion_for", None)
-        if callable(sugg):
-            try:
-                verdict = sugg(key) or ""
-            except Exception:
-                verdict = ""
-        self._sharp_view.set_picture(src, verdict)
+        self._sharp_view.set_picture(src, *self._ai_verdict(key))
+
+    def _ai_host(self):
+        """The Species Viewer that opened us, when its AI… dialog is open on the
+        species in view — else None."""
+        host = self.parent()
+        live = getattr(host, "_suggest_live", None)
+        try:
+            return host if callable(live) and live() is not None else None
+        except RuntimeError:
+            return None
+
+    def _ai_verdict(self, key) -> tuple[str, bool]:
+        """(the AI… verdict for `key`, decided by you?) — ("", False) without one."""
+        host = self._ai_host()
+        if host is None:
+            return "", False
+        try:
+            return (host._suggestion_for(key) or "",
+                    key in getattr(host, "_suggestion_yours", ()))
+        except Exception:
+            return "", False
+
+    def refresh_ai(self):
+        """The AI… suggestion changed (a setting, k / b, the dialog closed):
+        repaint the filmstrips' frames and the Sharpness tab's."""
+        for fs in (self._filmstrip_left, self._filmstrip_bottom):
+            fs.verdict_for = self._ai_verdict
+            fs.apply_verdicts()
+        if self._keys:
+            self._sharp_view.set_verdict(*self._ai_verdict(self._keys[self._index]))
+
+    def _ai_override(self, want) -> bool:
+        """k / b in the Editor: keep or bin the picture on screen, whatever the
+        AI… suggestion says (again = back to the suggestion). The grid's cards
+        and the dialog follow; the Sharpness tab redraws its frame."""
+        host = self._ai_host()
+        if host is None or not self._keys:
+            return False
+        key = self._keys[self._index]
+        host._suggest_override({key}, want)
+        self._sharp_view.set_verdict(*self._ai_verdict(key))
+        return True
 
     def _no_raw_message(self) -> str:
         """What the zoom tabs say when there is no RAW behind the picture. A movie
@@ -2651,6 +2703,12 @@ class LargeImageView(QDialog):
             return
         k = event.key()
         desc_focused = self._desc_edit.hasFocus()
+        if (k in (Qt.Key.Key_K, Qt.Key.Key_B) and not event.modifiers()
+                and not text_input_focused()):
+            from engine.redundancy import KEEP, PURPLE
+            if self._ai_override(KEEP if k == Qt.Key.Key_K else PURPLE):
+                event.accept()
+                return
         if k == Qt.Key.Key_F and not desc_focused:
             # Toggle Fit ⇄ Camera JPEG (the quick zoom the double-click also uses).
             self._view_tabs.setCurrentIndex(

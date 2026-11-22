@@ -78,10 +78,15 @@ class _Load(QThread):
 
 
 class _Frame(QWidget):
-    """The whole picture, fitted, with the boxes drawn over it."""
+    """The whole picture, fitted, with the boxes drawn over it. A click puts
+    the spot where you clicked (fractions of the picture)."""
+    clicked = pyqtSignal(float, float)
 
     def __init__(self):
         super().__init__()
+        self.setCursor(Qt.CursorShape.CrossCursor)
+        self.setToolTip("Click the bird to see that spot at 100 %")
+        self._shown = None           # (x0, y0, w, h) of the picture on screen
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self.setMinimumSize(200, 150)
         self.image: QImage | None = None
@@ -90,6 +95,8 @@ class _Frame(QWidget):
         self.spot = None             # (x0, y0, x1, y1)
         self.show_tiles = True
         self.show_af = True
+        self.verdict = ""            # the AI… suggestion: "purple" | "keep" | ""
+        self.yours = False           # you decided it (k / b): drawn dashed
 
     def paintEvent(self, _e):
         p = QPainter(self)
@@ -100,6 +107,7 @@ class _Frame(QWidget):
         s = min(self.width() / iw, self.height() / ih)
         w, h = iw * s, ih * s
         x0, y0 = (self.width() - w) / 2, (self.height() - h) / 2
+        self._shown = (x0, y0, w, h)
         p.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
         p.drawImage(QRectF(x0, y0, w, h), self.image)
 
@@ -119,7 +127,32 @@ class _Frame(QWidget):
             box(self.spot, "#ff6d00", 2.5)
         if self.show_af and self.af:
             box(self.af, "#ffeb3b", 2.5)
+        # The AI… verdict as on the grid's cards: a purple frame with a bin on a
+        # picture that could go, a green frame on one that is kept; dashed = yours.
+        if self.verdict in ("purple", "keep"):
+            colour = "#9370DB" if self.verdict == "purple" else "#4caf50"
+            pen = QPen(QColor(colour), 6)
+            if self.yours:
+                pen.setStyle(Qt.PenStyle.DashLine)
+            p.setPen(pen)
+            p.drawRect(QRectF(x0 + 3, y0 + 3, w - 6, h - 6))
+            if self.verdict == "purple":
+                font = p.font()
+                font.setPixelSize(30)
+                p.setFont(font)
+                p.setPen(QColor("#e8dcff"))
+                p.drawText(QRectF(x0, y0 + h - 48, w, 42),
+                           int(Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignBottom), "🗑")
         p.end()
+
+
+    def mousePressEvent(self, e):
+        if e.button() != Qt.MouseButton.LeftButton or not self._shown:
+            return super().mousePressEvent(e)
+        x0, y0, w, h = self._shown
+        fx, fy = (e.position().x() - x0) / w, (e.position().y() - y0) / h
+        if 0 <= fx <= 1 and 0 <= fy <= 1:
+            self.clicked.emit(fx, fy)
 
 
 class SharpnessView(QWidget):
@@ -129,11 +162,14 @@ class SharpnessView(QWidget):
         self._threads: list[_Load] = []
         self._result = None
         self._suggestion = ""
+        self._yours = False
         self._held_spot = None       # (cx, cy) fractions, while "Keep this spot" is on
 
         lay = QHBoxLayout(self)
         lay.setContentsMargins(4, 4, 4, 4)
         self._frame = _Frame()
+        self._frame.clicked.connect(self._on_frame_clicked)
+        self._clicked_spot = None    # (cx, cy): where you clicked, for this picture
         lay.addWidget(self._frame, 3)
 
         side = QVBoxLayout()
@@ -178,10 +214,20 @@ class SharpnessView(QWidget):
 
     # ── loading ─────────────────────────────────────────────────────────────
 
-    def set_picture(self, src: Path | None, suggestion: str = "") -> None:
+    def set_verdict(self, suggestion: str = "", yours: bool = False) -> None:
+        """The AI… verdict for the picture on screen — redrawn, not re-measured."""
+        self._suggestion, self._yours = suggestion or "", bool(yours)
+        self._frame.verdict, self._frame.yours = self._suggestion, self._yours
+        self._frame.update()
+        if self._result:
+            self._render()
+
+    def set_picture(self, src: Path | None, suggestion: str = "", yours: bool = False) -> None:
         """Show `src` (a RAW, HEIC or JPG). `suggestion`: the AI… verdict, if any."""
         self._gen += 1
-        self._suggestion = suggestion or ""
+        self._clicked_spot = None    # a new picture: the spot follows it again
+        self._suggestion, self._yours = suggestion or "", bool(yours)
+        self._frame.verdict, self._frame.yours = self._suggestion, self._yours
         self._result = None
         self._frame.image = None
         self._frame.update()
@@ -229,7 +275,9 @@ class SharpnessView(QWidget):
 
         # The spot: where you held it, else the subject area of this picture.
         box = subject_box(tiles)
-        if self._keep.isChecked() and self._held_spot is not None:
+        if self._clicked_spot is not None:
+            cx, cy = self._clicked_spot
+        elif self._keep.isChecked() and self._held_spot is not None:
             cx, cy = self._held_spot
         elif box is not None:
             cx, cy = (box[0] + box[2]) / 2, (box[1] + box[3]) / 2
@@ -253,15 +301,29 @@ class SharpnessView(QWidget):
         af_txt = ("no AF point recorded" if af_box is None else
                   "AF: the camera found a subject" if found else
                   "AF: no subject found" if found is False else "AF point")
-        verdict = {"purple": "<b style='color:#b39ddb'>AI…: could go</b> · ",
-                   "keep": "<b style='color:#81c784'>AI…: kept</b> · "}.get(self._suggestion, "")
+        mine = " (your choice)" if self._yours else ""
+        verdict = {"purple": f"<b style='color:#b39ddb'>AI…: could go{mine}</b> · ",
+                   "keep": f"<b style='color:#81c784'>AI…: kept{mine}</b> · "
+                   }.get(self._suggestion, "")
         text = f"{verdict}Subject sharpness <b>{sc.get('sharp', 0):.0f}</b> (at 1600 px)"
         if fine is not None:
-            text += (f" · on the spot <b>{fine:.0f}</b> at the picture's own size "
+            where = ("your spot" if self._clicked_spot is not None
+                     else "the held spot" if self._keep.isChecked() and self._held_spot
+                     else "the spot")
+            text += (f" · on {where} <b>{fine:.0f}</b> at the picture's own size "
                      f"({iw}×{ih})")
         text += (f"<br>{af_txt}. Compare the numbers between frames of one burst with "
                  "“Keep this spot” on; on their own they mean little.")
         self._info.setText(text)
+
+    def _on_frame_clicked(self, fx: float, fy: float):
+        """You point at the bird: the 100 % block and its number go there. With
+        "Keep this spot" on, the next frames are shown on this spot too."""
+        self._clicked_spot = (fx, fy)
+        if self._keep.isChecked():
+            self._held_spot = (fx, fy)
+        if self._result:
+            self._render()
 
     def _on_keep_toggled(self, on: bool):
         if on and self._frame.spot:

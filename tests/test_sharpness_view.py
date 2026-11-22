@@ -42,3 +42,66 @@ def test_view_measures_and_holds_the_spot(tmp_path):
     v.set_picture(None)
     assert "No picture" in v._info.text()
     v.stop()
+
+
+def test_verdict_frame_follows_your_choice(tmp_path):
+    from PyQt6.QtWidgets import QApplication
+    app = QApplication.instance() or QApplication([])
+    from gui.sharpness_view import SharpnessView
+    img = np.full((600, 900), 120, np.uint8)
+    img[200:400, 300:500] = np.random.default_rng(1).integers(0, 255, (200, 200), dtype=np.uint8)
+    p = tmp_path / "N.jpg"
+    cv2.imwrite(str(p), img)
+    v = SharpnessView()
+    v.set_picture(p, "keep")
+    _wait(app, v)
+    assert v._frame.verdict == "keep" and not v._frame.yours
+    v.set_verdict("purple", True)                  # b in the Editor
+    assert (v._frame.verdict, v._frame.yours) == ("purple", True)
+    assert "could go (your choice)" in v._info.text()
+    v.set_verdict("", False)                       # the AI… dialog closed
+    assert "AI…" not in v._info.text()
+    v.stop()
+
+
+def test_click_puts_the_spot_on_the_bird(tmp_path):
+    from PyQt6.QtWidgets import QApplication
+    app = QApplication.instance() or QApplication([])
+    from gui.sharpness_view import SharpnessView
+    img = np.full((1600, 2400), 120, np.uint8)
+    rng = np.random.default_rng(4)
+    img[200:500, 200:500] = rng.integers(0, 255, (300, 300), dtype=np.uint8)   # twigs
+    p = tmp_path / "N.jpg"
+    cv2.imwrite(str(p), img)
+    v = SharpnessView()
+    v.resize(1200, 600)
+    v.show()
+    v.set_picture(p)
+    _wait(app, v)
+    auto = v._frame.spot
+    v._on_frame_clicked(0.75, 0.75)            # the bird, where the score did not look
+    s = v._frame.spot
+    assert s != auto and s[0] < 0.75 < s[2] and s[1] < 0.75 < s[3]
+    assert "your spot" in v._info.text()
+    v.set_picture(p)                           # next picture: follows the subject again
+    _wait(app, v)
+    assert v._frame.spot == auto
+    v.stop()
+
+
+def test_strip_cell_shows_the_frame():
+    from PyQt6.QtWidgets import QApplication
+    app = QApplication.instance() or QApplication([])  # noqa: F841
+    from gui.large_image_view import _StripItem
+
+    class _Item:
+        key, display_name, color, is_video = "k1", "k1", "", False
+
+        def request_thumbnail(self, w, cb):
+            pass
+
+    cell = _StripItem(_Item())
+    cell.set_suggestion("purple", True)
+    assert cell._thumb_lbl._veil.isVisibleTo(cell._thumb_lbl)
+    cell.set_suggestion("", False)
+    assert not cell._thumb_lbl._veil.isVisibleTo(cell._thumb_lbl)
