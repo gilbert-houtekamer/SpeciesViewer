@@ -13,6 +13,9 @@ to app-data reports/.
 Runs in the separate experiment environment:
   %LOCALAPPDATA%\\SpeciesViewer\\ml\\Scripts\\python.exe tools/ml/svr_bioclip_trip.py
   ... --country "The Gambia" --region GM --limit 100
+  ... --folder "D:/CurrentPictures/2026/2026 winter/2026-11-23" --region NL
+      (a day not yet in the master: BioCLIP's suggestions per pose, and your
+       names next to them when the pictures already have one in a keyword)
 """
 from __future__ import annotations
 
@@ -95,43 +98,119 @@ def crop(src: Path, box):
     return im
 
 
+def folder_pictures(folder: Path):
+    """Picture dicts (as engine.redundancy.from_master_rows makes them) for the
+    pictures in `folder` and below: the RAW/HEIC of each name, else its JPG;
+    the time from ExifTool, in one run."""
+    import subprocess
+    from datetime import datetime as dt
+    from utils.exiftool_path import exe
+    from utils.raw_extensions import is_jpeg, is_raw_or_heic
+    best = {}
+    for f in sorted(folder.rglob("*")):
+        if not f.is_file():
+            continue
+        k = (f.parent, f.stem.lower())
+        if is_raw_or_heic(f) or (is_jpeg(f) and k not in best):
+            best[k] = f
+    files = sorted(best.values())
+    times = {}
+    if files:
+        import tempfile
+        arg = Path(tempfile.gettempdir()) / "sv_bioclip_args.txt"   # never in the picture folder
+        try:
+            arg.write_text("\n".join(str(f) for f in files), encoding="utf-8")
+            out = subprocess.run([exe(), "-j", "-charset", "filename=utf8",
+                                  "-DateTimeOriginal", "-@", str(arg)],
+                                 capture_output=True, timeout=600).stdout
+        finally:
+            arg.unlink(missing_ok=True)
+        for d in json.loads(out.decode("utf-8") or "[]"):
+            try:
+                times[Path(d["SourceFile"]).name] = dt.strptime(
+                    str(d.get("DateTimeOriginal"))[:19], "%Y:%m:%d %H:%M:%S")
+            except (KeyError, ValueError):
+                pass
+    pics = [{"upn": f.stem, "src": f, "time": times.get(f.name), "label": "",
+             "stars": 0, "jpg": False, "place": None, "bytes": f.stat().st_size}
+            for f in files]
+    pics.sort(key=lambda p: (p["time"] or datetime.min, p["upn"]))
+    return pics
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--country", default="The Gambia")
     ap.add_argument("--region", default="GM", help="eBird region code")
     ap.add_argument("--limit", type=int, default=0, help="only the first N poses")
+    ap.add_argument("--folder", help="pictures in a folder instead of the master")
     a = ap.parse_args(argv)
     try:
         sys.stdout.reconfigure(errors="replace")
     except AttributeError:
         pass
     t0 = time.time()
+    det = None
+    if a.folder:
+        # New pictures have no animal box yet: MegaDetector first. Its YOLOv5 code
+        # has a top-level `utils` that SpeciesViewer's would shadow — load it
+        # before SpeciesViewer's code is on the path (as svr_bird_box.py does).
+        from megadetector.detection.run_detector import load_detector
+        det = load_detector("MDV5A")
+        for m in [m for m in sys.modules if m == "utils" or m.startswith("utils.")]:
+            del sys.modules[m]
     from bioclip import Rank, TreeOfLifeClassifier
     import torch
     sys.path.insert(0, SV)
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
     from db.master_db import MasterDB
     from engine import redundancy as rd
     from engine.picture_score import Cache, score_pictures
     from utils.cache_paths import app_data_dir
     from utils.config import _config
 
-    root = _config.get("master", "masterbiotadatabase", fallback="").strip().strip('"')
-    db = MasterDB(root)
-    db.ensure_fresh()
-    rows = [r for day in db.pictures_in_daterange("0001-01-01", "9999-12-31").values()
-            for r in day if (r.get("Country") or "").strip() == a.country]
-    names = {r["UniquePictureName"]: ((r.get("WetSoortNaam") or "").strip(),
-                                      (r.get("EngSoortNaam") or "").strip(),
-                                      (r.get("NLSoortNaam") or "").strip()) for r in rows}
-    db.close()
-    pics = rd.from_master_rows(rows, root)
+    if a.folder:
+        pics = folder_pictures(Path(a.folder))
+        names = {}
+        where = Path(a.folder).name
+    else:
+        root = _config.get("master", "masterbiotadatabase", fallback="").strip().strip('"')
+        db = MasterDB(root)
+        db.ensure_fresh()
+        rows = [r for day in db.pictures_in_daterange("0001-01-01", "9999-12-31").values()
+                for r in day if (r.get("Country") or "").strip() == a.country]
+        names = {r["UniquePictureName"]: ((r.get("WetSoortNaam") or "").strip(),
+                                          (r.get("EngSoortNaam") or "").strip(),
+                                          (r.get("NLSoortNaam") or "").strip()) for r in rows}
+        db.close()
+        pics = rd.from_master_rows(rows, root)
+        where = a.country
+    a.country = where
     cache = Cache()
-    print(f"{len(pics)} pictures from {a.country}; measuring what is new…", flush=True)
+    print(f"{len(pics)} pictures from {where}; measuring what is new…", flush=True)
     score_pictures(pics, cache)
     cache.close()
     groups = rd.poses(pics, rd.Settings().gap, rd.Settings().change)
     if a.limit:
         groups = groups[:a.limit]
+    if det is not None:
+        import svr_bird_box as bb
+        bcache = bb.BoxCache(bb.cache_path())
+        todo = [p["src"] for p in pics if not bcache.has(p["src"])]
+        print(f"Finding the animal in {len(todo)} pictures…", flush=True)
+        for src in todo:
+            im = bb.upright_image(src)
+            found = []
+            if im is not None:
+                res = det.generate_detections_one_image(im, str(src), detection_threshold=0.1)
+                for d in res.get("detections") or []:
+                    x, y, w, h = d["bbox"]
+                    found.append({"cat": {"1": "animal", "2": "person", "3": "vehicle"}
+                                  .get(str(d["category"]), str(d["category"])),
+                                  "conf": round(float(d["conf"]), 3),
+                                  "box": [round(x, 4), round(y, 4),
+                                          round(x + w, 4), round(y + h, 4)]})
+            bcache.put(src, found)
     boxes = load_boxes()
     print(f"{len(groups)} poses ({time.time() - t0:.0f} s)", flush=True)
 
@@ -140,7 +219,7 @@ def main(argv=None) -> int:
     poses, images = [], []
     for i, g in enumerate(groups):
         rep = max(g, key=lambda p: p.get("sharp") or 0)
-        mine = Counter(names[p["upn"]] for p in g).most_common(1)[0][0]
+        mine = Counter(names.get(p["upn"], ("", "", "")) for p in g).most_common(1)[0][0]
         box = animal_box(boxes.get(str(rep["src"])))
         im = crop(rep["src"], box)
         if im is None:
@@ -245,10 +324,10 @@ def main(argv=None) -> int:
     for k, p in enumerate(poses):
         sci, en, nl = p["mine"]
         o1 = open_res[k][0][0].lower() if open_res[k] else ""
-        cls = "ok" if o1 == sci.lower() else "miss"
+        cls = "ok" if (o1 == sci.lower() or not sci) else "miss"
         rows_html.append(
             f"<tr class={cls}><td><img src='img/{p['i']:05d}.jpg'></td>"
-            f"<td><b>{html.escape(nl or en)}</b><br><i>{html.escape(sci)}</i><br>"
+            f"<td><b>{html.escape(nl or en or '—')}</b><br><i>{html.escape(sci)}</i><br>"
             f"<small>{html.escape(p['upn'])} · {p['frames']} frames"
             f"{'' if p['boxed'] else ' · no box'}</small></td>"
             + cell(open_res[k], sci) + (cell(list_res[k], sci) if list_res else "")
