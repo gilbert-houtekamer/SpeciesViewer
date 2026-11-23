@@ -3742,6 +3742,39 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
             except RuntimeError:          # the Editor was closed
                 self._large_view = None
 
+    def can_write_master(self) -> bool:
+        col = self._collection
+        return col is not None and not getattr(col, "master_read_only", True)
+
+    def apply_colors(self, by_upn: dict, title: str = "") -> tuple[set, set]:
+        """Write a colour per picture ({UniquePictureName: colour, "" = none})
+        through the viewer's own write path (XMP, PhotoLab .dop, the master
+        lists), then CHECK each one took it. Returns (done, failed) UPN sets."""
+        from PyQt6.QtWidgets import QProgressDialog
+        col = self._collection
+        keys = col.keys_by_upn() if col is not None else {}
+        done, failed = set(), set()
+        prog = QProgressDialog(title or "Writing colours", "", 0, len(by_upn), self)
+        prog.setCancelButton(None)
+        prog.setMinimumDuration(400)
+        for i, (upn, colour) in enumerate(by_upn.items(), 1):
+            key = keys.get(upn.lower())
+            try:
+                if key is None or col.apply(key, new_color=colour) is None:
+                    raise ValueError("not written")
+                if (col._upn_row(key).get("Label") or "") != (colour or ""):
+                    raise ValueError("the colour did not land")
+                done.add(upn)
+            except Exception as e:
+                logger.warning(f"AI… colour {colour!r} on {upn}: {e}")
+                failed.add(upn)
+            prog.setValue(i)
+            QApplication.processEvents()
+        prog.close()
+        self._sync_all_cards()
+        self._relayout(force=True)
+        return done, failed
+
     def _suggest_live(self):
         """The open AI… dialog when it is about the species in view, else None."""
         dlg = getattr(self, "_suggest_dlg", None)

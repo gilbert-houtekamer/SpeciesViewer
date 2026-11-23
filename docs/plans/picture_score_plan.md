@@ -11,7 +11,11 @@ size, stored with the score (SCORE_VERSION 4); within a pose the frames are rank
 spot (the subject area of the pose's sharpest frame, `redundancy.pose_measure`). AF reading moved
 to `engine/af_point.py`; since 2026-11-22 also the Nikon point (D7100/D7500/D500: named grid
 point placed with a grid measured from ~1600 master pictures, centre pinned to the frame
-centre — an estimate; D90 left out). Awaiting GH's test. Next: "Mark the bins Purple" (+ undo). Nothing is marked or deleted
+centre — an estimate; D90 left out). Committed (b4eac12, 7a8528e, 5e43209). 2026-11-23 built, awaiting GH's test: Sharpness = first
+and default Editor tab; per day 1 → 12, 2 → 9 … 32+ → 4; stars protect only ABOVE the day's
+usual (`star_floor`: 2 of 3 of the master's pictures that day share one count ≥ 1★ — Brazil
+2026); step 3 "Mark the bins Purple…" + "Undo the last marking" (`engine/purple_marks.py`,
+recorded before writing, checked after, undo only where still Purple). Nothing is marked or deleted
 before step 3, and step 3 only ever sets Purple on candidates, with an exact undo.
 
 ## Problem

@@ -16,8 +16,8 @@ def _pic(i, *, t, sharp, label="", stars=0, jpg=False, dhash="0" * 16, place="Me
 
 
 def test_per_day_rule():
-    assert [rd.per_day_for(d) for d in (1, 4, 9, 25, 67)] == [20, 12, 8, 5, 3]
-    assert rd.per_day_for(0) == 20 and rd.per_day_for(10_000) == 3
+    assert [rd.per_day_for(d) for d in (1, 2, 4, 8, 16, 32, 67)] == [12, 9, 8, 6, 5, 4, 4]
+    assert rd.per_day_for(0) == 12 and rd.per_day_for(10_000) == 4
 
 
 def test_keepers_and_decided_are_never_suggested():
@@ -110,3 +110,30 @@ def test_score_keeps_a_fine_grid_at_its_own_size():
     box = subject_box(sc["tiles"])
     assert box[0] <= 900 / 1800 <= box[2] and box[1] <= 600 / 1200 <= box[3]
     assert fine_in(sc["fine"], box) > 10 * fine_in(sc["fine"], (0, 0, 0.2, 0.2))
+
+
+def test_stars_protect_only_above_the_days_usual():
+    assert rd.star_floor({1: 230, 2: 23, 3: 2}) == 1          # Brazil 2026: 1★ everywhere
+    assert rd.star_floor({0: 50, 1: 20}) == 0                 # a normal day
+    assert rd.star_floor({1: 5, 0: 5}) == 0                   # no clear majority
+    t0 = datetime(2026, 9, 6, 9, 0, 0)
+    one = _pic(0, t=t0, sharp=1, stars=1)
+    two = _pic(1, t=t0, sharp=1, stars=2)
+    rd.set_floors([one, two], {t0.date(): 1})
+    assert rd.is_candidate(one) and rd.is_keeper(two)
+    assert rd.statistics([one, two])["floor_days"] == 1
+
+
+def test_purple_marks_record_and_undo(tmp_path):
+    from engine import purple_marks as pm
+    f = tmp_path / "marks.json"
+    bid = pm.start("E:/naturedb", "passer simplex", {"a": "Green", "b": ""}, path=f)
+    pm.confirm(bid, {"a"}, path=f)                            # b did not take the colour
+    last = pm.last("E:/naturedb", "passer simplex", path=f)
+    assert last["before"] == {"a": "Green"}
+    assert pm.last("E:/naturedb", "other", path=f) is None
+    pm.forget(bid, path=f)
+    assert pm.last("E:/naturedb", "passer simplex", path=f) is None
+    bid = pm.start("E:/naturedb", "x", {"a": ""}, path=f)
+    pm.confirm(bid, set(), path=f)                            # nothing took: no marking
+    assert pm.last("E:/naturedb", "x", path=f) is None

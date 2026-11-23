@@ -82,7 +82,9 @@ def load_species(master: Path, sci: str) -> list[dict]:
     from db.master_db import MasterDB
     db = MasterDB(master)
     db.ensure_fresh()
-    return rd.from_master_rows(db.pictures_for_species_and_subspecies(sci), master)
+    pics = rd.from_master_rows(db.pictures_for_species_and_subspecies(sci), master)
+    rd.set_floors(pics, rd.day_floors(db, rd.days_of(pics)))   # stars above the day's usual
+    return pics
 
 
 def _resized_jpeg(img, long_edge: int, quality: int) -> bytes:

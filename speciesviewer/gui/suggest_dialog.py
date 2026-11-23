@@ -42,11 +42,13 @@ class _ScoreThread(QThread):
     scored = pyqtSignal(int)             # how many had to be decoded
     failed = pyqtSignal(str)
 
-    def __init__(self, rows, master_root, sci, parent=None):
-        """`rows`: the species' master picture rows, read on the GUI thread (a
-        MasterDB connection belongs to the thread that opened it)."""
+    def __init__(self, rows, master_root, sci, parent=None, floors=None):
+        """`rows`: the species' master picture rows, and `floors` the star floor
+        of each day — both read on the GUI thread (a MasterDB connection belongs
+        to the thread that opened it)."""
         super().__init__(parent)
         self._rows, self._root, self._sci = rows, master_root, sci
+        self._floors = floors or {}
         self._stop = False
         self.pics: list[dict] = []
 
@@ -57,6 +59,7 @@ class _ScoreThread(QThread):
         try:
             from engine.picture_score import Cache, score_pictures
             self.pics = rd.from_master_rows(self._rows, self._root)
+            rd.set_floors(self.pics, self._floors)
             self.loaded.emit(self.pics)
             if self._stop:
                 return
@@ -80,7 +83,7 @@ def _date(t) -> str:
 class SuggestDialog(QDialog):
     def __init__(self, parent, master_db, master_root, sci: str, name: str, *, grid=None):
         super().__init__(parent)
-        self._grid, self._sci = grid, sci
+        self._grid, self._sci, self._name = grid, sci, name
         self._filling = False
         # Your own say, per picture, over the suggestion: {UPN: KEEP | PURPLE}.
         # Kept while the dialog is open; a setting change does not undo it.
@@ -165,6 +168,21 @@ class SuggestDialog(QDialog):
             self._table.itemSelectionChanged.connect(self._on_day_picked)
         lay.addWidget(self._table, 1)
 
+        marks = QHBoxLayout()
+        self._mark_btn = QPushButton("Mark the bins Purple…")
+        self._mark_btn.setToolTip(
+            "Set the colour Purple on every picture with a bin (yours included). Nothing "
+            "is deleted: the Purple ✖ in the viewer does that, when you choose. Undo puts "
+            "back each picture's own colour (Green or none).")
+        self._mark_btn.setEnabled(False)
+        self._mark_btn.clicked.connect(self._on_mark)
+        self._undo_btn = QPushButton("Undo the last marking")
+        self._undo_btn.clicked.connect(self._on_undo)
+        marks.addWidget(self._mark_btn)
+        marks.addWidget(self._undo_btn)
+        marks.addStretch(1)
+        lay.addLayout(marks)
+
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
         buttons.rejected.connect(self.close)
         lay.addWidget(buttons)
@@ -175,7 +193,14 @@ class SuggestDialog(QDialog):
         self._set_settings(rd.Settings())
 
         rows = master_db.pictures_for_species_and_subspecies(sci)
-        self._thread = _ScoreThread(rows, master_root, sci, self)
+        days = set()
+        for r in rows:
+            t = rd._time(r.get("DateTimeOriginal"))
+            if t:
+                days.add(t.date())
+        floors = rd.day_floors(master_db, days)
+        self._master_root = str(master_root)
+        self._thread = _ScoreThread(rows, master_root, sci, self, floors=floors)
         self._thread.loaded.connect(self._on_loaded)
         self._thread.progress.connect(self._on_progress)
         self._thread.scored.connect(self._on_scored)
@@ -223,6 +248,9 @@ class SuggestDialog(QDialog):
             f"day{'s' if st['days'] != 1 else ''}{places}{span}, {rd.gb(st['bytes'])}.<br>"
             f"Kept by you: <b>{st['keepers']}</b> — stars {st['stars']}, Red {st['red']}, "
             f"Yellow {st['yellow']}, with a JPG {st['jpg']} (a picture can be several).<br>"
+            + (f"On {st['floor_days']} day{'s' if st['floor_days'] != 1 else ''} nearly every "
+               f"picture has the same stars (often 1★); there only MORE stars count as "
+               f"kept.<br>" if st["floor_days"] else "") +
             f"Already Blue or Purple: {st['decided']}. "
             f"Could be suggested: <b>{st['candidates']}</b> "
             f"({rd.gb(st['candidate_bytes'])}).")
@@ -231,8 +259,8 @@ class SuggestDialog(QDialog):
             f"default for {self._days} day{'s' if self._days != 1 else ''}: {d}")
         self._per_day.setToolTip(
             "Pictures kept per day on top of the ones you kept yourself. The default "
-            "is higher for a species you saw on few days: 20 for one day, 12 for 4, "
-            "8 for 9, 5 for 25, 3 for 65 or more.")
+            "is higher for a species you saw on few days: 12 for one day, 9 for 2, "
+            "8 for 4, 6 for 8, 5 for 16, 4 for 32 or more.")
         self._bar.setRange(0, max(1, len(pics)))
         self._defaults()
 
@@ -274,6 +302,7 @@ class SuggestDialog(QDialog):
             + (f" Of these, {' and '.join(yours)} (a dashed frame in the viewer)."
                if yours else ""))
         self._show_on_grid()
+        self._refresh_mark_buttons(out["purple"])
         rows = rd.per_day_rows(self._pics)
         self._day_rows = rows
         self._filling = True
@@ -366,6 +395,95 @@ class SuggestDialog(QDialog):
     def done(self, r):                    # any way the dialog closes: the bins go
         self._clear_grid()
         super().done(r)
+
+    # ── marking ─────────────────────────────────────────────────────────────
+
+    def _writable(self) -> bool:
+        g = self._grid
+        try:
+            return g is not None and hasattr(g, "apply_colors") and g.can_write_master()
+        except RuntimeError:
+            return False
+
+    def _refresh_mark_buttons(self, n_purple: int | None = None):
+        from engine import purple_marks
+        if n_purple is None:
+            n_purple = sum(1 for p in self._pics if p.get("verdict") == rd.PURPLE)
+        ok = self._writable()
+        self._mark_btn.setEnabled(ok and n_purple > 0)
+        self._mark_btn.setText(f"Mark the {n_purple} bins Purple…" if n_purple
+                               else "Mark the bins Purple…")
+        last = purple_marks.last(self._master_root, self._sci)
+        self._undo_btn.setEnabled(ok and last is not None)
+        self._undo_btn.setText(f"Undo the last marking ({len(last['before'])}, "
+                               f"{last['when']})" if last else "Undo the last marking")
+        if not ok and self._grid is not None:
+            self._mark_btn.setToolTip("The master may not be changed on this computer.")
+
+    def _on_mark(self):
+        from PyQt6.QtWidgets import QMessageBox
+        from engine import purple_marks
+        bins = [p for p in self._pics if p.get("verdict") == rd.PURPLE and rd.is_candidate(p)]
+        if not bins or not self._writable():
+            return
+        size = rd.gb(sum(p["bytes"] for p in bins))
+        if QMessageBox.question(
+                self, "Mark the bins Purple",
+                f"Set the colour Purple on {len(bins)} pictures of {self._name} ({size})?\n\n"
+                f"Nothing is deleted now. The pictures keep their place; the Purple ✖ in "
+                f"the viewer deletes them when you choose (to the master trash). "
+                f"\"Undo the last marking\" puts back each picture's own colour.",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No) != QMessageBox.StandardButton.Yes:
+            return
+        before = {p["upn"]: p["label"] for p in bins}
+        bid = purple_marks.start(self._master_root, self._sci, before)   # BEFORE writing
+        done, failed = self._grid.apply_colors({u: "Purple" for u in before},
+                                               title="Marking the bins Purple")
+        purple_marks.confirm(bid, done)
+        for p in self._pics:
+            if p["upn"] in done:
+                p["label"] = "Purple"
+                self._overrides.pop(p["upn"], None)
+        self._recompute()
+        self._report(f"{len(done)} pictures are Purple now.", failed)
+
+    def _on_undo(self):
+        from PyQt6.QtWidgets import QMessageBox
+        from engine import purple_marks
+        last = purple_marks.last(self._master_root, self._sci)
+        if not last or not self._writable():
+            return
+        if QMessageBox.question(
+                self, "Undo the last marking",
+                f"Put back the colour of the {len(last['before'])} pictures marked Purple "
+                f"on {last['when']}?\n\nA picture you changed since then is left as it is.",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.Yes) != QMessageBox.StandardButton.Yes:
+            return
+        now = {p["upn"]: p["label"] for p in self._pics}
+        todo = {u: c for u, c in last["before"].items() if now.get(u, "Purple") == "Purple"}
+        done, failed = self._grid.apply_colors(todo, title="Putting the colours back")
+        purple_marks.forget(last["id"])
+        for p in self._pics:
+            if p["upn"] in done:
+                p["label"] = todo[p["upn"]]
+        self._recompute()
+        skipped = len(last["before"]) - len(todo)
+        self._report(f"{len(done)} pictures have their colour back"
+                     + (f"; {skipped} you had changed since were left alone." if skipped
+                        else "."), failed)
+
+    def _report(self, text: str, failed):
+        from PyQt6.QtWidgets import QMessageBox
+        if failed:
+            QMessageBox.warning(
+                self, "Not every picture took the colour",
+                f"{text}\n\n{len(failed)} could not be changed (see the log): "
+                + ", ".join(sorted(failed)[:8]) + (" …" if len(failed) > 8 else ""))
+        else:
+            self._note.setText(text)
+        self._refresh_mark_buttons()
 
     def _stop_thread(self):
         if self._thread.isRunning():

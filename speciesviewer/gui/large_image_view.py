@@ -1353,20 +1353,22 @@ class LargeImageView(QDialog):
         self._embed_base_img = None     # unadjusted decode, for cheap exposure re-renders
         self._embed_overlay = ""
         self._view_tabs = QTabWidget()
-        # Tab order: Fit, then the Camera JPEG (the quick zoom — where a Fit
-        # double-click lands), then the slower full-sensor decode last. Referenced
-        # by name everywhere so the order stays changeable in one place.
-        self._TAB_FIT, self._TAB_EMBED, self._TAB_FULLRES, self._TAB_SHARP = 0, 1, 2, 3
-        self._view_tabs.addTab(self._stage, "Fit")
-        self._view_tabs.addTab(self._embed_view, "Camera JPEG")
-        self._view_tabs.addTab(self._fullres_view, self._fullres_scale_label())
-        # Fourth tab: the picture the way the picture score sees it — where it
-        # looked (sharpest tiles, AF point) and the subject spot at 100 % of the
-        # picture's own size (gui/sharpness_view.py). Loaded only when shown.
+        # Tab order: Sharpness first and the one the Editor opens on (GH,
+        # 2026-11-23: "it beats the 100 % view, and is efficient") — the picture
+        # the way the picture score sees it: the sharpest tiles, the AF point and
+        # the subject spot at 100 % of the picture's own size
+        # (gui/sharpness_view.py). Then Fit, the Camera JPEG (the quick zoom —
+        # where a Fit double-click lands), and the slower full-sensor decode last.
+        # Referenced by name everywhere so the order stays changeable in one place.
+        self._TAB_SHARP, self._TAB_FIT, self._TAB_EMBED, self._TAB_FULLRES = 0, 1, 2, 3
         from gui.sharpness_view import SharpnessView
         self._sharp_view = SharpnessView()
         self._sharp_key = None
         self._view_tabs.addTab(self._sharp_view, "Sharpness")
+        self._view_tabs.addTab(self._stage, "Fit")
+        self._view_tabs.addTab(self._embed_view, "Camera JPEG")
+        self._view_tabs.addTab(self._fullres_view, self._fullres_scale_label())
+        self._view_tabs.setCurrentIndex(self._TAB_SHARP)
         self._view_tabs.setTabToolTip(
             self._TAB_SHARP,
             "Where the picture score looked: the sharpest tiles, the camera's AF point, "
@@ -1758,6 +1760,10 @@ class LargeImageView(QDialog):
         if self._sharp_key == key:
             return
         self._sharp_key = key
+        if getattr(self._item, "is_video", False):
+            self._sharp_view.set_picture(None)
+            self._sharp_view._info.setText("This is a movie — the Fit tab plays it.")
+            return
         src = None
         for get in ("raw_path", "jpg_path"):
             fn = getattr(self._collection, get, None)

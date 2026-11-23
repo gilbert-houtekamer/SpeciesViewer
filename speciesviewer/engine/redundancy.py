@@ -5,7 +5,11 @@ picture: your keeper, already decided by you, keep, or suggest Purple; and count
 what that means. Pure functions — no files, no Qt, no writes.
 
 The rules (docs/plans/picture_score_plan.md):
-  - KEEPER  = stars, Red, Yellow or a JPG. Never suggested.
+  - KEEPER  = stars, Red, Yellow or a JPG. Never suggested. Stars count only
+    ABOVE the day's usual: when 2 of 3 pictures of a day (the whole master's
+    day, not just this species) share one star count — 1★ on every day of
+    Brazil 2026, where 1★ meant "not rejected" — that count is the day's
+    floor and protects nothing; more stars still do (GH, 2026-11-23).
   - DECIDED = Blue or Purple: your verdict already; left alone, not counted.
   - CANDIDATE = no stars AND (Green or no colour). Only these can be suggested.
   - POSE = frames ≤ `gap` s apart whose layout hash differs ≤ `change`.
@@ -41,12 +45,16 @@ class Settings:
     cap: int = 0               # optional limit for the whole species (0 = none)
 
 
-def per_day_for(days_seen: int, *, base: float = 24.0, low: int = 3, high: int = 20) -> int:
+def per_day_for(days_seen: int) -> int:
     """Pictures kept per day besides your keepers: more for a species you met
-    on few days. 1 day → 20, 4 → 12, 9 → 8, 25 → 5, 67 → 3."""
-    if days_seen <= 0:
-        return high
-    return max(low, min(high, round(base / math.sqrt(days_seen))))
+    on few days. 1 day → 12, 2 → 9, then a little less each time the number
+    of days doubles, down to 4 from 32 days on (GH, 2026-11-23: your JPGs are
+    the best ones already, so a few days need fewer extra than first set)."""
+    if days_seen <= 1:
+        return 12
+    if days_seen >= 32:
+        return 4
+    return round(9 - (math.log2(days_seen) - 1) * 5 / 4)     # 2 → 9 … 32 → 4
 
 
 def default_settings(pics) -> Settings:
@@ -56,7 +64,40 @@ def default_settings(pics) -> Settings:
 # ── what a picture is to you ─────────────────────────────────────────────────
 
 def is_keeper(p) -> bool:
-    return bool(p["jpg"]) or p["stars"] >= 1 or p["label"] in ("Red", "Yellow")
+    return (bool(p["jpg"]) or p["stars"] > p.get("star_floor", 0)
+            or p["label"] in ("Red", "Yellow"))
+
+
+def star_floor(star_counts: dict) -> int:
+    """The star count that protects nothing on a day: the count 2 of 3 of
+    the day's pictures share, when that is 1★ or more; else 0."""
+    total = sum(star_counts.values())
+    if not total:
+        return 0
+    stars, n = max(star_counts.items(), key=lambda kv: kv[1])
+    return int(stars) if stars >= 1 and n * 3 >= total * 2 else 0
+
+
+def day_floors(db, days) -> dict:
+    """{date: star floor} for `days`, from ALL the master's pictures of each
+    day (one query per day)."""
+    out = {}
+    for d in days:
+        if d is None:
+            continue
+        key = f"{d:%Y-%m-%d}"
+        counts: dict = {}
+        for rows in db.pictures_in_daterange(key, key).values():
+            for r in rows:
+                n = int(float(r.get("Rating") or 0) or 0)
+                counts[n] = counts.get(n, 0) + 1
+        out[d] = star_floor(counts)
+    return out
+
+
+def set_floors(pics, floors: dict) -> None:
+    for p in pics:
+        p["star_floor"] = floors.get(day_of(p), 0)
 
 
 def is_decided(p) -> bool:
@@ -211,7 +252,8 @@ def statistics(pics) -> dict:
         "places": len({p["place"] for p in pics if p["place"]}),
         "first": min(times) if times else None,
         "last": max(times) if times else None,
-        "stars": sum(1 for p in pics if p["stars"] >= 1),
+        "stars": sum(1 for p in pics if p["stars"] > p.get("star_floor", 0)),
+        "floor_days": len({day_of(p) for p in pics if p.get("star_floor", 0)}),
         "red": sum(1 for p in pics if p["label"] == "Red"),
         "yellow": sum(1 for p in pics if p["label"] == "Yellow"),
         "jpg": sum(1 for p in pics if p["jpg"]),

@@ -14,6 +14,9 @@ class _FakeDB:
     def pictures_for_species_and_subspecies(self, sci):
         return self.rows
 
+    def pictures_in_daterange(self, a, b):
+        return {a: [r for r in self.rows if r["DateTimeOriginal"][:10].replace(":", "-") == a]}
+
 
 def _master(tmp_path, n=8):
     folder = tmp_path / "biota" / "aves" / "passer simplex"
@@ -52,7 +55,7 @@ def test_dialog_suggests_and_changes_nothing(tmp_path):
     _wait(app, dlg)
     assert dlg._scored
     assert "8</b> pictures on <b>1</b> day" in dlg._stats.text()
-    assert dlg._per_day.value() == 20                     # one day: the rarity default
+    assert dlg._per_day.value() == 12                     # one day: the rarity default
     dlg._per_day.setValue(1)
     dlg._per_pose.setValue(1)
     verdicts = [p["verdict"] for p in dlg._pics]
@@ -153,4 +156,42 @@ def test_your_say_overrides_the_suggestion(tmp_path):
     assert dlg.override([binned[0]], "keep") == 1          # k again: back to the suggestion
     assert grid.yours == {kept}
     assert dlg.override(["na122807"], "purple") == 0       # your Red keeper: refused
+    dlg.close()
+
+
+class _WritingGrid(_FakeGrid):
+    def __init__(self):
+        super().__init__()
+        self.written = {}
+
+    def can_write_master(self):
+        return True
+
+    def apply_colors(self, by_upn, title=""):
+        self.written.update(by_upn)
+        return set(by_upn), set()
+
+
+def test_mark_the_bins_purple_and_undo(tmp_path, monkeypatch):
+    from PyQt6.QtWidgets import QApplication, QMessageBox
+    app = QApplication.instance() or QApplication([])
+    monkeypatch.setattr(QMessageBox, "question",
+                        staticmethod(lambda *a, **k: QMessageBox.StandardButton.Yes))
+    from gui.suggest_dialog import SuggestDialog
+    grid = _WritingGrid()
+    dlg = SuggestDialog(None, _FakeDB(_master(tmp_path)), str(tmp_path), "passer simplex",
+                        "Desert sparrow", grid=grid)
+    _wait(app, dlg)
+    dlg._per_day.setValue(1)
+    dlg._per_pose.setValue(1)
+    bins = {u for u, v in grid.shown.items() if v == "purple"}
+    assert len(bins) == 6 and dlg._mark_btn.isEnabled()
+    dlg._on_mark()
+    assert grid.written == {u: "Purple" for u in bins}
+    assert not any(v == "purple" for v in grid.shown.values())   # now really Purple
+    assert dlg._undo_btn.isEnabled()
+    grid.written.clear()
+    dlg._on_undo()
+    assert grid.written == {u: "Green" for u in bins}            # each one's own colour
+    assert sorted(v for v in grid.shown.values()) == ["keep"] + ["purple"] * 6
     dlg.close()
