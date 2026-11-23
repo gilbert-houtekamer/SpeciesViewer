@@ -184,8 +184,16 @@ def main(argv=None) -> int:
         print("No eBird key ([ebird] api_key) — only the open run.", flush=True)
 
     # ── compare ─────────────────────────────────────────────────────────────
+    def same(got: str, sci: str) -> bool:
+        """The same bird, also under an older genus name or without your
+        subspecies: the species epithet decides (an estimate, not a taxonomy)."""
+        g, s = got.split(), sci.split()
+        return got == sci or (len(g) >= 2 and len(s) >= 2 and g[-1] == s[-1]
+                              and (g[0] != s[0] or len(s) == 3)) \
+            or (len(s) == 3 and g == s[:2])
+
     def score(res):
-        n = top1 = top5_ = genus = 0
+        n = top1 = top1_any = top5_ = genus = 0
         for p, r in zip(poses, res):
             sci = p["mine"][0].lower()
             if not sci or not r:
@@ -193,18 +201,20 @@ def main(argv=None) -> int:
             n += 1
             got = [x[0].lower() for x in r]
             top1 += got[0] == sci
-            top5_ += sci in got
+            top1_any += same(got[0], sci)
+            top5_ += any(same(x, sci) for x in got)
             genus += got[0].split(" ")[0] == sci.split(" ")[0]
-        return n, top1, top5_, genus
+        return n, top1, top1_any, top5_, genus
 
     lines = []
     for label, res in (("Everything BioCLIP knows", open_res),
                        (f"Only the eBird list of {a.region}", list_res)):
         if res is None:
             continue
-        n, t1, t5, gn = score(res)
-        lines.append(f"{label}: first = yours {t1}/{n} ({t1 / max(1, n):.0%}), in the "
-                     f"top 5 {t5 / max(1, n):.0%}, same genus first {gn / max(1, n):.0%}")
+        n, t1, ta, t5, gn = score(res)
+        lines.append(f"{label}: first = yours {t1 / max(1, n):.0%} ({t1}/{n}), also under "
+                     f"another name {ta / max(1, n):.0%}, in the top 5 {t5 / max(1, n):.0%}, "
+                     f"same genus first {gn / max(1, n):.0%}")
     for s in lines:
         print(s)
 
