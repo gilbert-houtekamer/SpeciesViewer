@@ -90,6 +90,34 @@ Purple-delete route does the deleting.
    species are known; a batch over the ~700 species with many pictures. No automatic run
    before GH says so.
 
+## AI roadmap — results (2026-11-23)
+
+**Whole master** (`tools/svr_space_estimate.py`): 78,554 pictures; the suggestion marks 32,460
+Purple = 723 GB of 1,755 GB. In 4,455 bursts where GH chose one frame, the score ranks his
+frame first in 55 % (chance 38 %). Shipped as Master ▸ Clean Up the Master… (e56b446).
+
+**Step 1, the animal box** (MegaDetector MDV5A, `tools/ml/svr_bird_box.py`, separate ML
+environment in app-data `ml/`): an animal in 97 % of the master, 13 pictures/s on the RTX 4070.
+Sharpness INSIDE the box does not rank better (55 % = 55 %, `tools/svr_box_agreement.py`):
+within a burst the sharpest frame is also sharp on the bird. The box is used for the crop of
+step 2, not for the score.
+
+**Step 2, naming** (BioCLIP 2, `tools/ml/svr_bioclip_trip.py`, sharpest frame per pose cropped
+to the box):
+- Gambia 2025, birds (4,074 poses, 6 min): first name right 66 % over everything BioCLIP
+  knows, **77 % within the eBird list of the country** (top 3: 81 % → 85 %). Older genus names
+  counted as right. Non-birds (155 poses) 41 %, and never right on a bird list.
+- The list also finds names of GH to check (pre-split names: West African pied hornbill,
+  weaver, olivaceous warbler; Guinea baboon was moved, 68 pictures).
+- A new day, 2026-11-23 polder (363 pictures, 126 poses, 2 min, list NL): "mostly correct"
+  (GH) incl. pallid harrier (also Obidentify), great egret, cattle egret 51 %, common gull.
+  Below ~45–50 % confidence the names are nonsense and correlate with out-of-focus frames.
+
+**For the GUI (to design):** a discard threshold (45–50 %: show "not sure" below it); the
+human fixes the odd one (an approaching harrier); eBird region list per trip (cached, works
+offline); rating + species proposal together in the culling step. Non-birds need another
+list/source (open question).
+
 ## Notes
 
 - Purple is SpeciesViewer's existing "delete later" colour; the Purple-delete moves files to
