@@ -84,7 +84,11 @@ def crop(src: Path, box):
     data = image_bytes(src)
     if not data:
         return None
-    im = ImageOps.exif_transpose(Image.open(io.BytesIO(data))).convert("RGB")
+    return crop_image(ImageOps.exif_transpose(Image.open(io.BytesIO(data))).convert("RGB"), box)
+
+
+def crop_image(im, box):
+    """An upright PIL image cut to the animal (square, 30 % room), max 1024 px."""
     if box:
         W, H = im.size
         x0, y0, x1, y1 = box
