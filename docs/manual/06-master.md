@@ -20,6 +20,7 @@ What remains is what you do *with* and *to* the collection itself.
 | Geotag from Tracklog (GPX/GPS log)… | A master |
 | Add Missing Location Names… | A master |
 | Manage Trip & Album Publication… | A master |
+| Clean Up the Master… | A master |
 | Master Trash… | Deleted master pictures |
 | Rebuild Websites… | A master |
 | Check the Master… | A master |
@@ -238,6 +239,30 @@ they act on something you must first be able to select.
 
 The live index is always the base for any write, so listings published from
 another machine are not silently dropped.
+
+## Clean Up the Master…
+
+*Needs: a master. The buttons are grey on a computer where the master may not be changed.*
+
+The AI… suggestion of the master Species Viewer, for every species at once. Each
+command asks first, then shows one line per species as it goes; *Stop* ends it
+after the picture in hand, and what is done stays done. Every run writes a report
+(one row per species) to the reports folder in SpeciesViewer's app data; the
+window shows where.
+
+- **Mark the bins Purple…** — in each species, the pictures the suggestion would
+  bin become Purple: only pictures without stars above the day's usual, Green or
+  without a colour, and without a JPG. It uses the suggestion's own settings per
+  species (more pictures kept per day for a species you met on few days). Nothing
+  is deleted; look at any species later, in its viewer, when it suits you.
+- **Delete Purple…** — every Purple picture *without* a JPG goes to the master
+  trash; Purple pictures with a JPG stay. This includes pictures you made Purple
+  yourself.
+- **Undo the marking…** — puts back the colours of the last marking, only on
+  pictures that are still Purple.
+
+Close the species viewers first: they show the colours from when they were
+opened. Master Trash… makes a delete final.
 
 ## Master Trash…
 

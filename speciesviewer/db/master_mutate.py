@@ -305,6 +305,49 @@ def delete_jpg(db, master_root, upn: str, fname: str) -> dict:
     return {"upn": upn, "fname": fname, "trashed": trashed, "batch": batch}
 
 
+# ── colour (a master picture's label, without a viewer open) ──────────────────
+
+def set_label(db, master_root, upn: str, label: str) -> None:
+    """Give a master picture the colour `label` ("" = none) the way the viewer
+    does (RatingEditorCollection._apply_master_rating): the .xmp/.jpg files,
+    the PhotoLab .dop, then the master lists (MasterDB.apply_rating). Raises
+    MasterMutateError when the colour did not land — checked by reading the
+    picture back."""
+    from engine.exif_writer import exiftool_write
+    from engine.sidecarlib import push_metadata_to_dop
+    from gui.rating_editor import _compute_rate
+    from utils.raw_extensions import DXO_RAW, bare
+    from utils.sidecar_policy import (color_rating_to_dop_enabled,
+                                      color_rating_to_xmp_enabled)
+    master_root = Path(master_root)
+    picture, files = _collect_files(db, upn)
+    dxo_raw = bare(DXO_RAW)
+    file_updates, raw_path = {}, None
+    for fname, fr in files.items():
+        ext = (fr.get("WindowsExtension") or Path(fname).suffix.lstrip(".")).lower()
+        p = _abs_path(master_root, picture, fr)
+        if ext in dxo_raw and raw_path is None and p is not None:
+            raw_path = str(p)
+        if ext not in ("xmp", "jpg", "jpeg") or p is None or not p.exists():
+            continue
+        if not (ext == "xmp" and not color_rating_to_xmp_enabled()):
+            try:
+                exiftool_write(p, [f"-XMP:Label={label}"])
+            except Exception as e:
+                logger.error(f"set_label: write failed for {p.name}: {e}")
+                continue
+        fr["XMP:Label"] = label
+        file_updates[fname] = {"XMP:Label": label}
+    if raw_path and color_rating_to_dop_enabled():
+        push_metadata_to_dop(raw_path, color=label)
+    picture["Label"] = label
+    rate = _compute_rate(picture, files)
+    db.apply_rating(upn, label=label, rate=rate, file_updates=file_updates)
+    now = db.picture(upn) or {}
+    if (now.get("Label") or "") != (label or ""):
+        raise MasterMutateError(f"{upn!r}: the colour did not land.")
+
+
 # ── add (attach a crop JPG to an existing UPN) ────────────────────────────────
 
 def add_upn_files(db, master_root, upn: str) -> dict:

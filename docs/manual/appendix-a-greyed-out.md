@@ -123,6 +123,7 @@ the work was done on another machine.
 | Species Without a Website Picture… | a master |
 | Undo Last Species Move… | a species move to undo |
 | Check the Master… | a master |
+| Clean Up the Master… | a master; the master may be changed on this computer |
 | Master Trash… | deleted master pictures in the trash |
 | Rebuild Websites… | a master |
 

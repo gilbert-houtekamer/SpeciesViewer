@@ -874,6 +874,12 @@ def build_menu_spec(main_window):
         if root:
             RestoreTrashDialog(main_window, root).exec()
 
+    def _open_master_cleanup():
+        from gui.master_cleanup import MasterCleanupWindow
+        root = _config.get("master", "masterbiotadatabase", fallback="").strip().strip('"')
+        if root:
+            MasterCleanupWindow(main_window, root).exec()
+
     manage_caches = MenuSpec(
         callback=_manage_caches,
         title="Manage Caches…",
@@ -2028,6 +2034,15 @@ def build_menu_spec(main_window):
             "Add Missing Place Names…": add_place_names_item,   # "…Location Names…"
             "Manage Site Publication…": manage_site_publication,  # "Trip & Album"
             f"{MenuSpec.separator()}_master_maint": None,
+            # The AI… suggestion for every species at once: mark Purple, delete
+            # Purple (to the master trash), undo the marking.
+            "Clean Up the Master…": MenuSpec(
+                callback=lambda: _open_master_cleanup(),
+                title="Clean Up the Master…",
+                enabled=has_master,
+                tooltip="Mark the near-identical pictures Purple in every species, "
+                        "then move them to the master trash",
+                showsubdirectory=False),
             # A master delete only moves files to <master>/.trash (restorable);
             # this is the step that makes it final. Grey when there is nothing.
             # Restore or empty, in one window — the mirror of Trips ▸ Trash

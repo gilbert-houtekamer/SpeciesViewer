@@ -37,12 +37,14 @@ def _save(batches: list[dict], path: Path | None = None) -> None:
     tmp.replace(p)
 
 
-def start(master: str, sci: str, before: dict, *, path: Path | None = None) -> str:
+def start(master: str, sci: str, before: dict, *, run: str = "",
+          path: Path | None = None) -> str:
     """Record a marking about to happen: {UniquePictureName: colour before}.
-    Returns its id."""
+    `run` ties the markings of one all-species run together (Clean Up the
+    Master). Returns its id."""
     batches = _load(path)
     bid = f"{time.strftime('%Y%m%d-%H%M%S')}-{len(batches)}"
-    batches.append({"id": bid, "master": str(master), "sci": sci,
+    batches.append({"id": bid, "master": str(master), "sci": sci, "run": run,
                     "when": time.strftime("%Y-%m-%d %H:%M"), "before": dict(before)})
     _save(batches, path)
     return bid
@@ -63,6 +65,16 @@ def last(master: str, sci: str, *, path: Path | None = None) -> dict | None:
         if b["master"] == str(master) and b["sci"] == sci:
             return b
     return None
+
+
+def last_run(master: str, *, path: Path | None = None) -> tuple[str, list[dict]]:
+    """The most recent all-species run of this master: (run id, its markings),
+    or ("", []) when there is none left."""
+    batches = [b for b in _load(path) if b["master"] == str(master) and b.get("run")]
+    if not batches:
+        return "", []
+    run = batches[-1]["run"]
+    return run, [b for b in batches if b.get("run") == run]
 
 
 def forget(bid: str, *, path: Path | None = None) -> None:
