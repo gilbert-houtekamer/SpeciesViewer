@@ -7,7 +7,7 @@ ONE JOB: for every picture in a day folder
              engine.picture_score), as a percentage of YOUR master pictures from
              the same camera: "sharper on the animal than X % of what you kept";
   size     — the animal's long side in pixels at the picture's own size, as a
-             bar from 100 px (0 %) to 1500 px (100 %, log scale);
+             bar from 100 px (0 %) to 2500 px (100 %, log scale; GH 2026-11-23);
 and per pose (engine.redundancy.poses) the best frame — sharp first, then size —
 named by BioCLIP 2 (ONNX, within the eBird list of the region), but only when
 that frame is any good: a pose with nothing sharp gets no name.
@@ -52,7 +52,7 @@ def norm_model(s: str) -> str:
 def size_pct(px: float) -> float:
     if px <= 100:
         return 0.0
-    return min(1.0, math.log(px / 100) / math.log(15)) * 100
+    return min(1.0, math.log(px / 100) / math.log(25)) * 100
 
 
 def exif(files: list[Path]) -> dict:
@@ -236,7 +236,7 @@ img{{max-width:{THUMB}px;display:block}} figcaption{{font-size:11px;color:#555}}
 .bar b{{font-weight:normal;color:#333}} .none{{color:#a33}}</style>
 <h2>{html.escape(folder.name)}: {len(pics)} pictures, {len(groups)} poses</h2>
 <p>sharp = sharpness inside the green box, as % of your master pictures from the same
-camera · size = the animal's long side, 100 px = 0 %, 1500 px = 100 % · species =
+camera · size = the animal's long side, 100 px = 0 %, 2500 px = 100 % · species =
 BioCLIP 2 within the eBird list {html.escape(a.region)}, only for a pose whose best
 frame is at least {NAME_FROM} % sharp. Frames sorted best first.</p>
 {''.join(blocks)}""", encoding="utf-8")
