@@ -103,11 +103,12 @@ class Prefetch:
 
 
 def find_animals(pics: list[dict], measure_one, load, cache, s: DaySettings | None = None,
-                 progress=None, stopped=lambda: False) -> dict:
+                 progress=None, stopped=lambda: False, join: bool = False) -> dict:
     """The animal in every picture, in time order: the detector on the first
-    frame, then the animal FOLLOWED to the next frames (ai_measure.follow) —
-    also into the next pose when it starts within JOIN_GAP; the detector again
-    where the match is weak. p["followed"] says which frames were followed: a
+    frame, then the animal FOLLOWED to the next frames of its pose
+    (ai_measure.follow) — with `join` also into the next pose when it starts
+    within JOIN_GAP ("Group similar pictures aggressively"); the detector
+    again where the match is weak. p["followed"] says which frames were followed: a
     pose whose first frame was followed shows the same animal as the pose
     before, so it can share that pose's name (name_series). measure_one(p, im, box) =
     ai_measure.measure for one picture (box None = detect); load(src) = the
@@ -128,18 +129,18 @@ def find_animals(pics: list[dict], measure_one, load, cache, s: DaySettings | No
         return im, small_gray(im)
     ahead = Prefetch(todo, both)
     try:
-        _find(groups, measure_one, ahead.get, cache, done, n, progress, stopped)
+        _find(groups, measure_one, ahead.get, cache, done, n, progress, stopped, join)
     finally:
         ahead.close()
     return done
 
 
-def _find(groups, measure_one, load, cache, done, n, progress, stopped):
+def _find(groups, measure_one, load, cache, done, n, progress, stopped, join):
     from engine.ai_measure import FOLLOW_MIN, follow
     i = 0
     prev = None                              # (grey picture, box, time) of the frame before
     for g in groups:
-        if prev is not None and (prev[2] is None or g[0]["time"] is None or
+        if prev is not None and (not join or prev[2] is None or g[0]["time"] is None or
                                  (g[0]["time"] - prev[2]).total_seconds() > JOIN_GAP):
             prev = None
         for p in g:

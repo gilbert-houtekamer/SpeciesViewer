@@ -129,9 +129,10 @@ class _Measure(QThread):
     done = pyqtSignal(object)
     failed = pyqtSignal(str)
 
-    def __init__(self, pics, region, master_root, parent=None):
+    def __init__(self, pics, region, master_root, parent=None, aggressive=False):
         super().__init__(parent)
         self.pics, self.region, self.master_root = pics, region, master_root
+        self.aggressive = aggressive      # "Group similar pictures aggressively"
         self.master_days: dict = {}
         self.timing: list = []           # [(step, seconds)]: where the time went
         self._stop = False
@@ -190,7 +191,7 @@ class _Measure(QThread):
                 count = day_ai.find_animals(
                     pics, measure_one, load, aic,
                     progress=lambda i, t: self.progress.emit("Looking for the animals", i, t),
-                    stopped=lambda: self._stop)
+                    stopped=lambda: self._stop, join=self.aggressive)
                 if self._stop:
                     return
                 logger.info(f"Day AI: animals detected {count['detected']}, followed "
@@ -199,7 +200,8 @@ class _Measure(QThread):
                 # One name per pose: only the frame whose name the pose gets.
                 # One name per series: poses that show the same animal (it was
                 # followed from one into the next) share their best frame's name.
-                series = day_ai.name_series(pics)
+                series = (day_ai.name_series(pics) if self.aggressive else
+                          [[p] for p in day_ai.pose_leaders(pics)])
                 firsts = [x[0] for x in series]
                 ahead = day_ai.Prefetch([p["src"] for p in firsts
                                          if aic.vector(p["src"], p["box"]) is None], load)
@@ -276,6 +278,17 @@ class DayAiDialog(QDialog):
             "you never photographed, down to 4 of one you have on 32 days or more")
         self._use_master.toggled.connect(self._recompute)
         form.addRow(self._use_master)
+        from utils.config import _config
+        self._aggressive = QCheckBox("Group similar pictures aggressively")
+        self._aggressive.setChecked(
+            _config.get("ai", "group_aggressively", fallback="no") == "yes")
+        self._aggressive.setToolTip(
+            "Faster on a slow computer: when the AI can follow the animal from one pose "
+            "into the next, those poses share one name, and fewer pictures need the full "
+            "look.\nOff: every pose is looked at and named on its own.\nTakes effect "
+            "the next time you open AI… on a day.")
+        self._aggressive.toggled.connect(self._remember_aggressive)
+        form.addRow(self._aggressive)
         top.addLayout(form)
         lay.addLayout(top)
 
@@ -329,12 +342,22 @@ class DayAiDialog(QDialog):
         self._folder = str(pics[0]["src"].parent) if pics else ""
         self._refresh_undo()
         self._stats.setText(f"{len(pics)} pictures" + (f" · {region}" if region else ""))
-        self._run = _Measure(pics, region, master_root, self)
+        self._run = _Measure(pics, region, master_root, self,
+                             aggressive=self._aggressive.isChecked())
         self._run.progress.connect(self._on_progress)
         self._run.done.connect(self._on_done)
         self._run.failed.connect(lambda m: self._bar_text.setText(f"Stopped by an error: {m}"))
         self._t0 = time.time()
         self._run.start()
+
+    def _remember_aggressive(self, on: bool):
+        from utils.config import _config, persist_config
+        if not _config.has_section("ai"):
+            _config.add_section("ai")
+        _config.set("ai", "group_aggressively", "yes" if on else "no")
+        persist_config()
+        self._bar_text.setText("Grouping changed — it takes effect the next time you "
+                               "open AI… on a day.")
 
     @staticmethod
     def _spin(lo, hi, val, suffix, tip):

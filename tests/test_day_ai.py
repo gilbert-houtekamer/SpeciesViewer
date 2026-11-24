@@ -222,6 +222,9 @@ def test_poses_showing_the_same_animal_share_one_name():
             box = (x / 400, 130 / 300, (x + 60) / 400, 170 / 300)
         p["box"] = box
     day_ai.find_animals(pics, measure_one, lambda s: frames[s], _FakeCache())
+    assert [p["followed"] for p in pics] == [False, True, False, True, False]   # off: per pose
+    assert len(day_ai.name_series(pics)) == 3
+    day_ai.find_animals(pics, measure_one, lambda s: frames[s], _FakeCache(), join=True)
     assert [p["followed"] for p in pics] == [False, True, True, True, False]
     series = day_ai.name_series(pics)
     assert [len(x) for x in series] == [2, 1]          # poses 1+2 one animal; pose 3 alone
