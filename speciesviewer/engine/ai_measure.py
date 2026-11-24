@@ -88,6 +88,23 @@ class AiCache:
                         "mtime integer, size integer, model text, boxes text)")
         self.db.execute("create table if not exists vectors (path text primary key, "
                         "mtime integer, size integer, model text, box text, vec blob)")
+        self.db.execute("create table if not exists upright (path text primary key, "
+                        "mtime integer, size integer, w integer, h integer)")
+
+    def upright(self, p: Path):
+        """(w, h) of the decoded upright picture, as measured before — or None."""
+        m, s = self._stamp(p)
+        with self.lock:
+            r = self.db.execute("select mtime,size,w,h from upright where path=?",
+                                (str(p),)).fetchone()
+        return (r[2], r[3]) if r and r[0] == m and r[1] == s else None
+
+    def put_upright(self, p: Path, wh) -> None:
+        m, s = self._stamp(p)
+        with self.lock:
+            self.db.execute("insert or replace into upright values (?,?,?,?,?)",
+                            (str(p), m, s, int(wh[0]), int(wh[1])))
+            self.db.commit()
 
     @staticmethod
     def _stamp(p: Path):
@@ -169,7 +186,8 @@ def measure(src: Path, im, score: dict | None, camera: str = "", *,
             native: int = 0, cache: AiCache | None = None, region: str = "",
             master_root=None, yardstick=None, k: int = 3) -> dict:
     """The AI's view of one picture (see the module docstring). `im` = the
-    upright PIL image; `native` = the picture's own long side (the sensor, from
+    upright PIL image, or a function that returns it (then it is decoded only
+    when the caches do not have what is needed); `native` = the picture's own long side (the sensor, from
     EXIF; else the decoded size); `region` = the picture's country (ISO code,
     for eBird's list); `master_root` = whose species list names it;
     `yardstick` = engine.ai_yardstick.Yardstick or None."""
@@ -177,10 +195,18 @@ def measure(src: Path, im, score: dict | None, camera: str = "", *,
     from engine.picture_score import fine_in
     own = cache is None
     cache = cache or AiCache()
+    held = {}
+
+    def picture():
+        if "im" not in held:
+            held["im"] = im() if callable(im) else im
+            cache.put_upright(src, held["im"].size)
+        return held["im"]
+
     try:
         found = cache.boxes(src)
         if found is None:
-            small = im.copy()
+            small = picture().copy()
             small.thumbnail((DETECT_EDGE, DETECT_EDGE))
             found = ai_models.detector().boxes(small)
             cache.put_boxes(src, found)
@@ -189,7 +215,8 @@ def measure(src: Path, im, score: dict | None, camera: str = "", *,
                "sharp_pct": 0.0 if box is None else None, "names": [], "among": ""}
         if box is None:
             return out
-        out["px"] = long_side_px(box, im.size, native or (score or {}).get("native"))
+        size = cache.upright(src) or picture().size
+        out["px"] = long_side_px(box, size, native or (score or {}).get("native"))
         out["size_pct"] = size_pct(out["px"])
         fine = (score or {}).get("fine")
         if fine is not None:
@@ -198,7 +225,7 @@ def measure(src: Path, im, score: dict | None, camera: str = "", *,
                 out["sharp_pct"] = yardstick.percentile(camera, out["sharp_in"])
         vec = cache.vector(src, box)
         if vec is None:
-            vec = ai_models.bioclip().picture_vectors([crop_image(im, box)])[0]
+            vec = ai_models.bioclip().picture_vectors([crop_image(picture(), box)])[0]
             cache.put_vector(src, box, vec)
         out["names"], out["among"] = names_for(vec, region, master_root, k)
         return out

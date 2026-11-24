@@ -424,6 +424,37 @@ class _FramedPhoto(QLabel):
         self._badges = []   # (widget, corner) where corner ∈ {tl,tr,bl,br}
         self._veil = None   # the suggestion overlay (set_suggestion), made on first use
         self._bin = None    # its bin, placed on the line of the bottom badges
+        self._name_tag = None   # the AI's name for the pose (set_name_tag), top centre
+
+    def set_name_tag(self, text: str = "", sure: bool = True) -> None:
+        """The AI's name for this picture's pose, as a pill at the top centre:
+        gold when it is at or above the day's threshold, grey for "not sure".
+        "" hides it. A view only — nothing is written."""
+        if not text:
+            if self._name_tag is not None:
+                self._name_tag.hide()
+            return
+        if self._name_tag is None:
+            self._name_tag = QLabel(self)
+            self._name_tag.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+        bg, fg = ("rgba(201,162,39,.92)", "#1d1a10") if sure else ("rgba(60,60,60,.85)", "#ddd")
+        self._name_tag.setStyleSheet(
+            f"color:{fg}; background:{bg}; font-size:10px; font-weight:600;"
+            f" padding:1px 7px; border-radius:9px;")
+        self._name_tag.setText(text)
+        self._name_tag.show()
+        self._place_name_tag()
+        self._name_tag.raise_()
+
+    def _place_name_tag(self):
+        if self._name_tag is None or not self._name_tag.isVisible():
+            return
+        self._name_tag.adjustSize()
+        w = min(self._name_tag.width(), max(40, self.width() - 16))
+        self._name_tag.setFixedWidth(w)
+        # Below the top corner badges (file type, attention), centred.
+        top = 7 + max((b.height() for b, c in self._badges if "t" in c), default=0) + 4
+        self._name_tag.move((self.width() - w) // 2, top)
 
     def set_suggestion(self, state: str | None, yours: bool = False) -> None:
         """Draw the AI… dialog's suggestion over the photo: "purple" = a bin on a
@@ -485,6 +516,7 @@ class _FramedPhoto(QLabel):
         super().resizeEvent(e)
         self.reposition()
         self._place_veil()
+        self._place_name_tag()
 
 
 def _corner_badge(text: str, *, bold: bool = False, rate: bool = False,
@@ -1585,6 +1617,11 @@ class PictureCard(QFrame):
         """The AI… suggestion over the photo (framed cards only; a view only)."""
         if isinstance(self._thumb, _FramedPhoto):
             self._thumb.set_suggestion(state, yours)
+
+    def set_name_tag(self, text: str = "", sure: bool = True) -> None:
+        """The AI's name for the pose over the photo (framed cards only)."""
+        if isinstance(self._thumb, _FramedPhoto):
+            self._thumb.set_name_tag(text, sure)
 
     def request_thumb_if_needed(self):
         """Ask the provider for this card's thumbnail — idempotent. The culling

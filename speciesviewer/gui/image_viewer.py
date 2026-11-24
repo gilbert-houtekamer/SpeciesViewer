@@ -21,6 +21,11 @@ from utils.config import get_setting, set_setting, get_int_setting
 
 logger = logging.getLogger("speciesviewer")
 
+
+def _config_master() -> str:
+    from utils.config import _config
+    return _config.get("master", "masterbiotadatabase", fallback="").strip().strip('"')
+
 # "Start with" subsets for the culling grid: which colour labels to load on
 # open, so a resumed cull never pays the full-day build (see docs/plans/
 # culling_grid_performance.md). "review" = everything not yet marked for
@@ -314,6 +319,10 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
         self._order: list[str] = []
         self._pool: list[PictureCard] = []
         self._bound: dict[str, PictureCard] = {}
+        # The AI… dialog's marks: {key: (verdict "purple"|"keep"|None, name tag, sure)}.
+        # Applied whenever a pool card is bound to a key (cards are reused).
+        self._ai_marks: dict[str, tuple] = {}
+        self._ai_dlg = None
         self._card_h = 0                # measured from a pool card; re-measured on a width change
         self._pool_w = 0               # card width the pool cards are currently fitted to
         self._first_row = -1           # first grid row currently bound (scroll cache)
@@ -471,6 +480,15 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
                                 "species), with the travel path")
         self.map_btn.clicked.connect(self._on_show_map)
         controls_layout.addWidget(self.map_btn)
+
+        # AI… — the AI's suggestion for the whole day: what could go, and a name
+        # per pose (gui/day_ai_dialog.py). A view only; needs the AI models.
+        self.ai_btn = QPushButton("AI…")
+        self.ai_btn.setFixedHeight(24)
+        self.ai_btn.setToolTip("The AI's suggestion for this day: which pictures could "
+                               "go, and what each pose is")
+        self.ai_btn.clicked.connect(self._on_ai)
+        controls_layout.addWidget(self.ai_btn)
 
         self.all_btn = QPushButton("All")
         self.all_btn.setFixedSize(40, 24)
@@ -1267,6 +1285,56 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
         ch = self._card_h or 300
         return self.scroll_area.viewport().height() // max(1, ch + self._GRID_GAP) + 2
 
+    # ── the AI… dialog ──────────────────────────────────────────────────────
+
+    def _on_ai(self):
+        from PyQt6.QtWidgets import QMessageBox
+        from engine import ai_models
+        if not ai_models.available():
+            QMessageBox.information(
+                self, "AI",
+                "The AI models are not installed on this computer, so there is no "
+                "suggestion to show.")
+            return
+        if self._ai_dlg is not None:
+            try:
+                self._ai_dlg.raise_()
+                self._ai_dlg.activateWindow()
+                return
+            except RuntimeError:
+                self._ai_dlg = None
+        from gui.day_ai_dialog import DayAiDialog
+        master = _config_master()
+        self._ai_dlg = DayAiDialog(self, master)
+        self._ai_dlg.finished.connect(lambda *_: setattr(self, "_ai_dlg", None))
+        self._ai_dlg.show()
+
+    def show_ai_marks(self, marks: dict) -> None:
+        """The AI… dialog's marks on the grid (a view only)."""
+        self._ai_marks = dict(marks)
+        self._relayout(force=True)
+
+    def clear_ai_marks(self) -> None:
+        self._ai_marks = {}
+        self._relayout(force=True)
+
+    def select_keys(self, keys) -> None:
+        """Select these pictures (those on the grid) and go to the first."""
+        keys = [k for k in keys if k in self._order]
+        if not keys:
+            return
+        self._selected_keys = set(keys)
+        self._update_selection_display()
+        self.go_to_key(min(keys, key=self._order.index))
+
+    def go_to_key(self, key: str) -> None:
+        """Put the cursor on `key` and bring it into view."""
+        if key not in self._order:
+            return
+        self._last_clicked_key = key
+        self._scroll_to_key(key)
+        self._relayout(force=True)
+
     def _rebuild_pool_if_needed(self):
         """Grow the card pool to cover the viewport + buffer. Cards are built
         once (seeded on any key — _relayout rebinds them immediately) and never
@@ -1359,6 +1427,9 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
             card.move(col * (cw + gap), row * (ch + gap))
             card.set_selected(key in self._selected_keys)
             card.set_cursor_focus(key == self._last_clicked_key)
+            mark = self._ai_marks.get(key)
+            card.set_suggestion(mark[0] if mark else None)
+            card.set_name_tag(mark[1] if mark else "", mark[2] if mark else True)
             card.show()
             new_bound[key] = card
         self._bound = new_bound
