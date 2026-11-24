@@ -108,14 +108,15 @@ def iou(a, b):
     return inter / ua if ua > 0 else 0.0
 
 
-def bench(folder: Path, n: int, routes, variants_dir: Path = OUT):
+def bench(folder: Path, n: int, routes, variants_dir: Path = OUT, only=None):
     # only here: SpeciesViewer's own utils/ would hide YOLOv5's in "make"
     sys.path.insert(0, str(HERE.parents[1] / "speciesviewer"))
     from PIL import Image, ImageOps
     from engine import ai_models
     from engine.ai_measure import animal_box, crop_image
     from engine.picture_score import image_bytes
-    srcs = sorted(p for p in folder.iterdir() if p.suffix.lower() in (".orf", ".nef", ".jpg"))
+    srcs = sorted(p for p in folder.iterdir()
+                  if p.suffix.lower() in (".orf", ".nef", ".jpg", ".heic"))
     step = max(1, len(srcs) // n)
     srcs = srcs[::step][:n]
     t0 = time.time()
@@ -134,6 +135,8 @@ def bench(folder: Path, n: int, routes, variants_dir: Path = OUT):
         print(f"\n== route: {'graphics card (DirectML)' if route == 'gpu' else 'processor only'}")
         ref = None
         for v, mdp, clp, size in variants:
+            if only and v not in only:
+                continue
             if not mdp.exists() or not clp.exists():
                 print(f"  {v}: not made — run 'make' first")
                 continue
@@ -155,7 +158,7 @@ def bench(folder: Path, n: int, routes, variants_dir: Path = OUT):
                 t = time.time()
                 vec = clip.picture_vectors([crop_image(im, b)])[0]
                 tclip += time.time() - t
-                names.append(clip.top(vec, 1)[0][0])
+                names.append(clip.top(vec, 1)[0])
             k = len(ims)
             line = (f"  {v}: MegaDetector {tmd / k * 1000:5.0f} ms · BioCLIP {tclip / k * 1000:5.0f} ms"
                     f" · together {(tmd + tclip) / k * 1000:5.0f} ms per picture")
@@ -164,7 +167,10 @@ def bench(folder: Path, n: int, routes, variants_dir: Path = OUT):
             else:
                 same_box = sum((a is None and b is None) or iou(a, b) >= 0.7
                                for a, b in zip(ref[0], boxes))
-                same_name = sum(a == b for a, b in zip(ref[1], names))
+                same_name = sum(a[0] == b[0] for a, b in zip(ref[1], names))
+                for a, b in zip(ref[1], names):
+                    if a[0] != b[0]:
+                        print(f"      name differs: {a[0]} {a[2]:.0%} -> {b[0]} {b[2]:.0%}")
                 line += f"  |  same box {same_box}/{k} · same first name {same_name}/{k}"
             print(line, flush=True)
 
@@ -176,13 +182,15 @@ def main(argv=None):
     ap.add_argument("-n", type=int, default=40)
     ap.add_argument("--routes", default="gpu,cpu")
     ap.add_argument("--variants", default=str(OUT), help="folder with the md_*/clip_* models")
+    ap.add_argument("--only", default="", help="e.g. fp32,fp16")
     a = ap.parse_args(argv)
     if a.what == "make":
         make()
     else:
         import onnxruntime as ort
         print("ONNX Runtime", ort.__version__, "·", ", ".join(ort.get_available_providers()))
-        bench(Path(a.folder), a.n, a.routes.split(","), Path(a.variants))
+        bench(Path(a.folder), a.n, a.routes.split(","), Path(a.variants),
+              [s for s in a.only.split(",") if s])
 
 
 if __name__ == "__main__":

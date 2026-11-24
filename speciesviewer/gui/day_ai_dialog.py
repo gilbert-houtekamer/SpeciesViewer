@@ -133,6 +133,7 @@ class _Measure(QThread):
         super().__init__(parent)
         self.pics, self.region, self.master_root = pics, region, master_root
         self.master_days: dict = {}
+        self.timing: list = []           # [(step, seconds)]: where the time went
         self._stop = False
 
     def stop(self):
@@ -144,7 +145,14 @@ class _Measure(QThread):
             from PIL import Image, ImageOps
             from engine import af_point, ai_measure, ai_yardstick
             from engine.picture_score import Cache, image_bytes, score_pictures
+            import time
             pics, n = self.pics, len(self.pics)
+            t = [time.time()]
+
+            def took(step):
+                now = time.time()
+                self.timing.append((step, now - t[0]))
+                t[0] = now
             cache = Cache()
             try:
                 score_pictures(pics, cache, cancelled=lambda: self._stop,
@@ -154,10 +162,13 @@ class _Measure(QThread):
                 cache.close()
             if self._stop:
                 return
+            took("sharpness")
             self.progress.emit("Reading the cameras", 0, n)
             af = af_point.read([p["src"] for p in pics])
+            took("cameras")
             self.progress.emit("Getting the yardstick (your master pictures)", 0, n)
             yard = ai_yardstick.get(self.master_root)
+            took("yardstick")
             aic = ai_measure.AiCache()
             try:
                 for i, p in enumerate(pics, 1):
@@ -181,8 +192,11 @@ class _Measure(QThread):
                         self.progress.emit("Looking for the animals", i, n)
             finally:
                 aic.close()
+            took("animals and names")
             self.progress.emit("Looking in your master", n, n)
             self.master_days = master_days(self.master_root, pics)
+            took("your master")
+            logger.info("Day AI timing: " + ", ".join(f"{s} {v:.1f} s" for s, v in self.timing))
             self.done.emit(pics)
         except Exception as e:
             logger.error(f"Day AI failed: {e}", exc_info=True)
@@ -316,7 +330,9 @@ class DayAiDialog(QDialog):
         self._pics = pics
         self._bar.hide()
         self._stop_btn.hide()
-        self._bar_text.setText(f"Measured in {time.time() - self._t0:.0f} s.")
+        parts = [f"{s} {v:.0f} s" for s, v in getattr(self._run, "timing", []) if v >= 0.5]
+        self._bar_text.setText(f"Measured in {time.time() - self._t0:.0f} s"
+                               + (f" — {', '.join(parts)}." if parts else "."))
         self._accept_btn.setEnabled(True)
         self._recompute()
 
