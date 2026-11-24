@@ -69,6 +69,53 @@ def day_limit(master_days: int) -> int:
     return rd.per_day_for(master_days + 1)
 
 
+def find_animals(pics: list[dict], measure_one, load, cache, s: DaySettings | None = None,
+                 progress=None, stopped=lambda: False) -> dict:
+    """The animal in every picture, pose by pose: the detector on a pose's
+    first frame, then the animal FOLLOWED to the next frames (ai_measure.follow);
+    the detector again where the match is weak. measure_one(p, im, box) =
+    ai_measure.measure for one picture (box None = detect); load(src) = the
+    upright picture; cache = ai_measure.AiCache. A picture measured before
+    (detected or followed) is taken from the cache, undecoded.
+    Returns {"detected", "followed", "cached"} counts."""
+    from engine.ai_measure import FOLLOW_MIN, follow, small_gray
+    s = s or DaySettings()
+    for p in pics:
+        p.setdefault("dhash", "0" * 16)
+    done = {"detected": 0, "followed": 0, "cached": 0}
+    n, i = len(pics), 0
+    for g in rd.poses(pics, s.gap, s.change):
+        prev = None                          # (grey picture, box) of the frame before
+        for p in g:
+            if stopped():
+                return done
+            i += 1
+            src = p["src"]
+            if cache.boxes(src) is not None:
+                measure_one(p, None, None)                 # detected before
+                done["cached"] += 1
+                prev = None
+            elif cache.followed(src) is not None:
+                measure_one(p, None, cache.followed(src))  # followed before
+                done["cached"] += 1
+                prev = None
+            else:
+                im = load(src)
+                cur = small_gray(im)
+                box, score = follow(prev[0], cur, prev[1]) if prev else (None, 0.0)
+                if box is not None and score >= FOLLOW_MIN:
+                    measure_one(p, im, box)
+                    cache.put_followed(src, box)
+                    done["followed"] += 1
+                else:
+                    measure_one(p, im, None)
+                    done["detected"] += 1
+                prev = (cur, p.get("box"))
+            if progress and (i % 5 == 0 or i == n):
+                progress(i, n)
+    return done
+
+
 def pose_leaders(pics: list[dict], s: DaySettings | None = None) -> list[dict]:
     """Per pose, the frame whose name becomes the pose's name in decide(): the
     best-ranked frame with an animal. Only these need the AI's names — a day of

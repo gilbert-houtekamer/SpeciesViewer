@@ -175,22 +175,26 @@ class _Measure(QThread):
                 data = image_bytes(src)
                 return ImageOps.exif_transpose(Image.open(io.BytesIO(data))).convert("RGB")
             try:
-                for i, p in enumerate(pics, 1):
-                    if self._stop:
-                        return
+                def measure_one(p, im, box):
                     info = af_point.lookup_info(af, p["src"])
-
                     try:
                         p.update(ai_measure.measure(
-                            p["src"], lambda src=p["src"]: load(src), p, info.get("model", ""),
+                            p["src"], im if im is not None else (lambda s=p["src"]: load(s)),
+                            p, info.get("model", ""),
                             native=info.get("native") or 0, cache=aic,
                             region=self.region, master_root=self.master_root or None,
-                            yardstick=yard, name=False))
+                            yardstick=yard, name=False, box=box))
                     except Exception as e:
                         logger.warning(f"Day AI: {p['src'].name}: {e}")
                         p.update({"box": None, "names": [], "px": 0, "sharp_pct": 0.0})
-                    if i % 5 == 0 or i == n:
-                        self.progress.emit("Looking for the animals", i, n)
+                count = day_ai.find_animals(
+                    pics, measure_one, load, aic,
+                    progress=lambda i, t: self.progress.emit("Looking for the animals", i, t),
+                    stopped=lambda: self._stop)
+                if self._stop:
+                    return
+                logger.info(f"Day AI: animals detected {count['detected']}, followed "
+                            f"{count['followed']}, from earlier {count['cached']}")
                 took("animals")
                 # One name per pose: only the frame whose name the pose gets.
                 leaders = day_ai.pose_leaders(pics)

@@ -133,3 +133,55 @@ def test_only_each_poses_leader_needs_a_name():
     day_ai.decide(pics, DaySettings())
     assert all(p["name"]["sci"] == "Buteo buteo" for p in pics if p["key"] != "k03")
     assert day_ai.pose_leaders([pic(5, 0, box=False)]) == []
+
+
+class _FakeCache:
+    def __init__(self):
+        self.f = {}
+
+    def boxes(self, src):
+        return None
+
+    def followed(self, src):
+        return self.f.get(src)
+
+    def put_followed(self, src, box):
+        self.f[src] = box
+
+
+def _frame(x, seed=1):
+    """A noisy 400x300 picture with a dark textured 'bird' at x (pixels), or none."""
+    import numpy as np
+    from PIL import Image
+    rng = np.random.default_rng(seed)
+    a = rng.integers(120, 200, (300, 400), dtype=np.uint8)
+    if x is not None:
+        bird = np.random.default_rng(7).integers(0, 80, (40, 60), dtype=np.uint8)
+        a[130:170, x:x + 60] = bird
+    return Image.fromarray(a).convert("RGB")
+
+
+def test_the_animal_is_followed_through_a_burst_and_detected_when_it_leaves():
+    xs = [100, 106, 112, 118, None]                   # the bird flies off in frame 5
+    frames = {f"k{i}": _frame(x, seed=i) for i, x in enumerate(xs)}
+    pics = [dict(pic(i, i), src=f"k{i}") for i in range(5)]
+    detected = []
+
+    def measure_one(p, im, box):
+        if box is None:                               # "the detector"
+            detected.append(p["src"])
+            x = xs[int(p["src"][1:])]
+            box = None if x is None else (x / 400, 130 / 300, (x + 60) / 400, 170 / 300)
+        p["box"] = box
+
+    cache = _FakeCache()
+    done = day_ai.find_animals(pics, measure_one, lambda s: frames[s], cache)
+    assert detected == ["k0", "k4"]                   # first frame, and where it left
+    assert done == {"detected": 2, "followed": 3, "cached": 0}
+    for i in (1, 2, 3):
+        assert abs(pics[i]["box"][0] * 400 - xs[i]) <= 3
+    assert pics[4]["box"] is None
+    # a second run takes what was followed from the cache, without decoding
+    again = [dict(pic(i, i), src=f"k{i}") for i in range(1, 4)]
+    done = day_ai.find_animals(again, measure_one, lambda s: 1 / 0, cache)
+    assert done["cached"] == 3

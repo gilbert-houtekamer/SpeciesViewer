@@ -39,6 +39,8 @@ from pathlib import Path
 import numpy as np
 
 MIN_CONF = 0.2           # weaker "animal" boxes are not believed
+FOLLOW_SIDE = 960        # following the animal: on the picture at this long side
+FOLLOW_MIN = 0.8         # match score below this: run the detector after all
 ELSEWHERE = 0.3          # sharp_ratio below this: "the sharpest part is elsewhere"
 DETECT_EDGE = 1280
 NOT_SURE = 0.45          # below this the first name is a guess (GH: 45–50 % per day)
@@ -115,6 +117,10 @@ class AiCache:
                         "mtime integer, size integer, model text, box text, vec blob)")
         self.db.execute("create table if not exists upright (path text primary key, "
                         "mtime integer, size integer, w integer, h integer)")
+        # Boxes FOLLOWED from the frame before (the day dialog), not detected:
+        # kept apart, so the Editor and the yardstick only ever use detections.
+        self.db.execute("create table if not exists followed (path text primary key, "
+                        "mtime integer, size integer, box text)")
 
     def upright(self, p: Path):
         """(w, h) of the decoded upright picture, as measured before — or None."""
@@ -150,6 +156,20 @@ class AiCache:
         with self.lock:
             self.db.execute("insert or replace into boxes values (?,?,?,?,?)",
                             (str(p), m, s, _DET_MODEL, json.dumps(boxes)))
+            self.db.commit()
+
+    def followed(self, p: Path):
+        m, s = self._stamp(p)
+        with self.lock:
+            r = self.db.execute("select mtime,size,box from followed where path=?",
+                                (str(p),)).fetchone()
+        return tuple(json.loads(r[2])) if r and r[0] == m and r[1] == s else None
+
+    def put_followed(self, p: Path, box) -> None:
+        m, s = self._stamp(p)
+        with self.lock:
+            self.db.execute("insert or replace into followed values (?,?,?,?)",
+                            (str(p), m, s, json.dumps(list(box))))
             self.db.commit()
 
     def vector(self, p: Path, box):
@@ -220,6 +240,44 @@ def names_for(vec, region: str = "", master_root=None, k: int = 3) -> tuple[list
     return names, among
 
 
+def small_gray(im) -> np.ndarray:
+    """The picture in grey at FOLLOW_SIDE, for follow()."""
+    g = im.convert("L")
+    g.thumbnail((FOLLOW_SIDE, FOLLOW_SIDE))
+    return np.asarray(g)
+
+
+def follow(prev, cur, box, grow: float = 0.15, search: float = 1.0):
+    """(box, score): the animal in `box` (fractions) of the frame before, found
+    again in this frame by template matching (OpenCV, a few ms). A frame of the
+    same pose seldom needs the detector again (tools/ml/svr_box_tracking.py:
+    Eempolder 38 % fewer detections at FOLLOW_MIN, same verdict 356/363).
+    (None, 0) when it cannot be tried."""
+    import cv2
+    if prev is None or cur is None or prev.shape != cur.shape or not box:
+        return None, 0.0
+    H, W = prev.shape
+    x0, y0, x1, y1 = box
+    bw, bh = (x1 - x0) * W, (y1 - y0) * H
+    gx, gy = max(6, bw * grow), max(6, bh * grow)
+    tx0, ty0 = int(max(0, x0 * W - gx)), int(max(0, y0 * H - gy))
+    tx1, ty1 = int(min(W, x1 * W + gx)), int(min(H, y1 * H + gy))
+    tpl = prev[ty0:ty1, tx0:tx1]
+    if tpl.shape[0] < 8 or tpl.shape[1] < 8:
+        return None, 0.0
+    sx, sy = max(bw, 40) * search + gx, max(bh, 40) * search + gy
+    rx0, ry0 = int(max(0, tx0 - sx)), int(max(0, ty0 - sy))
+    rx1, ry1 = int(min(W, tx1 + sx)), int(min(H, ty1 + sy))
+    region = cur[ry0:ry1, rx0:rx1]
+    if region.shape[0] < tpl.shape[0] or region.shape[1] < tpl.shape[1]:
+        return None, 0.0
+    res = cv2.matchTemplate(region, tpl, cv2.TM_CCOEFF_NORMED)
+    _, score, _, loc = cv2.minMaxLoc(res)
+    dx, dy = (rx0 + loc[0] - tx0) / W, (ry0 + loc[1] - ty0) / H
+    nb = (max(0.0, x0 + dx), max(0.0, y0 + dy), min(1.0, x1 + dx), min(1.0, y1 + dy))
+    return nb, float(score)
+
+
 def name_of(src: Path, im, box, *, cache: AiCache, region: str = "",
             master_root=None, k: int = 3) -> tuple[list, str]:
     """(names, among) for the animal in `box`: BioCLIP's vector of the crop
@@ -235,14 +293,17 @@ def name_of(src: Path, im, box, *, cache: AiCache, region: str = "",
 
 def measure(src: Path, im, score: dict | None, camera: str = "", *,
             native: int = 0, cache: AiCache | None = None, region: str = "",
-            master_root=None, yardstick=None, k: int = 3, name: bool = True) -> dict:
+            master_root=None, yardstick=None, k: int = 3, name: bool = True,
+            box=None) -> dict:
     """The AI's view of one picture (see the module docstring). `im` = the
     upright PIL image, or a function that returns it (then it is decoded only
     when the caches do not have what is needed); `native` = the picture's own long side (the sensor, from
     EXIF; else the decoded size); `region` = the picture's country (ISO code,
     for eBird's list); `master_root` = whose species list names it;
     `yardstick` = engine.ai_yardstick.Yardstick or None; `name` False = no
-    species names (the day dialog names only each pose's best frame: name_of)."""
+    species names (the day dialog names only each pose's best frame: name_of);
+    `box` = the animal's box when already known (followed from the frame
+    before) — then the detector does not run."""
     from engine import ai_models
     from engine.picture_score import fine_in, frame_top
     own = cache is None
@@ -256,14 +317,15 @@ def measure(src: Path, im, score: dict | None, camera: str = "", *,
         return held["im"]
 
     try:
-        found = cache.boxes(src)
-        if found is None:
-            small = picture().copy()
-            small.thumbnail((DETECT_EDGE, DETECT_EDGE))
-            found = ai_models.detector().boxes(small)
-            cache.put_boxes(src, found)
         fine = (score or {}).get("fine")
-        box = pick_animal(found, fine)
+        if box is None:
+            found = cache.boxes(src)
+            if found is None:
+                small = picture().copy()
+                small.thumbnail((DETECT_EDGE, DETECT_EDGE))
+                found = ai_models.detector().boxes(small)
+                cache.put_boxes(src, found)
+            box = pick_animal(found, fine)
         out = {"box": box, "px": 0, "size_pct": 0.0, "sharp_in": None,
                "sharp_pct": 0.0 if box is None else None, "sharp_ratio": None,
                "names": [], "among": ""}
