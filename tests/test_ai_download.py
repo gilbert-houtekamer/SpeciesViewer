@@ -130,3 +130,14 @@ def test_settings_window_has_the_ai_models_tab(monkeypatch):
     page = next(iter(w._built.values()))
     assert page.__class__.__name__ == "AiModelsDialog"
     w.done(0)                                     # no download running: nothing to stop
+
+
+def test_a_missing_runtime_says_why_and_how(monkeypatch):
+    import sys
+    from engine import ai_models
+    from gui import ai_models_dialog
+    monkeypatch.setattr(ai_models, "runtime_problem",
+                        lambda: "ModuleNotFoundError: No module named 'onnxruntime'")
+    mark, text = ai_models_dialog.state()
+    assert mark == "optional" and "No module named" in text
+    assert sys.executable in text and "-m pip install onnxruntime" in text

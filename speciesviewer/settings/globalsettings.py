@@ -70,6 +70,18 @@ class GlobalSettingsDialog(QDialog):
             "names and blog texts.\nOptional: without it SpeciesViewer uses "
             "Google's free translation page, and MyMemory when that page refuses.")
         names_form.addRow("Google Translate key", self.translate_key_field)
+        # Read by engine/ebird.py: the bird list per country the AI names from.
+        self.ebird_key_field = QLineEdit(_config.get("ebird", "api_key", fallback=""))
+        self.ebird_key_field.setEchoMode(QLineEdit.EchoMode.Password)
+        password_eye(self.ebird_key_field)
+        self.ebird_key_field.setPlaceholderText(
+            "optional — free at ebird.org/api/keygen (with an eBird account)")
+        self.ebird_key_field.setToolTip(
+            "Your eBird API key. With it the AI names birds only from eBird's list "
+            "for the picture's country, which makes its names far better.\nThe list "
+            "is fetched once per country and kept for use without internet.\n"
+            "Get a key, free, at https://ebird.org/api/keygen")
+        names_form.addRow("eBird key", self.ebird_key_field)
         layout.addWidget(names_box)
 
         # Where this installation publishes — read by utils/site_config.py.
@@ -143,6 +155,11 @@ class GlobalSettingsDialog(QDialog):
         if not _config.has_section("translate"):
             _config.add_section("translate")
         _config.set("translate", "google_api_key", self.translate_key_field.text().strip())
+        if not _config.has_section("ebird"):
+            _config.add_section("ebird")
+        _config.set("ebird", "api_key", self.ebird_key_field.text().strip())
+        from engine import ebird
+        ebird.forget()                  # "no list" found without a key is not final
         # A key refused earlier this session stops the API being asked; a new
         # key deserves a fresh try.
         from engine.translatelib import CachedTranslate

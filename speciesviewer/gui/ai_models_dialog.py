@@ -31,9 +31,16 @@ INTRO = (
 def state() -> tuple[str, str]:
     """(mark, text) for the Setup checklist: "ok" or "optional"."""
     from engine import ai_models
-    if not ai_models.runtime_available():
-        return "optional", ("Not possible in this installation: the AI program "
-                            "library (ONNX Runtime) is missing.")
+    problem = ai_models.runtime_problem()
+    if problem:
+        import sys
+        text = ("Not possible in this installation: the AI program library (ONNX "
+                f"Runtime) does not load — {problem}.")
+        if not getattr(sys, "frozen", False):     # running from source
+            pkg = "onnxruntime-directml" if sys.platform == "win32" else "onnxruntime"
+            text += (f" To install it for the Python that runs SpeciesViewer: "
+                     f"\"{sys.executable}\" -m pip install {pkg}")
+        return "optional", text
     if ai_models.available():
         return "ok", f"Installed — {ai_models.ai_dir()}"
     if ai_models.missing_files() != list((ai_models.DETECTOR_FILE,) + ai_models.BIOCLIP_FILES):

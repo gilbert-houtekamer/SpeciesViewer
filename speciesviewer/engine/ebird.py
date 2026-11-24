@@ -65,6 +65,12 @@ def _get(url: str, path: Path, key: str):
         return saved
 
 
+def forget() -> None:
+    """Forget the lists looked up this session (a new key: try again)."""
+    with _lock:
+        _memo.clear()
+
+
 def species(region: str) -> frozenset | None:
     """Lower-case scientific names of the bird species on eBird's list for
     `region`, or None when there is no list (no key and nothing saved)."""

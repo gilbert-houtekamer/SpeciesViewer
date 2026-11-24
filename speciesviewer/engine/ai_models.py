@@ -41,12 +41,17 @@ def ai_dir() -> Path:
     return app_data_dir() / "ai"
 
 
-def runtime_available() -> bool:
+def runtime_problem() -> str:
+    """"" when ONNX Runtime loads, else why not (missing, or a DLL that fails)."""
     try:
         import onnxruntime  # noqa: F401
-        return True
-    except ImportError:
-        return False
+        return ""
+    except Exception as e:          # ImportError, or OSError from a DLL
+        return f"{type(e).__name__}: {e}"
+
+
+def runtime_available() -> bool:
+    return not runtime_problem()
 
 
 def missing_files(folder: Path | None = None) -> list[str]:

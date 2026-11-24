@@ -134,6 +134,11 @@ this section: [Where your settings and data are kept](#where-your-settings-and-d
     are translated by Google's paid service. Without one, SpeciesViewer uses
     Google's free translation page, and MyMemory when that one refuses. Every
     translation is kept on this computer, so nothing is translated twice.
+  - *eBird key* — optional, for the [AI models](#ai-models). With a key the AI
+    names birds only from eBird's list for the picture's country, which makes
+    its names far better; without one it chooses from every species it knows.
+    A key is free with an eBird account, at `ebird.org/api/keygen`. Each
+    country's list is fetched once and kept for use without internet.
 - **Website and publishing** — SpeciesViewer makes a website of your pictures
   (species pages, blogs). Choose where it goes:
   - **On this computer** — nothing is uploaded. SpeciesViewer shows the website in
