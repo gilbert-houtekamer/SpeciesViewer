@@ -206,3 +206,23 @@ def test_prefetch_gives_each_picture_in_order_and_holds_few():
     assert ahead.get(99) == 990                     # not announced: loaded right away
     ahead.close()
     assert most[0] <= 2
+
+
+def test_poses_showing_the_same_animal_share_one_name():
+    xs = [100, 104, 108, 112, 300]
+    frames = {f"k{i}": _frame(x, seed=i) for i, x in enumerate(xs)}
+    frames["k4"] = _frame(300, seed=4).rotate(90)      # another scene altogether
+    pics = [dict(pic(i, i), src=f"k{i}") for i in range(5)]
+    pics[2]["dhash"] = pics[3]["dhash"] = "f" * 16      # the picture changed: pose 2
+    pics[4]["dhash"] = "0f" * 8                         # and again: pose 3
+
+    def measure_one(p, im, box):
+        if box is None:
+            x = xs[int(p["src"][1:])]
+            box = (x / 400, 130 / 300, (x + 60) / 400, 170 / 300)
+        p["box"] = box
+    day_ai.find_animals(pics, measure_one, lambda s: frames[s], _FakeCache())
+    assert [p["followed"] for p in pics] == [False, True, True, True, False]
+    series = day_ai.name_series(pics)
+    assert [len(x) for x in series] == [2, 1]          # poses 1+2 one animal; pose 3 alone
+    assert series[1][0]["src"] == "k4"

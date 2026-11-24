@@ -34,6 +34,7 @@ NO_ANIMAL, OUT_OF_FOCUS, SMALL, CUT_OFF, TOO_MANY, PLENTY = (
     "no animal found", "out of focus", "small", "cut off by the edge",
     "too many of the same", "plenty of this species")
 EDGE = 0.005             # a box this close to the frame's edge = the animal is cut off
+JOIN_GAP = 120           # s — following goes on into the next pose when it starts this soon
 
 
 @dataclass
@@ -103,9 +104,12 @@ class Prefetch:
 
 def find_animals(pics: list[dict], measure_one, load, cache, s: DaySettings | None = None,
                  progress=None, stopped=lambda: False) -> dict:
-    """The animal in every picture, pose by pose: the detector on a pose's
-    first frame, then the animal FOLLOWED to the next frames (ai_measure.follow);
-    the detector again where the match is weak. measure_one(p, im, box) =
+    """The animal in every picture, in time order: the detector on the first
+    frame, then the animal FOLLOWED to the next frames (ai_measure.follow) —
+    also into the next pose when it starts within JOIN_GAP; the detector again
+    where the match is weak. p["followed"] says which frames were followed: a
+    pose whose first frame was followed shows the same animal as the pose
+    before, so it can share that pose's name (name_series). measure_one(p, im, box) =
     ai_measure.measure for one picture (box None = detect); load(src) = the
     upright picture; cache = ai_measure.AiCache. A picture measured before
     (detected or followed) is taken from the cache, undecoded.
@@ -133,19 +137,24 @@ def find_animals(pics: list[dict], measure_one, load, cache, s: DaySettings | No
 def _find(groups, measure_one, load, cache, done, n, progress, stopped):
     from engine.ai_measure import FOLLOW_MIN, follow
     i = 0
+    prev = None                              # (grey picture, box, time) of the frame before
     for g in groups:
-        prev = None                          # (grey picture, box) of the frame before
+        if prev is not None and (prev[2] is None or g[0]["time"] is None or
+                                 (g[0]["time"] - prev[2]).total_seconds() > JOIN_GAP):
+            prev = None
         for p in g:
             if stopped():
                 return
             i += 1
             src = p["src"]
+            p["followed"] = False
             if cache.boxes(src) is not None:
                 measure_one(p, None, None)                 # detected before
                 done["cached"] += 1
                 prev = None
             elif cache.followed(src) is not None:
                 measure_one(p, None, cache.followed(src))  # followed before
+                p["followed"] = True
                 done["cached"] += 1
                 prev = None
             else:
@@ -154,11 +163,12 @@ def _find(groups, measure_one, load, cache, done, n, progress, stopped):
                 if box is not None and score >= FOLLOW_MIN:
                     measure_one(p, im, box)
                     cache.put_followed(src, box)
+                    p["followed"] = True
                     done["followed"] += 1
                 else:
                     measure_one(p, im, None)
                     done["detected"] += 1
-                prev = (cur, p.get("box"))
+                prev = (cur, p.get("box"), p.get("time"))
             if progress and (i % 5 == 0 or i == n):
                 progress(i, n)
 
@@ -176,6 +186,29 @@ def pose_leaders(pics: list[dict], s: DaySettings | None = None) -> list[dict]:
         if boxed:
             out.append(max(boxed, key=_rank))
     return out
+
+
+def name_series(pics: list[dict], s: DaySettings | None = None) -> list[list[dict]]:
+    """The frames to name, as series: each series = the leaders (pose_leaders)
+    of consecutive poses showing the SAME animal — a pose joins the one before
+    when its first frame was followed from it (find_animals). Only the first
+    of each series needs the AI's names (its best-ranked leader first); the
+    others get the same (GH 2026-11-24: Eempolder 126 poses ≈ 35 series)."""
+    s = s or DaySettings()
+    for p in pics:
+        p.setdefault("dhash", "0" * 16)
+    out: list[list[dict]] = []
+    for g in rd.poses(pics, s.gap, s.change):
+        boxed = [p for p in g if p.get("box")]
+        if not boxed:
+            continue
+        lead = max(boxed, key=_rank)
+        # followed = it has an animal, and so had the frame before (the pose before)
+        if g[0].get("followed") and out:
+            out[-1].append(lead)
+        else:
+            out.append([lead])
+    return [sorted(x, key=_rank, reverse=True) for x in out]
 
 
 def decide(pics: list[dict], s: DaySettings,

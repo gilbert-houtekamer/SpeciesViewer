@@ -197,13 +197,17 @@ class _Measure(QThread):
                             f"{count['followed']}, from earlier {count['cached']}")
                 took("animals")
                 # One name per pose: only the frame whose name the pose gets.
-                leaders = day_ai.pose_leaders(pics)
-                ahead = day_ai.Prefetch([p["src"] for p in leaders
+                # One name per series: poses that show the same animal (it was
+                # followed from one into the next) share their best frame's name.
+                series = day_ai.name_series(pics)
+                firsts = [x[0] for x in series]
+                ahead = day_ai.Prefetch([p["src"] for p in firsts
                                          if aic.vector(p["src"], p["box"]) is None], load)
                 try:
-                    for i, p in enumerate(leaders, 1):
+                    for i, x in enumerate(series, 1):
                         if self._stop:
                             return
+                        p = x[0]
                         try:
                             p["names"], p["among"] = ai_measure.name_of(
                                 p["src"], lambda src=p["src"]: ahead.get(src), p["box"],
@@ -211,10 +215,14 @@ class _Measure(QThread):
                                 master_root=self.master_root or None)
                         except Exception as e:
                             logger.warning(f"Day AI: naming {p['src'].name}: {e}")
-                        if i % 5 == 0 or i == len(leaders):
-                            self.progress.emit("Naming each pose", i, len(leaders))
+                        for q in x[1:]:
+                            q["names"], q["among"] = p.get("names", []), p.get("among", "")
+                        if i % 5 == 0 or i == len(series):
+                            self.progress.emit("Naming each series", i, len(series))
                 finally:
                     ahead.close()
+                logger.info(f"Day AI: {len(series)} series named "
+                            f"({sum(len(x) for x in series)} poses with an animal)")
             finally:
                 aic.close()
             took("names")
