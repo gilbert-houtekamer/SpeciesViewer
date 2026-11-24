@@ -31,7 +31,7 @@ def test_view_measures_and_holds_the_spot(tmp_path):
     _wait(app, v)
     spot = v._frame.spot
     assert spot is not None and spot[0] < 1350 / 2400 < spot[2]   # on the subject
-    assert "could go" in v._info.text() and "on the spot" in v._info.text()
+    assert "could go" in v._info.text() and "sharpness there" in v._legend.text()
     assert not v._crop.pixmap().isNull()
     v._keep.setChecked(True)                                       # hold it …
     v.set_picture(paths[1])
@@ -82,7 +82,7 @@ def test_click_puts_the_spot_on_the_bird(tmp_path):
     v._on_frame_clicked(0.75, 0.75)            # the bird, where the score did not look
     s = v._frame.spot
     assert s != auto and s[0] < 0.75 < s[2] and s[1] < 0.75 < s[3]
-    assert "your spot" in v._info.text()
+    assert "where you clicked" in v._legend.text()
     v.set_picture(p)                           # next picture: follows the subject again
     _wait(app, v)
     assert v._frame.spot == auto

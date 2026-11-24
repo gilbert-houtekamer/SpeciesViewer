@@ -88,9 +88,11 @@ def parse_info(row: dict) -> dict:
             if b and n != name:
                 focus.append(_upright(b, orient))
         return {"box": _upright(box, orient) if box else None, "found": None,
-                "in_focus": focus, "name": name if box else "", "estimated": True}
+                "in_focus": focus, "name": name if box else "", "estimated": True,
+                "model": model}
     box, found = parse(row)
-    return {"box": box, "found": found, "in_focus": [], "name": "", "estimated": False}
+    return {"box": box, "found": found, "in_focus": [], "name": "", "estimated": False,
+            "model": model}
 
 
 def parse(row: dict):
@@ -125,14 +127,20 @@ def read(paths) -> dict[str, dict]:
     out = {}
     res = run_exiftool_files_parallel(
         ["-j", "-Model", "-AFAreas", "-AFPointSelected", "-AISubjectTrackingMode",
-         "-PrimaryAFPoint", "-AFPointsInFocus", "-Orientation#"], raws)
+         "-PrimaryAFPoint", "-AFPointsInFocus", "-Orientation#", "-ImageWidth#",
+         "-ImageHeight#"], raws)
     for cp in res:
         try:
             rows = json.loads(cp.stdout or "[]")
         except ValueError:
             continue
         for r in rows:
-            out[_key(r.get("SourceFile", ""))] = parse_info(r)
+            info = parse_info(r)
+            try:      # the picture's own size (the sensor), for the animal's size in px
+                info["native"] = max(int(r.get("ImageWidth") or 0), int(r.get("ImageHeight") or 0))
+            except (TypeError, ValueError):
+                info["native"] = 0
+            out[_key(r.get("SourceFile", ""))] = info
     return out
 
 
@@ -144,4 +152,5 @@ def lookup(found: dict, path) -> tuple:
 
 def lookup_info(found: dict, path) -> dict:
     return found.get(_key(path)) or {"box": None, "found": None, "in_focus": [],
-                                     "name": "", "estimated": False}
+                                     "name": "", "estimated": False, "model": "",
+                                     "native": 0}

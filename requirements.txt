@@ -13,6 +13,12 @@ rawpy
 # numpy and opencv are imported directly by gui/fullres.py (not just transitively).
 numpy
 opencv-python
+# ONNX Runtime (MIT) runs the optional AI models (engine/ai_models.py: MegaDetector +
+# BioCLIP 2) without PyTorch. The models themselves are a separate download into
+# app-data ai/. DirectML = the graphics card on Windows; elsewhere the standard
+# package (CoreML on a Mac, else the CPU). See docs/plans/ai_day_plan.md.
+onnxruntime-directml; sys_platform == "win32"
+onnxruntime; sys_platform != "win32"
 # pygbif 0.6.6 changed name_backbone: request param name -> scientificName and a
 # nested response shape (engine/speciesclassification.py adapts to it). Older
 # 0.6.x raise TypeError on that call, so pin the version the code targets.

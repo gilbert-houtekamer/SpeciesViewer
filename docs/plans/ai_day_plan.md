@@ -1,6 +1,6 @@
 # AI for a day — sharp, size, species (plan, 2026-11-24)
 
-Status: PROPOSAL for GH to react to. Builds on [picture_score_plan.md](picture_score_plan.md)
+Status: AGREED 2026-11-24 ("mostly yes"); building step 1. Builds on [picture_score_plan.md](picture_score_plan.md)
 (the score, the master AI…, the experiments and their results).
 
 ## Goal
@@ -81,6 +81,15 @@ No animal found = sharp 0, size 0, no name.
 3. **Culling AI… read-only**: the day dialog, bins + name labels on the cards, cut-offs.
 4. **Accept + undo**: Purple and names written for the day.
 5. Installing: requirements, build, Setup checklist, Settings, docs.
+
+## GH 2026-11-24
+
+- A **new day** may be bolder than the master clean-up: insert the names at or above the
+  threshold, assign the Purple suggestions, and maybe **Green for good pictures** — with undo.
+  (Note: in the Purple rules Green counts as a candidate like no colour; if Green comes to mean
+  "good" from the AI, the rules must treat it as a keeper for those pictures — decide in step 4.)
+- **Version 2**: use what the master knows as a prior — a species seen on 26 buzzard days in
+  the region weighs more than one never seen there.
 
 ## Open choices (GH)
 
