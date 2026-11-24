@@ -116,6 +116,15 @@ def fine_in(fine, box, top: int = 3) -> float | None:
     return float(sub[-top:].mean())
 
 
+def frame_top(fine, top: int = 3) -> float | None:
+    """The same measure as fine_in, over the whole frame: its sharpest part."""
+    if fine is None:
+        return None
+    a = np.asarray(fine, np.float32).ravel()
+    a.sort()
+    return float(a[-top:].mean())
+
+
 def hamming(a: str, b: str) -> float:
     """Share (0..1) of the 64 hash bits that differ."""
     return bin(int(a, 16) ^ int(b, 16)).count("1") / 64.0

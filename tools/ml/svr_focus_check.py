@@ -66,6 +66,25 @@ def sidecars(folder: Path) -> dict:
     return {Path(r["SourceFile"]).stem.lower(): r for r in rows}
 
 
+def parse_time(s):
+    """A sidecar date: with or without seconds, any time zone after it."""
+    for fmt, n in (("%Y:%m:%d %H:%M:%S", 19), ("%Y:%m:%d %H:%M", 16)):
+        try:
+            return datetime.strptime((s or "")[:n], fmt)
+        except ValueError:
+            pass
+    return None
+
+
+def sidecars_tree(folder: Path) -> dict:
+    """sidecars() for a folder and all folders below it (a day's trash)."""
+    out = subprocess.run(["exiftool", "-r", "-j", "-q", "-Label", "-Rating", "-DateTimeOriginal",
+                          "-ext", "xmp", str(folder)], capture_output=True, text=True,
+                         encoding="utf-8")
+    rows = json.loads(out.stdout or "[]")
+    return {Path(r["SourceFile"]).stem.lower(): r for r in rows}
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("--folder", required=True)
@@ -91,7 +110,7 @@ def main(argv=None):
         lab = str(r.get("Label", "") or "").strip().capitalize()
         when = r.get("DateTimeOriginal", "")
         row = {"key": k, "label": lab, "ai": ai_set.get(k, ""),
-               "time": datetime.strptime(when[:19], "%Y:%m:%d %H:%M:%S") if when else None,
+               "time": parse_time(when),
                "box": animal_box(boxes) if boxes else None}
         if s is None or row["box"] is None:
             rows.append(row)

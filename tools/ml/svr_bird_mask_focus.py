@@ -14,6 +14,10 @@ Measures (all on the same decoded preview picture_score uses):
             (acutance: a sharp edge is steep whatever the colours)
   ratio     the tile ratio of svr_focus_check (for comparison)
 Results are cached in a JSON beside --out, so a re-run only scores.
+--trash DIR: the day's trash (a culled-and-deleted day, e.g. Madagascar
+.trash/<day>) — every picture in it counts as discarded. --prepare: measure
+pictures the app caches have not seen yet (picture score + animal box).
+The cuts found on the Eempolder day (2026-11-23) are checked as they are.
 
 INVARIANT: read-only for pictures, sidecars and app caches.
 
@@ -38,7 +42,11 @@ sys.path.insert(0, str(HERE))
 
 import svr_focus_check as fc  # noqa: E402
 from engine.ai_measure import AiCache, animal_box  # noqa: E402
-from engine.picture_score import Cache, fine_in, frame_top, image_bytes  # noqa: E402
+from engine.picture_score import (Cache, fine_in, frame_top, image_bytes,  # noqa: E402
+                                  score_image)
+
+RAW = (".orf", ".nef", ".cr3", ".arw", ".heic", ".hif")
+FIXED = (("ratio", 0.3), ("outline", 2.0), ("bird/fr", 0.005))   # from 2026-11-23
 
 GC_SIDE = 400            # GrabCut runs on the crop scaled to this long side
 
@@ -66,12 +74,38 @@ def bird_mask(crop_bgr, inner):
     return cv2.resize(fg, (w, h), interpolation=cv2.INTER_NEAREST).astype(bool)
 
 
-def measure_one(src: Path, box, fine) -> dict | None:
+def decode(data):
     from PIL import Image, ImageOps
+    return ImageOps.exif_transpose(Image.open(io.BytesIO(data))).convert("RGB")
+
+
+def prepare(src: Path, sc, bx):
+    """Score + animal boxes for a picture the caches do not have yet."""
+    from engine import ai_models
+    s, b = sc.get(src), bx.boxes(src)
+    if s is not None and b is not None:
+        return s, b
+    data = image_bytes(src)
+    if not data:
+        return s, b
+    if s is None:
+        s = score_image(data)
+        if s:
+            sc.put(src, s)
+    if b is None:
+        im = decode(data)
+        bx.put_upright(src, im.size)
+        im.thumbnail((1280, 1280))
+        b = ai_models.detector().boxes(im)
+        bx.put_boxes(src, b)
+    return s, b
+
+
+def measure_one(src: Path, box, fine) -> dict | None:
     data = image_bytes(src)
     if not data:
         return None
-    im = ImageOps.exif_transpose(Image.open(io.BytesIO(data))).convert("RGB")
+    im = decode(data)
     W, H = im.size
     x0, y0, x1, y1 = box[0] * W, box[1] * H, box[2] * W, box[3] * H
     pad = 0.3 * max(x1 - x0, y1 - y0)
@@ -107,20 +141,34 @@ def measure_one(src: Path, box, fine) -> dict | None:
 def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("--folder", required=True)
-    ap.add_argument("--out", default=str(HERE / "results" / "bird_mask_focus.json"))
+    ap.add_argument("--out", default="")
+    ap.add_argument("--trash", default="", help="the day's trash: all discarded")
+    ap.add_argument("--prepare", action="store_true", help="measure what the caches lack")
     ap.add_argument("--gap", type=float, default=3.0)
     a = ap.parse_args(argv)
     folder = Path(a.folder)
-    out = Path(a.out)
+    out = Path(a.out) if a.out else HERE / "results" / (
+        "bird_mask_focus.json" if folder.name == "2026-11-23"
+        else f"bird_mask_focus_{folder.parent.name}_{folder.name}.json".replace(" ", "_"))
     out.parent.mkdir(parents=True, exist_ok=True)
     done = json.loads(out.read_text(encoding="utf-8")) if out.exists() else {}
     side = fc.sidecars(folder)
     sc, bx = Cache(), AiCache()
     rows, t0 = [], time.time()
-    srcs = sorted(p for p in folder.iterdir() if p.suffix.lower() in (".orf", ".nef", ".cr3", ".arw"))
+    srcs = sorted(p for p in folder.iterdir() if p.suffix.lower() in RAW)
+    trashed = set()
+    if a.trash:
+        tr = sorted(p for p in Path(a.trash).rglob("*") if p.suffix.lower() in RAW)
+        trashed = {p.stem.lower() for p in tr}
+        side.update(fc.sidecars_tree(Path(a.trash)))
+        srcs += tr
+    print(f"{len(srcs)} pictures ({len(trashed)} in the trash)", flush=True)
     for i, src in enumerate(srcs, 1):
         k = src.stem.lower()
-        s, b = sc.get(src), bx.boxes(src)
+        if a.prepare:
+            s, b = prepare(src, sc, bx)
+        else:
+            s, b = sc.get(src), bx.boxes(src)
         box = animal_box(b) if b else None
         if s is None or box is None:
             continue
@@ -128,9 +176,10 @@ def main(argv=None):
             done[k] = measure_one(src, box, s["fine"]) or {"mask": 0}
         r = dict(done[k])
         r.update(key=k, ratio=fine_in(s["fine"], box) / (frame_top(s["fine"]) or 1))
-        r["label"] = str(side.get(k, {}).get("Label", "") or "").strip().capitalize()
+        r["label"] = ("Purple" if k in trashed else
+                      str(side.get(k, {}).get("Label", "") or "").strip().capitalize())
         when = side.get(k, {}).get("DateTimeOriginal", "")
-        r["time"] = datetime.strptime(when[:19], "%Y:%m:%d %H:%M:%S") if when else None
+        r["time"] = fc.parse_time(when)
         rows.append(r)
         if i % 50 == 0:
             print(f"  {i}/{len(srcs)} · {time.time() - t0:.0f} s", flush=True)
@@ -165,7 +214,15 @@ def main(argv=None):
         for r in rows:
             if r["key"].endswith(k):
                 print(f"  {k} {r['label'] or '-':7} " + "  ".join(f"{m} {r[m]:.2f}" for m in ms))
-    print("\nsafe cuts (pictures below · of which you kept):")
+    print("\nthe Eempolder cuts on this day (pictures below · of which you kept):")
+    for m, cut in FIXED:
+        lo = [r for r in rows if r[m] < cut]
+        print(f"  {m:8} < {cut}: {len(lo):3d} · kept {sum(r['label'] not in fc.GOING for r in lo)}"
+              f"  {[r['key'][-8:] for r in lo if r['label'] not in fc.GOING][:12]}")
+    either = [r for r in rows if r["outline"] < 2.0 or r["bird/fr"] < 0.005]
+    print(f"  outline or bird/fr: {len(either)} · kept "
+          f"{sum(r['label'] not in fc.GOING for r in either)}")
+    print("\nsafe cuts on THIS day (pictures below · of which you kept):")
     for m in ("bird/fr", "bird/bg", "outline"):
         vals = sorted(r[m] for r in keep)
         for q in (0, 2, 5):
