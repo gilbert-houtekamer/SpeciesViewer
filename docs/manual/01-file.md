@@ -274,6 +274,10 @@ it has arrived; one that did not arrive intact is fetched again. After that
 the AI runs on this computer, also without internet, and nothing about your
 pictures is sent anywhere.
 
+**Group similar pictures aggressively** (off) is the same choice as in the
+**AI…** dialog of culling: faster on a slow computer, where poses that show the
+same animal share one name.
+
 The models: MegaDetector (where the animal is) and BioCLIP 2 (what it is),
 both MIT-licensed; see [NOTICE.md](../../NOTICE.md).
 

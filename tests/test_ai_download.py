@@ -162,3 +162,15 @@ def test_an_older_model_set_is_offered_as_an_update(tmp_path, monkeypatch):
     monkeypatch.setattr(ai_models, "ai_dir", lambda: tmp_path)
     (tmp_path / "megadetector_v5a.onnx").write_bytes(b"x")
     assert "newer, faster version" in ai_models_dialog.state()[1]
+
+
+def test_the_grouping_choice_is_in_the_ai_models_tab_too(monkeypatch):
+    from gui import ai_models_dialog
+    saved = []
+    monkeypatch.setattr(ai_models_dialog, "remember_aggressive", lambda on: saved.append(on))
+    d = ai_models_dialog.AiModelsDialog()
+    assert not d._aggressive.isChecked()                   # off by default
+    d._aggressive.toggled.disconnect()
+    d._aggressive.toggled.connect(ai_models_dialog.remember_aggressive)
+    d._aggressive.setChecked(True)
+    assert saved == [True]

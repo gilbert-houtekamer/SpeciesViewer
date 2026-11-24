@@ -13,7 +13,7 @@ from __future__ import annotations
 import time
 
 from PyQt6.QtCore import QThread, pyqtSignal
-from PyQt6.QtWidgets import (QDialog, QHBoxLayout, QLabel, QProgressBar,
+from PyQt6.QtWidgets import (QCheckBox, QDialog, QHBoxLayout, QLabel, QProgressBar,
                              QPushButton, QVBoxLayout)
 
 from gui import theme
@@ -50,6 +50,15 @@ def state() -> tuple[str, str]:
     if ai_models.missing_files() != list((ai_models.DETECTOR_FILE,) + ai_models.BIOCLIP_FILES):
         return "optional", "Partly downloaded — Download carries on where it stopped."
     return "optional", "Not installed — species suggestions and culling advice (2.3 GB)."
+
+
+def remember_aggressive(on: bool) -> None:
+    """Save "Group similar pictures aggressively" (used when AI… next opens)."""
+    from utils.config import _config, persist_config
+    if not _config.has_section("ai"):
+        _config.add_section("ai")
+    _config.set("ai", "group_aggressively", "yes" if on else "no")
+    persist_config()
 
 
 # Running downloads, held here and not by the dialog: closing the window (or the
@@ -106,6 +115,18 @@ class AiModelsDialog(QDialog):
         self._line = QLabel("")
         self._line.setStyleSheet(f"color: {theme.INK_FAINT};")
         lay.addWidget(self._line)
+        # The same choice as in the AI… dialog of culling ([ai] group_aggressively).
+        from utils.config import _config
+        self._aggressive = QCheckBox("Group similar pictures aggressively (AI… in culling)")
+        self._aggressive.setChecked(
+            _config.get("ai", "group_aggressively", fallback="no") == "yes")
+        self._aggressive.setToolTip(
+            "Faster on a slow computer: when the AI can follow the animal from one pose "
+            "into the next, those poses share one name, and fewer pictures need the full "
+            "look.\nOff: every pose is looked at and named on its own.")
+        self._aggressive.toggled.connect(remember_aggressive)
+        lay.addWidget(self._aggressive)
+        lay.addStretch()
         row = QHBoxLayout()
         row.addStretch()
         self._go = QPushButton("Download")

@@ -351,11 +351,8 @@ class DayAiDialog(QDialog):
         self._run.start()
 
     def _remember_aggressive(self, on: bool):
-        from utils.config import _config, persist_config
-        if not _config.has_section("ai"):
-            _config.add_section("ai")
-        _config.set("ai", "group_aggressively", "yes" if on else "no")
-        persist_config()
+        from gui.ai_models_dialog import remember_aggressive
+        remember_aggressive(on)
         self._bar_text.setText("Grouping changed — it takes effect the next time you "
                                "open AI… on a day.")
 
