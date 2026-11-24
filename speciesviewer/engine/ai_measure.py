@@ -3,12 +3,18 @@ and what it might be.
 
 ONE JOB: for a picture (its file + the upright image + its score from
 engine.picture_score) return
-  box        the most confident animal box (MegaDetector), fractions of the frame
+  box        the animal box (MegaDetector), fractions of the frame: of the animals
+             found, the one that is SHARPEST (in a flock the most confident box
+             is often a blurry bird in front, not the one you focused on); the
+             most confident one when the picture has no score
   px         the animal's long side in pixels at the picture's own size
   size_pct   that as a bar: 100 px = 0 %, 2500 px = 100 % (log scale; GH)
   sharp_in   sharpness INSIDE the box (the fine grid at the picture's own size)
   sharp_pct  that as a percentile of your master pictures from the same camera
              (engine.ai_yardstick) — None while the yardstick is not there
+  sharp_ratio  sharp_in against the sharpest part of the whole frame (~1: the
+             sharpest part is ON the animal). Information only: it decides
+             nothing (a flock or a phone scene can be low and still a keeper)
   names      BioCLIP 2's top species, in YOUR words (engine.ai_names):
              [{"sci", "name", "prob", "how", "outside"}] — chosen among eBird's
              list for the picture's country (engine.ebird) when there is one; a
@@ -33,6 +39,7 @@ from pathlib import Path
 import numpy as np
 
 MIN_CONF = 0.2           # weaker "animal" boxes are not believed
+ELSEWHERE = 0.3          # sharp_ratio below this: "the sharpest part is elsewhere"
 DETECT_EDGE = 1280
 NOT_SURE = 0.45          # below this the first name is a guess (GH: 45–50 % per day)
 SIZE_FULL_PX = 2500      # GH 2026-11-23: frame-filling geese
@@ -49,6 +56,24 @@ def animal_box(boxes, min_conf: float = MIN_CONF):
     best = max((b for b in boxes or [] if b.get("cat") == "animal"
                 and b.get("conf", 0) >= min_conf),
                key=lambda b: b["conf"], default=None)
+    return tuple(best["box"]) if best else None
+
+
+def pick_animal(boxes, fine, min_conf: float = MIN_CONF):
+    """The animal box to judge the picture on: the sharpest of the believed
+    animal boxes (fine grid, engine.picture_score.fine_in); the most confident
+    one when there is no fine grid. Ties go to the more confident box."""
+    if fine is None:
+        return animal_box(boxes, min_conf)
+    from engine.picture_score import fine_in
+    best, key = None, None
+    for b in boxes or []:
+        if b.get("cat") != "animal" or b.get("conf", 0) < min_conf:
+            continue
+        s = fine_in(fine, b["box"])
+        k = (-1.0 if s is None else s, b["conf"])
+        if key is None or k > key:
+            best, key = b, k
     return tuple(best["box"]) if best else None
 
 
@@ -192,7 +217,7 @@ def measure(src: Path, im, score: dict | None, camera: str = "", *,
     for eBird's list); `master_root` = whose species list names it;
     `yardstick` = engine.ai_yardstick.Yardstick or None."""
     from engine import ai_models
-    from engine.picture_score import fine_in
+    from engine.picture_score import fine_in, frame_top
     own = cache is None
     cache = cache or AiCache()
     held = {}
@@ -210,17 +235,20 @@ def measure(src: Path, im, score: dict | None, camera: str = "", *,
             small.thumbnail((DETECT_EDGE, DETECT_EDGE))
             found = ai_models.detector().boxes(small)
             cache.put_boxes(src, found)
-        box = animal_box(found)
+        fine = (score or {}).get("fine")
+        box = pick_animal(found, fine)
         out = {"box": box, "px": 0, "size_pct": 0.0, "sharp_in": None,
-               "sharp_pct": 0.0 if box is None else None, "names": [], "among": ""}
+               "sharp_pct": 0.0 if box is None else None, "sharp_ratio": None,
+               "names": [], "among": ""}
         if box is None:
             return out
         size = cache.upright(src) or picture().size
         out["px"] = long_side_px(box, size, native or (score or {}).get("native"))
         out["size_pct"] = size_pct(out["px"])
-        fine = (score or {}).get("fine")
         if fine is not None:
             out["sharp_in"] = float(fine_in(fine, box))
+            top = frame_top(fine)
+            out["sharp_ratio"] = out["sharp_in"] / top if top else None
             if yardstick is not None:
                 out["sharp_pct"] = yardstick.percentile(camera, out["sharp_in"])
         vec = cache.vector(src, box)

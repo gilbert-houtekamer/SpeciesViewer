@@ -529,9 +529,13 @@ class SharpnessView(QWidget):
             native = (afi or {}).get("native") or 0
             full = f" on the full picture ({native} px wide)" if native else ""
             from engine.day_ai import cut_off
+            from engine.ai_measure import ELSEWHERE
             cut = "; <b>cut off by the edge</b>" if cut_off(ai["box"]) else ""
+            ratio = ai.get("sharp_ratio")
+            away = ("; <b>the sharpest part of the picture is elsewhere</b>"
+                    if ratio is not None and ratio < ELSEWHERE else "")
             rows.append(line("#66bb6a", "The animal", f"found by the AI; <b>{ai.get('px', 0)} "
-                             f"px</b> long{full}{cut}"))
+                             f"px</b> long{full}{cut}{away}"))
         elif ai and not ai.get("missing") and not ai.get("error"):
             rows.append(line("#66bb6a", "The animal", "the AI found none"))
         return "<br>".join(rows)

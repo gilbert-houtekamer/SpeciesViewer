@@ -30,6 +30,28 @@ def test_animal_box_ignores_weak_and_other_kinds():
     assert am.animal_box(boxes[:2]) is None
 
 
+def test_pick_animal_takes_the_sharpest_animal():
+    import numpy as np
+    fine = np.zeros((36, 48), np.float32)
+    fine[30:34, 40:46] = 50.0                     # sharp at the bottom right
+    boxes = [{"cat": "animal", "conf": .9, "box": [.0, .0, .3, .3]},    # blurry, sure
+             {"cat": "animal", "conf": .4, "box": [.8, .8, 1., 1.]},    # sharp, less sure
+             {"cat": "animal", "conf": .1, "box": [.8, .8, 1., 1.]},    # not believed
+             {"cat": "person", "conf": .9, "box": [.8, .8, 1., 1.]}]
+    assert am.pick_animal(boxes, fine) == (.8, .8, 1., 1.)
+    assert am.pick_animal(boxes, None) == (.0, .0, .3, .3)   # no grid: most confident
+    assert am.pick_animal(boxes[2:], fine) is None
+
+
+def test_legend_says_the_sharpest_part_is_elsewhere():
+    from gui.sharpness_view import SharpnessView
+    v = SharpnessView()
+    v._ai_res = {"box": (.4, .4, .6, .6), "px": 500, "sharp_ratio": 0.1}
+    assert "elsewhere" in v._legend_text({"sharp": 10}, {}, None, 100, 100)
+    v._ai_res["sharp_ratio"] = 0.8
+    assert "elsewhere" not in v._legend_text({"sharp": 10}, {}, None, 100, 100)
+
+
 def test_yardstick_percentile_per_camera():
     y = Yardstick({"om-1markii": list(range(1000)), "": list(range(1000)),
                    "few": [1, 2, 3]})

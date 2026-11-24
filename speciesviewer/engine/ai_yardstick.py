@@ -20,6 +20,7 @@ from pathlib import Path
 
 MIN_PICTURES = 200
 MAX_AGE_S = 7 * 24 * 3600
+HOW = "sharpest-animal"   # which box is measured; a saved yardstick of another kind is rebuilt
 _lock = threading.Lock()
 _loaded = None
 
@@ -52,7 +53,7 @@ def _path() -> Path:
 def build(master_root) -> Yardstick:
     """From the master's picture rows + the score and box caches."""
     from db.master_db import MasterDB
-    from engine.ai_measure import AiCache, animal_box
+    from engine.ai_measure import AiCache, pick_animal
     from engine.picture_score import Cache, fine_in
     from utils.raw_extensions import is_jpeg, is_raw_or_heic
     root = Path(master_root)
@@ -73,14 +74,14 @@ def build(master_root) -> Yardstick:
                 or next((folder / f for f in files if is_jpeg(Path(f))), None)
             if src is None:
                 continue
+            sc = scores.get(src)
+            if not sc or sc.get("fine") is None:
+                continue
             try:
-                b = animal_box(boxes.boxes(src))
+                b = pick_animal(boxes.boxes(src), sc["fine"])
             except OSError:
                 continue
-            if b is None:
-                continue
-            sc = scores.get(src)
-            if sc and sc.get("fine") is not None:
+            if b is not None:
                 by.setdefault(norm_camera(r.get("CameraModel")), []).append(
                     float(fine_in(sc["fine"], b)))
     finally:
@@ -101,7 +102,7 @@ def get(master_root) -> Yardstick | None:
         p = _path()
         try:
             d = json.loads(p.read_text(encoding="utf-8"))
-            if (d.get("master") == str(master_root)
+            if (d.get("master") == str(master_root) and d.get("how") == HOW
                     and time.time() - d.get("built", 0) < MAX_AGE_S):
                 _loaded = Yardstick(d["by_camera"])
                 return _loaded
@@ -110,7 +111,7 @@ def get(master_root) -> Yardstick | None:
         y = build(master_root)
         p.parent.mkdir(parents=True, exist_ok=True)
         tmp = p.with_suffix(".tmp")
-        tmp.write_text(json.dumps({"master": str(master_root), "built": time.time(),
+        tmp.write_text(json.dumps({"master": str(master_root), "how": HOW, "built": time.time(),
                                    "by_camera": y.by_camera}), encoding="utf-8")
         tmp.replace(p)
         _loaded = y
