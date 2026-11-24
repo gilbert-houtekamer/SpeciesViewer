@@ -198,17 +198,23 @@ class _Measure(QThread):
                 took("animals")
                 # One name per pose: only the frame whose name the pose gets.
                 leaders = day_ai.pose_leaders(pics)
-                for i, p in enumerate(leaders, 1):
-                    if self._stop:
-                        return
-                    try:
-                        p["names"], p["among"] = ai_measure.name_of(
-                            p["src"], lambda src=p["src"]: load(src), p["box"], cache=aic,
-                            region=self.region, master_root=self.master_root or None)
-                    except Exception as e:
-                        logger.warning(f"Day AI: naming {p['src'].name}: {e}")
-                    if i % 5 == 0 or i == len(leaders):
-                        self.progress.emit("Naming each pose", i, len(leaders))
+                ahead = day_ai.Prefetch([p["src"] for p in leaders
+                                         if aic.vector(p["src"], p["box"]) is None], load)
+                try:
+                    for i, p in enumerate(leaders, 1):
+                        if self._stop:
+                            return
+                        try:
+                            p["names"], p["among"] = ai_measure.name_of(
+                                p["src"], lambda src=p["src"]: ahead.get(src), p["box"],
+                                cache=aic, region=self.region,
+                                master_root=self.master_root or None)
+                        except Exception as e:
+                            logger.warning(f"Day AI: naming {p['src'].name}: {e}")
+                        if i % 5 == 0 or i == len(leaders):
+                            self.progress.emit("Naming each pose", i, len(leaders))
+                finally:
+                    ahead.close()
             finally:
                 aic.close()
             took("names")

@@ -185,3 +185,24 @@ def test_the_animal_is_followed_through_a_burst_and_detected_when_it_leaves():
     again = [dict(pic(i, i), src=f"k{i}") for i in range(1, 4)]
     done = day_ai.find_animals(again, measure_one, lambda s: 1 / 0, cache)
     assert done["cached"] == 3
+
+
+def test_prefetch_gives_each_picture_in_order_and_holds_few():
+    import threading
+    import time as _t
+    busy, most = [0], [0]
+    lock = threading.Lock()
+
+    def load(k):
+        with lock:
+            busy[0] += 1
+            most[0] = max(most[0], busy[0])
+        _t.sleep(0.01)
+        with lock:
+            busy[0] -= 1
+        return k * 10
+    ahead = day_ai.Prefetch(list(range(8)), load, ahead=2)
+    assert [ahead.get(k) for k in range(8)] == [k * 10 for k in range(8)]
+    assert ahead.get(99) == 990                     # not announced: loaded right away
+    ahead.close()
+    assert most[0] <= 2

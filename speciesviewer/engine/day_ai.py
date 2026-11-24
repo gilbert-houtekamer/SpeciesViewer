@@ -69,6 +69,38 @@ def day_limit(master_days: int) -> int:
     return rd.per_day_for(master_days + 1)
 
 
+class Prefetch:
+    """load(key) for keys in a known order, AHEAD on worker threads: while the
+    detector works on one picture (graphics card), the next ones are decoded
+    (processor). get(key) in the same order; at most `ahead` held at a time."""
+
+    def __init__(self, keys, load, ahead: int = 2):
+        from concurrent.futures import ThreadPoolExecutor
+        self.keys, self.load, self.ahead = list(keys), load, ahead
+        self.pool = ThreadPoolExecutor(max_workers=ahead) if keys else None
+        self.futures: dict = {}
+        self.next = 0
+        self._fill()
+
+    def _fill(self):
+        while self.next < len(self.keys) and len(self.futures) < self.ahead + 1:
+            k = self.keys[self.next]
+            self.futures[k] = self.pool.submit(self.load, k)
+            self.next += 1
+
+    def get(self, key):
+        f = self.futures.pop(key, None)
+        out = f.result() if f is not None else self.load(key)
+        self._fill()
+        return out
+
+    def close(self):
+        if self.pool:
+            for f in self.futures.values():
+                f.cancel()
+            self.pool.shutdown(wait=True)
+
+
 def find_animals(pics: list[dict], measure_one, load, cache, s: DaySettings | None = None,
                  progress=None, stopped=lambda: False) -> dict:
     """The animal in every picture, pose by pose: the detector on a pose's
@@ -78,17 +110,34 @@ def find_animals(pics: list[dict], measure_one, load, cache, s: DaySettings | No
     upright picture; cache = ai_measure.AiCache. A picture measured before
     (detected or followed) is taken from the cache, undecoded.
     Returns {"detected", "followed", "cached"} counts."""
-    from engine.ai_measure import FOLLOW_MIN, follow, small_gray
+    from engine.ai_measure import small_gray
     s = s or DaySettings()
     for p in pics:
         p.setdefault("dhash", "0" * 16)
     done = {"detected": 0, "followed": 0, "cached": 0}
     n, i = len(pics), 0
-    for g in rd.poses(pics, s.gap, s.change):
+    groups = rd.poses(pics, s.gap, s.change)
+    todo = [p["src"] for g in groups for p in g
+            if cache.boxes(p["src"]) is None and cache.followed(p["src"]) is None]
+    def both(src):                       # on the worker thread: decode + grey copy
+        im = load(src)
+        return im, small_gray(im)
+    ahead = Prefetch(todo, both)
+    try:
+        _find(groups, measure_one, ahead.get, cache, done, n, progress, stopped)
+    finally:
+        ahead.close()
+    return done
+
+
+def _find(groups, measure_one, load, cache, done, n, progress, stopped):
+    from engine.ai_measure import FOLLOW_MIN, follow
+    i = 0
+    for g in groups:
         prev = None                          # (grey picture, box) of the frame before
         for p in g:
             if stopped():
-                return done
+                return
             i += 1
             src = p["src"]
             if cache.boxes(src) is not None:
@@ -100,8 +149,7 @@ def find_animals(pics: list[dict], measure_one, load, cache, s: DaySettings | No
                 done["cached"] += 1
                 prev = None
             else:
-                im = load(src)
-                cur = small_gray(im)
+                im, cur = load(src)
                 box, score = follow(prev[0], cur, prev[1]) if prev else (None, 0.0)
                 if box is not None and score >= FOLLOW_MIN:
                     measure_one(p, im, box)
@@ -113,7 +161,6 @@ def find_animals(pics: list[dict], measure_one, load, cache, s: DaySettings | No
                 prev = (cur, p.get("box"))
             if progress and (i % 5 == 0 or i == n):
                 progress(i, n)
-    return done
 
 
 def pose_leaders(pics: list[dict], s: DaySettings | None = None) -> list[dict]:
