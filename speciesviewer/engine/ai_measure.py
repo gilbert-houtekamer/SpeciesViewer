@@ -240,6 +240,17 @@ def names_for(vec, region: str = "", master_root=None, k: int = 3) -> tuple[list
     return names, among
 
 
+def prepare_names(region: str = "") -> None:
+    """Everything names_for needs before the first name, loaded now: BioCLIP
+    and its names, and eBird's list for the region matched to them (all kept
+    for the next pictures). Lets a run time this apart from the names."""
+    from engine import ai_models, ebird
+    ai_models.bioclip()
+    listed = ebird.species(region) if region else None
+    if listed:
+        _as_bioclip(region, listed)
+
+
 def small_gray(im) -> np.ndarray:
     """The picture in grey at FOLLOW_SIDE, for follow()."""
     g = im.convert("L")

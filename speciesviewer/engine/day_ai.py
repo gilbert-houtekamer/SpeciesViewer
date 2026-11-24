@@ -70,6 +70,45 @@ def day_limit(master_days: int) -> int:
     return rd.per_day_for(master_days + 1)
 
 
+class Stopwatch:
+    """Where the time of a run went, per part: seconds and how often. Parts
+    timed on helper threads (decoding ahead) run AT THE SAME TIME as the rest,
+    so they are not part of the total; "waiting for …" is what they cost."""
+
+    def __init__(self):
+        import threading
+        self.secs: dict = {}
+        self.count: Counter = Counter()
+        self._lock = threading.Lock()
+
+    def add(self, name: str, secs: float) -> None:
+        with self._lock:
+            self.secs[name] = self.secs.get(name, 0.0) + secs
+            self.count[name] += 1
+
+    def part(self, name: str):
+        import time
+        from contextlib import contextmanager
+
+        @contextmanager
+        def timed():
+            t = time.perf_counter()
+            try:
+                yield
+            finally:
+                self.add(name, time.perf_counter() - t)
+        return timed()
+
+    def line(self) -> str:
+        """"part 12.3 s (40×, 308 ms each); …" in the order first timed."""
+        out = []
+        for name, s in self.secs.items():
+            n = self.count[name]
+            out.append(f"{name} {s:.1f} s" + (f" ({n}×, {s / n * 1000:.0f} ms each)"
+                                                 if n > 1 else ""))
+        return "; ".join(out)
+
+
 class Prefetch:
     """load(key) for keys in a known order, AHEAD on worker threads: while the
     detector works on one picture (graphics card), the next ones are decoded
@@ -103,7 +142,8 @@ class Prefetch:
 
 
 def find_animals(pics: list[dict], measure_one, load, cache, s: DaySettings | None = None,
-                 progress=None, stopped=lambda: False, join: bool = False) -> dict:
+                 progress=None, stopped=lambda: False, join: bool = False,
+                 clock: Stopwatch | None = None) -> dict:
     """The animal in every picture, in time order: the detector on the first
     frame, then the animal FOLLOWED to the next frames of its pose
     (ai_measure.follow) — with `join` also into the next pose when it starts
@@ -114,9 +154,11 @@ def find_animals(pics: list[dict], measure_one, load, cache, s: DaySettings | No
     ai_measure.measure for one picture (box None = detect); load(src) = the
     upright picture; cache = ai_measure.AiCache. A picture measured before
     (detected or followed) is taken from the cache, undecoded.
+    `clock` (Stopwatch) gets where the time went.
     Returns {"detected", "followed", "cached"} counts."""
     from engine.ai_measure import small_gray
     s = s or DaySettings()
+    clock = clock or Stopwatch()
     for p in pics:
         p.setdefault("dhash", "0" * 16)
     done = {"detected": 0, "followed": 0, "cached": 0}
@@ -125,17 +167,19 @@ def find_animals(pics: list[dict], measure_one, load, cache, s: DaySettings | No
     todo = [p["src"] for g in groups for p in g
             if cache.boxes(p["src"]) is None and cache.followed(p["src"]) is None]
     def both(src):                       # on the worker thread: decode + grey copy
-        im = load(src)
-        return im, small_gray(im)
+        with clock.part("decoding (helpers, alongside)"):
+            im = load(src)
+        with clock.part("grey copy (helpers, alongside)"):
+            return im, small_gray(im)
     ahead = Prefetch(todo, both)
     try:
-        _find(groups, measure_one, ahead.get, cache, done, n, progress, stopped, join)
+        _find(groups, measure_one, ahead.get, cache, done, n, progress, stopped, join, clock)
     finally:
         ahead.close()
     return done
 
 
-def _find(groups, measure_one, load, cache, done, n, progress, stopped, join):
+def _find(groups, measure_one, load, cache, done, n, progress, stopped, join, clock):
     from engine.ai_measure import FOLLOW_MIN, follow
     i = 0
     prev = None                              # (grey picture, box, time) of the frame before
@@ -150,24 +194,30 @@ def _find(groups, measure_one, load, cache, done, n, progress, stopped, join):
             src = p["src"]
             p["followed"] = False
             if cache.boxes(src) is not None:
-                measure_one(p, None, None)                 # detected before
+                with clock.part("from earlier"):
+                    measure_one(p, None, None)                 # detected before
                 done["cached"] += 1
                 prev = None
             elif cache.followed(src) is not None:
-                measure_one(p, None, cache.followed(src))  # followed before
+                with clock.part("from earlier"):
+                    measure_one(p, None, cache.followed(src))  # followed before
                 p["followed"] = True
                 done["cached"] += 1
                 prev = None
             else:
-                im, cur = load(src)
-                box, score = follow(prev[0], cur, prev[1]) if prev else (None, 0.0)
+                with clock.part("waiting for a decoded picture"):
+                    im, cur = load(src)
+                with clock.part("following"):
+                    box, score = follow(prev[0], cur, prev[1]) if prev else (None, 0.0)
                 if box is not None and score >= FOLLOW_MIN:
-                    measure_one(p, im, box)
+                    with clock.part("measuring a followed frame"):
+                        measure_one(p, im, box)
                     cache.put_followed(src, box)
                     p["followed"] = True
                     done["followed"] += 1
                 else:
-                    measure_one(p, im, None)
+                    with clock.part("detector"):
+                        measure_one(p, im, None)
                     done["detected"] += 1
                 prev = (cur, p.get("box"), p.get("time"))
             if progress and (i % 5 == 0 or i == n):

@@ -31,6 +31,7 @@ from PyQt6.QtWidgets import (
     QProgressBar, QPushButton, QSpinBox, QTableWidget, QTableWidgetItem, QVBoxLayout,
 )
 
+from gui import theme
 from gui.widgets import wrapped
 
 logger = logging.getLogger("speciesviewer")
@@ -135,6 +136,9 @@ class _Measure(QThread):
         self.aggressive = aggressive      # "Group similar pictures aggressively"
         self.master_days: dict = {}
         self.timing: list = []           # [(step, seconds)]: where the time went
+        from engine.day_ai import Stopwatch
+        self.clock = Stopwatch()         # … and within the animals and the names
+        self.counts: dict = {}
         self._stop = False
 
     def stop(self):
@@ -188,15 +192,22 @@ class _Measure(QThread):
                     except Exception as e:
                         logger.warning(f"Day AI: {p['src'].name}: {e}")
                         p.update({"box": None, "names": [], "px": 0, "sharp_pct": 0.0})
+                from engine import ai_models
+                clock = self.clock
+                with clock.part("starting the detector"):
+                    ai_models.detector()
                 count = day_ai.find_animals(
                     pics, measure_one, load, aic,
                     progress=lambda i, t: self.progress.emit("Looking for the animals", i, t),
-                    stopped=lambda: self._stop, join=self.aggressive)
+                    stopped=lambda: self._stop, join=self.aggressive, clock=clock)
                 if self._stop:
                     return
+                self.counts = count
                 logger.info(f"Day AI: animals detected {count['detected']}, followed "
                             f"{count['followed']}, from earlier {count['cached']}")
                 took("animals")
+                with clock.part("starting the names (BioCLIP, eBird's list)"):
+                    ai_measure.prepare_names(self.region)
                 # One name per pose: only the frame whose name the pose gets.
                 # One name per series: poses that show the same animal (it was
                 # followed from one into the next) share their best frame's name.
@@ -210,11 +221,19 @@ class _Measure(QThread):
                         if self._stop:
                             return
                         p = x[0]
+
+                        def picture(src=p["src"]):
+                            with clock.part("waiting for a decoded picture (names)"):
+                                return ahead.get(src)
+                        part = ("first name" if i == 1 else
+                                "a name" if aic.vector(p["src"], p["box"]) is None else
+                                "a name, picture seen before")
                         try:
-                            p["names"], p["among"] = ai_measure.name_of(
-                                p["src"], lambda src=p["src"]: ahead.get(src), p["box"],
-                                cache=aic, region=self.region,
-                                master_root=self.master_root or None)
+                            with clock.part(part):
+                                p["names"], p["among"] = ai_measure.name_of(
+                                    p["src"], picture, p["box"],
+                                    cache=aic, region=self.region,
+                                    master_root=self.master_root or None)
                         except Exception as e:
                             logger.warning(f"Day AI: naming {p['src'].name}: {e}")
                         for q in x[1:]:
@@ -232,6 +251,7 @@ class _Measure(QThread):
             self.master_days = master_days(self.master_root, pics)
             took("your master")
             logger.info("Day AI timing: " + ", ".join(f"{s} {v:.1f} s" for s, v in self.timing))
+            logger.info("Day AI detail: " + self.clock.line())
             self.done.emit(pics)
         except Exception as e:
             logger.error(f"Day AI failed: {e}", exc_info=True)
@@ -295,6 +315,12 @@ class DayAiDialog(QDialog):
         self._bar = QProgressBar()
         self._bar_text = QLabel("")
         lay.addWidget(self._bar_text)
+        # Where the time went, in detail (selectable, to copy into a message).
+        self._detail = wrapped("", self)
+        self._detail.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        self._detail.setStyleSheet(f"color: {theme.INK_FAINT};")
+        self._detail.hide()
+        lay.addWidget(self._detail)
         lay.addWidget(self._bar)
 
         self._table = QTableWidget(0, 6)
@@ -386,6 +412,14 @@ class DayAiDialog(QDialog):
         parts = [f"{s} {v:.0f} s" for s, v in getattr(self._run, "timing", []) if v >= 0.5]
         self._bar_text.setText(f"Measured in {time.time() - self._t0:.0f} s"
                                + (f" — {', '.join(parts)}." if parts else "."))
+        c = getattr(self._run, "counts", {})
+        detail = getattr(self._run, "clock", None)
+        if detail is not None and detail.secs:
+            self._detail.setText(
+                (f"Animals: detector on {c.get('detected', 0)}, followed "
+                 f"{c.get('followed', 0)}, from earlier {c.get('cached', 0)}. " if c else "")
+                + "In detail: " + detail.line() + ".")
+            self._detail.show()
         self._accept_btn.setEnabled(True)
         self._recompute()
 

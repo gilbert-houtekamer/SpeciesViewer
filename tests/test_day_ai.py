@@ -229,3 +229,14 @@ def test_poses_showing_the_same_animal_share_one_name():
     series = day_ai.name_series(pics)
     assert [len(x) for x in series] == [2, 1]          # poses 1+2 one animal; pose 3 alone
     assert series[1][0]["src"] == "k4"
+
+
+def test_stopwatch_adds_up_per_part():
+    from engine.day_ai import Stopwatch
+    c = Stopwatch()
+    c.add("detector", 0.5)
+    c.add("detector", 0.3)
+    with c.part("following"):
+        pass
+    assert c.count["detector"] == 2 and abs(c.secs["detector"] - 0.8) < 1e-9
+    assert c.line().startswith("detector 0.8 s (2×, 400 ms each); following")
