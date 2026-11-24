@@ -108,7 +108,7 @@ def iou(a, b):
     return inter / ua if ua > 0 else 0.0
 
 
-def bench(folder: Path, n: int, routes):
+def bench(folder: Path, n: int, routes, variants_dir: Path = OUT):
     # only here: SpeciesViewer's own utils/ would hide YOLOv5's in "make"
     sys.path.insert(0, str(HERE.parents[1] / "speciesviewer"))
     from PIL import Image, ImageOps
@@ -127,8 +127,9 @@ def bench(folder: Path, n: int, routes):
     md = ai_models.MegaDetector.__new__(ai_models.MegaDetector)
     # (name, detector, encoder, detector size)
     variants = [("fp32", AI / MODELS["md"], AI / MODELS["clip"], 1280)] + [
-        (v, OUT / f"md_{v}.onnx", OUT / f"clip_{v}.onnx", 1280) for v in ("fp16", "int8")] + [
-        (f"md {s} px", OUT / f"md_{s}.onnx", AI / MODELS["clip"], s) for s in (960, 640)]
+        (v, variants_dir / f"md_{v}.onnx", variants_dir / f"clip_{v}.onnx", 1280)
+        for v in ("fp16", "int8")] + [
+        (f"md {s} px", variants_dir / f"md_{s}.onnx", AI / MODELS["clip"], s) for s in (960, 640)]
     for route in routes:
         print(f"\n== route: {'graphics card (DirectML)' if route == 'gpu' else 'processor only'}")
         ref = None
@@ -174,11 +175,14 @@ def main(argv=None):
     ap.add_argument("--folder", default="D:/CurrentPictures/2026/2026 Winter/2026-11-23")
     ap.add_argument("-n", type=int, default=40)
     ap.add_argument("--routes", default="gpu,cpu")
+    ap.add_argument("--variants", default=str(OUT), help="folder with the md_*/clip_* models")
     a = ap.parse_args(argv)
     if a.what == "make":
         make()
     else:
-        bench(Path(a.folder), a.n, a.routes.split(","))
+        import onnxruntime as ort
+        print("ONNX Runtime", ort.__version__, "·", ", ".join(ort.get_available_providers()))
+        bench(Path(a.folder), a.n, a.routes.split(","), Path(a.variants))
 
 
 if __name__ == "__main__":
