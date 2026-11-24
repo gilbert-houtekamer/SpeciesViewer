@@ -5,14 +5,16 @@ ONE JOB: from the measured pictures of a day (engine.ai_measure: animal box,
 size, sharp on the animal, names; engine.picture_score: the pose hash) decide
 per picture a verdict and per pose a name:
   verdict  "purple" with a reason — no animal found / out of focus / small /
-           too many of the same — or "keep"; None for a picture that is yours
+           cut off by the edge / too many of the same — or "keep"; None for a picture that is yours
            already (a keeper: stars above the day's usual, Red, Yellow, a JPG —
            or decided: Blue, Purple), exactly the candidate rule of the master
            suggestion (engine.redundancy.is_candidate);
   name     the first name of the pose's best frame when it is at or above the
            threshold, else "not sure"; no name when nothing in the pose has an
            animal.
-Within a pose the frames are ranked sharp on the animal first, then size.
+Within a pose the frames are ranked: a whole animal before one cut off by the
+frame's edge (GH 2026-11-24: "strafpunten"), then sharp on the animal, then
+size. A cut-off frame goes when its pose has a whole one that is in focus.
 Then, per species (a pose with a sure name), the day keeps no more than the
 master's own rule allows (engine.redundancy.per_day_for): 12 for a species
 your master has never had, down to 4 for one you photographed on 32 days or
@@ -28,9 +30,10 @@ from dataclasses import dataclass
 
 from engine import redundancy as rd
 
-NO_ANIMAL, OUT_OF_FOCUS, SMALL, TOO_MANY, PLENTY = (
-    "no animal found", "out of focus", "small", "too many of the same",
-    "plenty of this species")
+NO_ANIMAL, OUT_OF_FOCUS, SMALL, CUT_OFF, TOO_MANY, PLENTY = (
+    "no animal found", "out of focus", "small", "cut off by the edge",
+    "too many of the same", "plenty of this species")
+EDGE = 0.005             # a box this close to the frame's edge = the animal is cut off
 
 
 @dataclass
@@ -44,8 +47,21 @@ class DaySettings:
     change: float = rd.Settings().change
 
 
+def cut_off(box, edge: float = EDGE) -> bool:
+    """The animal box touches the frame's edge: part of the animal is outside."""
+    if not box:
+        return False
+    x0, y0, x1, y1 = box
+    return x0 <= edge or y0 <= edge or x1 >= 1 - edge or y1 >= 1 - edge
+
+
+def going(p) -> bool:
+    """Suggested to go, or already marked to go (Blue / Purple)."""
+    return p.get("verdict") == "purple" or p.get("label") in ("Blue", "Purple")
+
+
 def _rank(p) -> tuple:
-    return (p.get("sharp_pct") or 0.0, p.get("px") or 0)
+    return (not cut_off(p.get("box")), p.get("sharp_pct") or 0.0, p.get("px") or 0)
 
 
 def day_limit(master_days: int) -> int:
@@ -73,6 +89,9 @@ def decide(pics: list[dict], s: DaySettings,
             sure = first["prob"] * 100 >= s.threshold
             name = first if sure else None
         biggest = max((p.get("px") or 0) for p in g)
+        whole = any(p.get("box") and not cut_off(p["box"])
+                    and (p.get("sharp_pct") is None or p["sharp_pct"] >= s.sharp_cut)
+                    for p in g)
         kept = sum(1 for p in g if rd.is_keeper(p))
         for p in order:
             p["pose"], p["name"], p["sure"] = gi, name, sure
@@ -87,6 +106,8 @@ def decide(pics: list[dict], s: DaySettings,
                 p["verdict"], p["why"] = "purple", OUT_OF_FOCUS
             elif s.small_px and (p.get("px") or 0) < s.small_px <= biggest:
                 p["verdict"], p["why"] = "purple", SMALL
+            elif whole and cut_off(p["box"]):
+                p["verdict"], p["why"] = "purple", CUT_OFF
             elif kept < s.per_pose:
                 p["verdict"] = "keep"
                 kept += 1
@@ -130,7 +151,7 @@ def summary(pics: list[dict], groups: list[list[dict]]) -> dict:
         e["poses"] += 1
         e["pictures"] += len(g)
         e["keys"] += [p.get("key") for p in g]
-        e["kept"] += sum(1 for p in g if p.get("verdict") != "purple")
+        e["kept"] += sum(1 for p in g if not going(p))
         e["best"] = max(e["best"], n["prob"])
         if e["first"] is None:
             e["first"] = g[0].get("key")
@@ -139,6 +160,9 @@ def summary(pics: list[dict], groups: list[list[dict]]) -> dict:
         "purple": sum(1 for p in pics if p.get("verdict") == "purple"),
         "keep": sum(1 for p in pics if p.get("verdict") == "keep"),
         "yours": sum(1 for p in pics if p.get("verdict") is None),
+        "marked": sum(1 for p in pics if p.get("verdict") is None and going(p)),
+        "marked_bytes": sum(p.get("bytes", 0) for p in pics
+                            if p.get("verdict") is None and going(p)),
         "bytes": sum(p.get("bytes", 0) for p in pics if p.get("verdict") == "purple"),
         "why": dict(why), "species": species,
         "not_sure_poses": not_sure, "no_animal_poses": no_animal,

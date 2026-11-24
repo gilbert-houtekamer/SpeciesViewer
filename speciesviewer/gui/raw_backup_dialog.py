@@ -75,8 +75,8 @@ def format_raw_backup_status(status: str, rec: dict | None, current_total: int) 
     if status == "compact":
         return (label, f"Backed up (compact): {rec.get('copied', 0)} file(s) "
                        f"copied last run, {rec.get('excluded_blue', 0)} "
-                       f"Blue-marked skipped. Kept pictures only — click to "
-                       f"add Blue/.trash too, or to check for new pictures.",
+                       f"Blue/Purple skipped. Kept pictures only — click to "
+                       f"add Blue/Purple/.trash too, or to check for new pictures.",
                "done")
     # "full"
     return (label, f"Backed up (full): {rec.get('copied', 0)} file(s) copied "
@@ -228,9 +228,9 @@ class RawBackupPanel(QWidget):
             "colour-delete. Off by default: a RAW backup normally only needs "
             "what you are keeping.")
         opts_row.addWidget(self._trash_box)
-        self._blue_box = QCheckBox("Skip Blue-marked pictures (not yet deleted)")
+        self._blue_box = QCheckBox("Skip Blue and Purple pictures (not yet deleted)")
         self._blue_box.setToolTip(
-            "Blue is this app's discard-candidate colour. Off by default — "
+            "Blue and Purple mark pictures waiting to be deleted. Off by default — "
             "they are copied like everything else, since they have not "
             "actually been deleted yet.")
         opts_row.addWidget(self._blue_box)

@@ -8,8 +8,13 @@ the day in numbers, the species found (click one to go to it), and the cut-offs
 you can change — the view follows at once.
 
 INVARIANTS
-- A view only (step 3 of docs/plans/ai_day_plan.md): nothing is written to a
-  picture, a sidecar or a list. Closing the dialog takes the marks off the grid.
+- Nothing is written until you press Accept… and say what (step 4 of
+  docs/plans/ai_day_plan.md): names (only from your own species list, at or
+  above the threshold, only on pictures without a species), Purple on what
+  could go, Green on what stays (off unless ticked). Only candidates change
+  colour. The Accept is recorded first (engine.day_ai_marks) and checked per
+  picture after; "Undo the last accept" puts back only what is still the
+  AI's. Closing the dialog takes the marks off the grid.
 - The worker reads only files and the app-data caches; the grid and the
   collection are touched on the GUI thread only.
 """
@@ -29,6 +34,21 @@ from PyQt6.QtWidgets import (
 from gui.widgets import wrapped
 
 logger = logging.getLogger("speciesviewer")
+
+
+class _BusyDialog(QDialog):
+    """A dialog that cannot be closed while it writes (busy)."""
+    busy = False
+
+    def reject(self):
+        if not self.busy:
+            super().reject()
+
+    def closeEvent(self, e):
+        if self.busy:
+            e.ignore()
+        else:
+            super().closeEvent(e)
 
 
 def day_pictures(grid) -> tuple[list[dict], str]:
@@ -232,10 +252,20 @@ class DayAiDialog(QDialog):
         lay.addWidget(self._table, 1)
 
         lay.addWidget(wrapped(
-            "A suggestion only — nothing is written. On the grid: a bin on the pictures "
-            "that could go, and the AI's name on each pose (grey: not sure). Accepting "
-            "comes in a next version."))
+            "On the grid: a bin on the pictures that could go, and the AI's name on each "
+            "pose (grey: not sure). Nothing is written until you press Accept…"))
+        self._note = QLabel("")
+        self._note.setWordWrap(True)
+        lay.addWidget(self._note)
         box = QDialogButtonBox()
+        self._accept_btn = QPushButton("Accept…")
+        self._accept_btn.setToolTip("Write the names and colours you choose to the pictures")
+        self._accept_btn.setEnabled(False)
+        self._accept_btn.clicked.connect(self._on_accept)
+        box.addButton(self._accept_btn, QDialogButtonBox.ButtonRole.ActionRole)
+        self._undo_btn = QPushButton("Undo the last accept")
+        self._undo_btn.clicked.connect(self._on_undo)
+        box.addButton(self._undo_btn, QDialogButtonBox.ButtonRole.ActionRole)
         self._stop_btn = QPushButton("Stop")
         self._stop_btn.clicked.connect(self._on_stop)
         box.addButton(self._stop_btn, QDialogButtonBox.ButtonRole.ActionRole)
@@ -249,6 +279,8 @@ class DayAiDialog(QDialog):
 
         pics, region = day_pictures(grid)
         self._region = region
+        self._folder = str(pics[0]["src"].parent) if pics else ""
+        self._refresh_undo()
         self._stats.setText(f"{len(pics)} pictures" + (f" · {region}" if region else ""))
         self._run = _Measure(pics, region, master_root, self)
         self._run.progress.connect(self._on_progress)
@@ -285,6 +317,7 @@ class DayAiDialog(QDialog):
         self._bar.hide()
         self._stop_btn.hide()
         self._bar_text.setText(f"Measured in {time.time() - self._t0:.0f} s.")
+        self._accept_btn.setEnabled(True)
         self._recompute()
 
     def _on_stop(self):
@@ -308,7 +341,9 @@ class DayAiDialog(QDialog):
             f"{' · ' + self._region if self._region else ''}<br>"
             f"Could go: <b>{st['purple']}</b> ({st['bytes'] / 1e9:.1f} GB)"
             f"{' — ' + reasons if reasons else ''}<br>"
-            f"Kept: <b>{st['keep']}</b> · already yours (stars, colour): {st['yours']}<br>"
+            f"Kept: <b>{st['keep']}</b> · already yours (stars, colour): {st['yours']}"
+            + (f", of which marked Blue or Purple: {st['marked']} "
+               f"({st['marked_bytes'] / 1e9:.1f} GB)" if st['marked'] else "") + "<br>"
             f"Poses named: {sum(e['poses'] for e in st['species'].values())} · "
             f"not sure: {st['not_sure_poses']} · no animal: {st['no_animal_poses']}"
             + (f"<br><span style='color:gray'>Names chosen from {among}</span>" if among else ""))
@@ -354,6 +389,170 @@ class DayAiDialog(QDialog):
                 self._grid.select_keys(self._row_keys[row])
             except RuntimeError:
                 pass
+
+    # ── accept + undo ───────────────────────────────────────────────────────
+
+    def _plan(self):
+        """What Accept would write: ({key: [before, name]}, {key: [before, "Purple"]},
+        {key: [before, "Green"]}) — names only from your list and only where no
+        species is set; colours only on candidates."""
+        names, purple, green = {}, {}, {}
+        can_name = self._grid.ai_can_write_species()
+        for p in self._pics:
+            k = p["key"]
+            n = p.get("name")
+            if (can_name and n is not None and n.get("how") in ("exact", "renamed")
+                    and n.get("name") and not self._grid.ai_species_of(k)):
+                names[k] = ["", n["name"]]
+            before = self._grid.ai_colour_of(k)
+            if p.get("verdict") == "purple" and before != "Purple":
+                purple[k] = [before, "Purple"]
+            elif p.get("verdict") == "keep" and before != "Green":
+                green[k] = [before, "Green"]
+        return names, purple, green
+
+    def _on_accept(self):
+        from PyQt6.QtWidgets import QCheckBox, QMessageBox
+        from engine import day_ai_marks
+        names, purple, green = self._plan()
+        dlg = _BusyDialog(self)
+        dlg.setWindowTitle("Accept the AI's suggestion")
+        lay = QVBoxLayout(dlg)
+        n_poses = len({p["pose"] for p in self._pics if p["key"] in names})
+        cb_names = QCheckBox(f"Names: {len(names)} pictures ({n_poses} poses) without a "
+                             f"species get the AI's name")
+        cb_names.setChecked(bool(names))
+        cb_names.setEnabled(bool(names))
+        cb_purple = QCheckBox(f"Purple: {len(purple)} pictures that could go")
+        cb_purple.setChecked(bool(purple))
+        cb_purple.setEnabled(bool(purple))
+        cb_green = QCheckBox(f"Green: {len(green)} pictures that stay")
+        cb_green.setEnabled(bool(green))
+        for w in (cb_names, cb_purple, cb_green):
+            lay.addWidget(w)
+        extra = []
+        if not self._grid.ai_can_write_species():
+            extra.append("Names are given on a culling day only; this day has its own "
+                         "species step.")
+        extra.append("Only names from your own species list, at or above the threshold, "
+                     "and only on pictures that have no species yet. Nothing is deleted: "
+                     "Purple pictures go when you delete Purple. \"Undo the last accept\" "
+                     "puts everything back.")
+        lay.addWidget(wrapped(" ".join(extra)))
+        bb = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok
+                              | QDialogButtonBox.StandardButton.Cancel)
+        write_btn = bb.button(QDialogButtonBox.StandardButton.Ok)
+        write_btn.setText("Write")
+        close_btn = bb.button(QDialogButtonBox.StandardButton.Cancel)
+        bar = QProgressBar()
+        bar.hide()
+        status = QLabel("")
+        status.setWordWrap(True)
+        lay.addWidget(bar)
+        lay.addWidget(status)
+        lay.addWidget(bb)
+        bb.rejected.connect(dlg.reject)
+
+        def write():
+            n_names = names if cb_names.isChecked() else {}
+            colours = dict(purple if cb_purple.isChecked() else {})
+            if cb_green.isChecked():
+                colours.update(green)
+            if not n_names and not colours:
+                dlg.reject()
+                return
+            for w in (cb_names, cb_purple, cb_green, write_btn, close_btn):
+                w.setEnabled(False)
+            dlg.busy = True
+            bar.show()
+            eid = day_ai_marks.start(self._folder, colours, n_names)     # BEFORE writing
+            c_done, c_failed, s_done, s_failed = self._write_steps(
+                {k: v[1] for k, v in colours.items()},
+                {k: v[1] for k, v in n_names.items()}, bar, status)
+            day_ai_marks.confirm(eid, c_done, s_done)
+            dlg.busy = False
+            text = f"Written: {len(s_done)} names, {len(c_done)} colours."
+            if c_failed or s_failed:
+                text += f" {len(c_failed | s_failed)} could not be changed (see the log)."
+            status.setText(text)
+            write_btn.hide()
+            close_btn.setText("Close")
+            close_btn.setEnabled(True)
+            self._after_write(text, c_failed | s_failed, warn=False)
+
+        bb.accepted.connect(write)
+        dlg.exec()
+
+    def _on_undo(self):
+        from PyQt6.QtWidgets import QMessageBox
+        from engine import day_ai_marks
+        last = day_ai_marks.last(self._folder)
+        if not last:
+            return
+        colours, species, changed = day_ai_marks.undo_plan(
+            last, self._grid.ai_colour_of, self._grid.ai_species_of)
+        if QMessageBox.question(
+                self, "Undo the last accept",
+                f"Put back {len(species)} species and {len(colours)} colours as they were "
+                f"before {last['when']}?"
+                + (f"\n\n{changed} you changed since are left as they are." if changed else ""),
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.Yes) != QMessageBox.StandardButton.Yes:
+            return
+        self.setEnabled(False)
+        try:
+            c_done, c_failed, s_done, s_failed = self._write_steps(
+                colours, species, self._bar, self._bar_text)
+        finally:
+            self.setEnabled(True)
+            self._bar.hide()
+        day_ai_marks.forget(last["id"])
+        self._after_write(f"Put back: {len(s_done)} species, {len(c_done)} colours.",
+                          c_failed | s_failed)
+
+    def _write_steps(self, colours: dict, species: dict, bar, status, step: int = 25):
+        """Write {key: colour} and {key: species} a few pictures at a time, showing
+        how far it is — the window stays alive. → (colours done, failed,
+        species done, failed)."""
+        from PyQt6.QtWidgets import QApplication
+        total = len(colours) + len(species)
+        bar.setRange(0, max(1, total))
+        bar.setValue(0)
+        bar.show()
+        sets = [set(), set(), set(), set()]
+        done = 0
+        for what, todo, fn, at in (("colours", colours, self._grid.ai_write_colours, 0),
+                                   ("names", species, self._grid.ai_write_species, 2)):
+            keys = list(todo)
+            for i in range(0, len(keys), step):
+                part = {k: todo[k] for k in keys[i:i + step]}
+                status.setText(f"Writing {what}: {done + len(part)} of {total}…")
+                QApplication.processEvents()
+                ok, bad = fn(part)
+                sets[at] |= ok
+                sets[at + 1] |= bad
+                done += len(part)
+                bar.setValue(done)
+        QApplication.processEvents()
+        return tuple(sets)
+
+    def _after_write(self, text: str, failed, warn: bool = True):
+        from PyQt6.QtWidgets import QMessageBox
+        for p in self._pics:                      # the new colours count from now on
+            p["label"] = self._grid.ai_colour_of(p["key"])
+        self._recompute()
+        self._refresh_undo()
+        if failed and warn:
+            QMessageBox.warning(self, "Not every picture took it",
+                                f"{text}\n\n{len(failed)} could not be changed (see the log).")
+        self._note.setText(text)
+
+    def _refresh_undo(self):
+        from engine import day_ai_marks
+        last = day_ai_marks.last(self._folder) if self._folder else None
+        self._undo_btn.setEnabled(last is not None)
+        self._undo_btn.setText(f"Undo the last accept ({last['when']})" if last
+                               else "Undo the last accept")
 
     # ── closing ─────────────────────────────────────────────────────────────
 

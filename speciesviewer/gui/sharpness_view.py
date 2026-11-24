@@ -528,8 +528,10 @@ class SharpnessView(QWidget):
         if ai.get("box"):
             native = (afi or {}).get("native") or 0
             full = f" on the full picture ({native} px wide)" if native else ""
+            from engine.day_ai import cut_off
+            cut = "; <b>cut off by the edge</b>" if cut_off(ai["box"]) else ""
             rows.append(line("#66bb6a", "The animal", f"found by the AI; <b>{ai.get('px', 0)} "
-                             f"px</b> long{full}"))
+                             f"px</b> long{full}{cut}"))
         elif ai and not ai.get("missing") and not ai.get("error"):
             rows.append(line("#66bb6a", "The animal", "the AI found none"))
         return "<br>".join(rows)

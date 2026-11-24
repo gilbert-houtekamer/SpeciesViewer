@@ -49,7 +49,8 @@ def raw_backup_dest(dest_root, trip_name: str, day_name: str) -> Path:
 
 
 def _day_blue_stems(day_dir: Path) -> set[str]:
-    """UPN stems (deriveUniquePictureName) whose XMP:Label is 'Blue'.
+    """UPN stems (deriveUniquePictureName) whose XMP:Label is 'Blue' or 'Purple'
+    (both wait for a delete; the record keys keep the old name "blue").
 
     Cache-first via engine.sidecar_cache — exiftool only runs for sidecars
     this machine has not already read since they last changed (the same cache
@@ -80,7 +81,7 @@ def _day_blue_stems(day_dir: Path) -> set[str]:
             rows[p] = row
         cache.save()
     return {deriveUniquePictureName(p.name) for p, row in rows.items()
-            if str(row.get("Label", "") or "").strip().lower() == "blue"}
+            if str(row.get("Label", "") or "").strip().lower() in ("blue", "purple")}
 
 
 def scan_day_for_raw_backup(day_dir, *, include_trash: bool = False,
@@ -94,9 +95,8 @@ def scan_day_for_raw_backup(day_dir, *, include_trash: bool = False,
 
     Everything in the day folder is included — RAW/HEIC, .xmp/.dop sidecars,
     JPGs, blog.ini, all of it — matching a plain folder copy. `exclude_blue`
-    drops every file belonging to a Blue-labelled UPN (the discard-candidate
-    colour); Purple is untouched, matching Blue's narrower "not yet deleted,
-    but going" meaning in this backup's context. `include_trash` adds the
+    drops every file belonging to a Blue- or Purple-labelled UPN (both wait
+    for a delete; GH 2026-11-24: the AI's Purple is a discard too). `include_trash` adds the
     day's already-deleted pictures alongside the kept ones, checked at BOTH
     places a colour-delete can have put them — see TRASH_DIRNAME above; pass
     `trip_root` (the trip repo, not the picture root) to also cover the
@@ -337,8 +337,8 @@ def write_backup_report(trip_root, trip_name: str, dest: str, results: list[dict
         f"Generated {datetime.now().strftime('%Y-%m-%d %H:%M')}",
         f"Backup location: {dest}",
         "",
-        "compact = kept pictures only (Blue and already-deleted skipped)",
-        "full    = everything, including Blue and/or already-deleted pictures",
+        "compact = kept pictures only (Blue, Purple and already-deleted skipped)",
+        "full    = everything, including Blue/Purple and/or already-deleted pictures",
         "",
     ]
     tot_copied = tot_skipped = tot_blue = tot_failed = 0
@@ -346,7 +346,7 @@ def write_backup_report(trip_root, trip_name: str, dest: str, results: list[dict
         mode = "compact" if r.get("exclude_blue") and not r.get("include_trash") else "full"
         lines.append(
             f"{r['day']}: {mode} — {r['copied']} copied, {r['skipped']} already there, "
-            f"{r.get('excluded_blue', 0)} excluded (Blue), {r['failed']} failed")
+            f"{r.get('excluded_blue', 0)} excluded (Blue/Purple), {r['failed']} failed")
         tot_copied += r["copied"]
         tot_skipped += r["skipped"]
         tot_blue += r.get("excluded_blue", 0)

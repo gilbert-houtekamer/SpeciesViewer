@@ -96,3 +96,25 @@ def test_common_species_thinned_by_the_master():
     day_ai.decide(pics, DaySettings(per_pose=2, use_master=False),
                   master_days={"buteo buteo": 200})
     assert sum(p["verdict"] == "keep" for p in pics) == 20
+
+
+def test_cut_off_by_the_edge_goes_when_the_pose_has_a_whole_one():
+    a, b = pic(0, 0, sharp=95), pic(1, 1, sharp=60)
+    a["box"] = (0.7, 0.3, 1.0, 0.6)                      # half outside on the right
+    assert day_ai.cut_off(a["box"]) and not day_ai.cut_off(b["box"])
+    day_ai.decide([a, b], DaySettings(per_pose=2))
+    assert (a["verdict"], a["why"]) == ("purple", day_ai.CUT_OFF)
+    assert b["verdict"] == "keep"
+    # only cut-off frames: they are all there is, so the sharpest stay
+    c = pic(0, 0, sharp=95)
+    c["box"] = (0.0, 0.3, 0.3, 0.6)
+    day_ai.decide([c], DaySettings())
+    assert c["verdict"] == "keep"
+
+
+def test_kept_leaves_out_what_is_marked_to_go():
+    pics = [pic(0, 0, label="Purple"), pic(1, 1, label="Green"), pic(2, 2, label="Blue")]
+    groups = day_ai.decide(pics, DaySettings(per_pose=3))
+    st = day_ai.summary(pics, groups)
+    assert st["species"]["Buteo buteo"]["kept"] == 1
+    assert st["marked"] == 2

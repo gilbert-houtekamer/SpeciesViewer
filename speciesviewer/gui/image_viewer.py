@@ -1318,6 +1318,69 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
         self._ai_marks = {}
         self._relayout(force=True)
 
+    # The AI… Accept writes through the grid's own routes — the same as the
+    # colour keys and 'a' / Ctrl+V — and reads each picture back afterwards.
+
+    def ai_colour_of(self, key: str) -> str:
+        try:
+            c = (self._collection.item_for_key(key).color or "").strip().capitalize()
+        except (KeyError, ValueError):
+            return ""
+        return "" if c in ("Grey", "None") else c
+
+    def ai_species_of(self, key: str) -> str:
+        return (self._species_subject_of(key) or "").strip()
+
+    def ai_can_write_species(self) -> bool:
+        """Names only on a culling day (sidecars); a pipeline day keeps its own
+        species route."""
+        return not self.fpr and hasattr(self._collection, "write_tag_many")
+
+    def ai_write_colours(self, by_key: dict) -> tuple[set, set]:
+        """{key: colour ("" = none)} → (done, failed), checked per picture."""
+        by_colour: dict[str, list] = {}
+        for k, c in by_key.items():
+            by_colour.setdefault(c or "", []).append(k)
+        batched = getattr(self._collection, "apply_many", None)
+        for colour, keys in by_colour.items():
+            try:
+                if batched is not None:
+                    batched(keys, new_color=colour)
+                else:
+                    for k in keys:
+                        self._collection.item_for_key(k).set_color(colour)
+            except Exception as e:
+                logger.error(f"AI… colour {colour!r} on {len(keys)} pictures: {e}")
+        done = {k for k, c in by_key.items() if self.ai_colour_of(k) == (c or "")}
+        for k in by_key:
+            card = self._bound.get(k)
+            if card:
+                card.refresh()
+            self._notify_large_view(k)
+        return done, set(by_key) - done
+
+    def ai_write_species(self, by_key: dict) -> tuple[set, set]:
+        """{key: species subject ("" = none)} → (done, failed), checked per picture.
+        A name given bumps the recent-species list, like 'a' does."""
+        if not self.ai_can_write_species():
+            return set(), set(by_key)
+        by_subject: dict[str, list] = {}
+        for k, s in by_key.items():
+            by_subject.setdefault(s or "", []).append(k)
+        from gui.culling_species import remember_species_from_subject
+        for subject, keys in by_subject.items():
+            try:
+                self._collection.write_tag_many(keys, "XMP:Subject", subject, "Subject")
+            except Exception as e:
+                logger.error(f"AI… species {subject!r} on {len(keys)} pictures: {e}")
+                continue
+            if subject:
+                remember_species_from_subject(subject)
+        done = {k for k, s in by_key.items() if self.ai_species_of(k) == (s or "")}
+        self.refresh_after_species_change(set(by_key))
+        logger.info(f"AI… species: {len(done)} of {len(by_key)} pictures written.")
+        return done, set(by_key) - done
+
     def select_keys(self, keys) -> None:
         """Select these pictures (those on the grid) and go to the first."""
         keys = [k for k in keys if k in self._order]
