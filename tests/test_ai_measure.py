@@ -69,12 +69,44 @@ def test_ai_panel_shows_bars_and_names():
     panel = _AiPanel()
     panel.show_result({"box": (.1, .1, .3, .3), "px": 900, "size_pct": 68.0,
                        "sharp_pct": 74.0,
-                       "names": [("Circus macrourus", "Pallid Harrier", 0.97),
-                                 ("Circus cyaneus", "Hen Harrier", 0.02)]})
+                       "among": "eBird's list for NL (588 bird species)",
+                       "names": [{"sci": "Circus macrourus", "name": "steppekiekendief",
+                                  "prob": 0.97, "how": "exact"},
+                                 {"sci": "Circus cyaneus", "name": "Hen Harrier",
+                                  "prob": 0.02, "how": ""}]})
     assert panel._bars["sharp"].value == 74.0
     assert panel._bars["species"].value == 97.0
-    assert "Pallid Harrier" in panel._names.text()
+    text = panel._names.text()
+    assert "steppekiekendief" in text and "not in your list" in text and "NL" in text
+    assert "Not sure" not in text
+    panel.show_result({"box": (.1, .1, .3, .3), "px": 900, "size_pct": 68.0,
+                       "sharp_pct": 10.0, "names": [{"sci": "Anser caerulescens",
+                       "name": "Snow Goose", "prob": 0.25, "how": "exact"}]})
+    assert "Not sure" in panel._names.text()
     panel.show_result({"box": None})
     assert panel._vals["sharp"].text() == "no animal"
     panel.show_result({"missing": True})
     assert "not installed" in panel._names.text()
+
+
+def test_names_match_your_list(tmp_path, monkeypatch):
+    from engine import ai_names
+    monkeypatch.setattr(ai_names, "_lists", {})
+    import db.master_mutate as mm
+    rows = {
+        "tauraco violaceus": {"Level": "Level.SPECIES", "ScientificName": "tauraco violaceus",
+                              "DutchName": "violette toerako", "EnglishName": "Violet Turaco",
+                              "Up": "tauraco"},
+        "tauraco": {"Level": "Level.GENUS", "Up": "musophagidae"},
+        "pica europaea": {"Level": "Level.SPECIES", "ScientificName": "pica europaea",
+                          "Up": "pica"},
+        "pica": {"Level": "Level.GENUS", "Up": "corvidae"},
+    }
+    monkeypatch.setattr(mm, "_read_collection", lambda root: rows)
+    how, row = ai_names.match("Musophaga violacea", tmp_path, family="musophagidae")
+    assert how == "renamed" and row["DutchName"] == "violette toerako"   # -a / -us
+    assert ai_names.match("Musophaga rossae", tmp_path, family="musophagidae") == ("", None)
+    # the same epithet in ANOTHER family is no rename
+    assert ai_names.match("Sitta europaea", tmp_path, family="sittidae") == ("", None)
+    d = ai_names.display("Tauraco violaceus", "Violet Turaco", tmp_path, profile="nl_en")
+    assert d == {"name": "violette toerako", "sci": "Tauraco violaceus", "how": "exact"}

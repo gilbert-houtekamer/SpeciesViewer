@@ -103,6 +103,12 @@ class BioClip:
         self.sci = [" ".join(t[-2:]).strip().capitalize() for t, _c in names]
         self.common = [c or "" for _t, c in names]
         self.taxa = [t for t, _c in names]
+        # sci -> (class, family), e.g. ("aves", "accipitridae"); the taxonomy is
+        # [kingdom, phylum, class, order, family, genus, epithet]
+        self.group = {}
+        for sci, tx in zip(self.sci, self.taxa):
+            if len(tx) >= 5:
+                self.group.setdefault(sci, (str(tx[2]).lower(), str(tx[4]).lower()))
         self._subsets: dict = {}
         self._sub_lock = threading.Lock()
 

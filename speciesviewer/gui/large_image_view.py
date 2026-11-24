@@ -1773,7 +1773,13 @@ class LargeImageView(QDialog):
                 src = None
             if src:
                 break
-        self._sharp_view.set_picture(src, *self._ai_verdict(key))
+        region = ""
+        try:                         # the picture's country → eBird's list there
+            from engine.countries import iso_of
+            region = iso_of((self._collection.read_location(key) or {}).get("Country", ""))
+        except Exception:
+            region = ""
+        self._sharp_view.set_picture(src, *self._ai_verdict(key), region=region)
 
     def _ai_host(self):
         """The Species Viewer that opened us, when its AI… dialog is open on the

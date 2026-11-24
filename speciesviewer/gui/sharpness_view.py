@@ -38,15 +38,16 @@ from gui import theme as _th
 logger = logging.getLogger("speciesviewer")
 
 CROP_PX = 600          # the 100 % block, in picture pixels
+NOT_SURE_PCT = 45      # engine.ai_measure.NOT_SURE, as a percentage
 
 
 class _Load(QThread):
     done = pyqtSignal(int, object)          # generation, result dict | None
     ai = pyqtSignal(int, object)            # generation, engine.ai_measure result | {"error"}
 
-    def __init__(self, gen: int, src: Path, parent=None, alive=None):
+    def __init__(self, gen: int, src: Path, parent=None, alive=None, region: str = ""):
         super().__init__(parent)
-        self._gen, self._src = gen, src
+        self._gen, self._src, self._region = gen, src, region
         self._alive = alive or (lambda: True)     # False once you moved on
 
     def run(self):
@@ -101,6 +102,7 @@ class _Load(QThread):
                                  fallback="").strip().strip('"')
             res = ai_measure.measure(self._src, im, sc, (af or {}).get("model", ""),
                                      native=(af or {}).get("native") or 0,
+                                     region=self._region, master_root=master or None,
                                      yardstick=ai_yardstick.get(master))
             self.ai.emit(self._gen, res)
         except Exception as e:                       # shown, never fatal
@@ -287,12 +289,23 @@ class _AiPanel(QWidget):
         self._bars["size"].set(r.get("size_pct"))
         self._vals["size"].setText(f"{r.get('px', 0)} px")
         names = r.get("names") or []
-        first = names[0][2] * 100 if names else None
+        first = names[0]["prob"] * 100 if names else None
         self._bars["species"].set(first)
         self._vals["species"].setText(f"{first:.0f} %" if first is not None else "")
         rows = []
-        for sci, common, prob in names:
-            rows.append(f"<b>{prob * 100:.0f} %</b> &nbsp;{common or ''} <i>{sci}</i>")
+        for n in names:
+            note = ("" if n.get("how") == "exact" else
+                    " <span style='color:%s'>(another name in your list)</span>" % _th.INK_FAINT
+                    if n.get("how") == "renamed" else
+                    " <span style='color:%s'>(not in your list)</span>" % _th.INK_FAINT)
+            rows.append(f"<b>{n['prob'] * 100:.0f} %</b> &nbsp;{n.get('name') or ''} "
+                        f"<i>{n['sci']}</i>{note}")
+        if names and first < NOT_SURE_PCT:
+            rows.insert(0, f"<span style='color:{_th.INK_FAINT}'>Not sure — the first "
+                           f"name is below {NOT_SURE_PCT} %</span>")
+        if r.get("among"):
+            rows.append(f"<span style='color:{_th.INK_FAINT}'>Chosen from "
+                        f"{r['among']}</span>")
         self._names.setText("<br>".join(rows))
 
 
@@ -377,8 +390,10 @@ class SharpnessView(QWidget):
         if self._result:
             self._render()
 
-    def set_picture(self, src: Path | None, suggestion: str = "", yours: bool = False) -> None:
-        """Show `src` (a RAW, HEIC or JPG). `suggestion`: the AI… verdict, if any."""
+    def set_picture(self, src: Path | None, suggestion: str = "", yours: bool = False,
+                    region: str = "") -> None:
+        """Show `src` (a RAW, HEIC or JPG). `suggestion`: the AI… verdict, if any;
+        `region`: the picture's country (ISO code) — the AI names from eBird's list there."""
         self._gen += 1
         self._clicked_spot = None    # a new picture: the spot follows it again
         self._suggestion, self._yours = suggestion or "", bool(yours)
@@ -398,7 +413,7 @@ class SharpnessView(QWidget):
         self._info.setText("")
         self._ai.clear("The AI is looking…")
         gen = self._gen
-        t = _Load(gen, Path(src), self, alive=lambda: self._gen == gen)
+        t = _Load(gen, Path(src), self, alive=lambda: self._gen == gen, region=region)
         t.done.connect(self._on_loaded)
         t.ai.connect(self._on_ai)
         t.finished.connect(lambda t=t: self._threads.remove(t) if t in self._threads else None)

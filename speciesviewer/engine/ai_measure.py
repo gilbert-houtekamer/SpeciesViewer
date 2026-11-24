@@ -9,7 +9,12 @@ engine.picture_score) return
   sharp_in   sharpness INSIDE the box (the fine grid at the picture's own size)
   sharp_pct  that as a percentile of your master pictures from the same camera
              (engine.ai_yardstick) — None while the yardstick is not there
-  names      BioCLIP 2's top species [(scientific, common, probability)]
+  names      BioCLIP 2's top species, in YOUR words (engine.ai_names):
+             [{"sci", "name", "prob", "how", "outside"}] — chosen among eBird's
+             list for the picture's country (engine.ebird) when there is one; a
+             weak bird name gives way to a confident non-bird from everything
+             BioCLIP knows ("outside" = not on the bird list)
+  among      what the names were chosen from, in words
 No animal found = no box, sharp 0, size 0, and no names.
 
 INVARIANT: read-only for the picture. The boxes and picture vectors are cached in
@@ -29,6 +34,7 @@ import numpy as np
 
 MIN_CONF = 0.2           # weaker "animal" boxes are not believed
 DETECT_EDGE = 1280
+NOT_SURE = 0.45          # below this the first name is a guess (GH: 45–50 % per day)
 SIZE_FULL_PX = 2500      # GH 2026-11-23: frame-filling geese
 _DET_MODEL = "MDV5A"     # the same model whether run through PyTorch or ONNX
 
@@ -129,13 +135,44 @@ class AiCache:
         self.db.close()
 
 
+def names_for(vec, region: str = "", master_root=None, k: int = 3) -> tuple[list, str]:
+    """(names, among) for a picture vector: see the module docstring."""
+    from engine import ai_models, ai_names, ebird
+    clip = ai_models.bioclip()
+    allowed = ebird.species(region) if region else None
+    if allowed:
+        top = clip.top(vec, k=k, allowed=allowed)
+        among = f"eBird's list for {region} ({len(allowed)} bird species)"
+        outside = False
+        if not top or top[0][2] < NOT_SURE:
+            wide = clip.top(vec, k=k)
+            if wide and clip.group.get(wide[0][0], ("",))[0] != "aves" \
+                    and wide[0][2] > (top[0][2] if top else 0):
+                top, outside = wide, True
+                among = "everything the AI knows (no bird on the list fits)"
+    else:
+        top = clip.top(vec, k=k)
+        outside = False
+        among = ("everything the AI knows (no country known)" if not region else
+                 f"everything the AI knows (no eBird list for {region})")
+    names = []
+    for sci, common, prob in top:
+        fam = clip.group.get(sci, ("", ""))[1]
+        d = ai_names.display(sci, common, master_root, family=fam)
+        d["prob"] = prob
+        d["outside"] = outside
+        names.append(d)
+    return names, among
+
+
 def measure(src: Path, im, score: dict | None, camera: str = "", *,
-            native: int = 0, cache: AiCache | None = None, allowed=None,
-            yardstick=None, k: int = 3) -> dict:
+            native: int = 0, cache: AiCache | None = None, region: str = "",
+            master_root=None, yardstick=None, k: int = 3) -> dict:
     """The AI's view of one picture (see the module docstring). `im` = the
     upright PIL image; `native` = the picture's own long side (the sensor, from
-    EXIF; else the decoded size); `allowed` = lower-case scientific names to
-    choose from (None = all); `yardstick` = engine.ai_yardstick.Yardstick or None."""
+    EXIF; else the decoded size); `region` = the picture's country (ISO code,
+    for eBird's list); `master_root` = whose species list names it;
+    `yardstick` = engine.ai_yardstick.Yardstick or None."""
     from engine import ai_models
     from engine.picture_score import fine_in
     own = cache is None
@@ -149,7 +186,7 @@ def measure(src: Path, im, score: dict | None, camera: str = "", *,
             cache.put_boxes(src, found)
         box = animal_box(found)
         out = {"box": box, "px": 0, "size_pct": 0.0, "sharp_in": None,
-               "sharp_pct": 0.0 if box is None else None, "names": []}
+               "sharp_pct": 0.0 if box is None else None, "names": [], "among": ""}
         if box is None:
             return out
         out["px"] = long_side_px(box, im.size, native or (score or {}).get("native"))
@@ -163,7 +200,7 @@ def measure(src: Path, im, score: dict | None, camera: str = "", *,
         if vec is None:
             vec = ai_models.bioclip().picture_vectors([crop_image(im, box)])[0]
             cache.put_vector(src, box, vec)
-        out["names"] = ai_models.bioclip().top(vec, k=k, allowed=allowed)
+        out["names"], out["among"] = names_for(vec, region, master_root, k)
         return out
     finally:
         if own:
