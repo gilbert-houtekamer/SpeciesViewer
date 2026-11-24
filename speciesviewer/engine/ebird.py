@@ -25,6 +25,7 @@ API = "https://api.ebird.org/v2"
 REFRESH_S = 180 * 24 * 3600          # a saved list is refreshed after half a year
 _lock = threading.Lock()
 _memo: dict[str, frozenset | None] = {}
+_taxonomy: dict | None = None
 
 
 def _dir() -> Path:
@@ -63,6 +64,21 @@ def _get(url: str, path: Path, key: str):
         logger.info(f"eBird: {url.rsplit('/', 1)[-1]} not fetched ({e}); "
                     f"{'using the saved copy' if saved is not None else 'no list'}")
         return saved
+
+
+def taxonomy() -> dict:
+    """{lower-case scientific name: (English name, family)} from the saved eBird
+    taxonomy ({} before the first list was fetched)."""
+    global _taxonomy
+    with _lock:
+        if _taxonomy is None:
+            try:
+                rows = json.loads((_dir() / "taxonomy.json").read_text(encoding="utf-8"))
+                _taxonomy = {t["sciName"].lower(): (t.get("comName", ""), t.get("familySciName", ""))
+                             for t in rows if t.get("category") == "species"}
+            except (OSError, ValueError, KeyError):
+                return {}
+        return _taxonomy
 
 
 def forget() -> None:

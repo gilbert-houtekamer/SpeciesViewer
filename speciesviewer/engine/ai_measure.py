@@ -177,14 +177,27 @@ class AiCache:
         self.db.close()
 
 
+_matched: dict = {}
+
+
+def _as_bioclip(region: str, listed: frozenset) -> frozenset:
+    """eBird's list for a region in BioCLIP's own names (cached per list)."""
+    from engine import ai_models, ebird
+    key = (region, listed)
+    if key not in _matched:
+        _matched[key] = ai_models.bioclip().match_list(listed, ebird.taxonomy())
+    return _matched[key]
+
+
 def names_for(vec, region: str = "", master_root=None, k: int = 3) -> tuple[list, str]:
     """(names, among) for a picture vector: see the module docstring."""
     from engine import ai_models, ai_names, ebird
     clip = ai_models.bioclip()
-    allowed = ebird.species(region) if region else None
+    listed = ebird.species(region) if region else None
+    allowed = _as_bioclip(region, listed) if listed else None
     if allowed:
         top = clip.top(vec, k=k, allowed=allowed)
-        among = f"eBird's list for {region} ({len(allowed)} bird species)"
+        among = f"eBird's list for {region} ({len(listed)} bird species)"
         outside = False
         if not top or top[0][2] < NOT_SURE:
             wide = clip.top(vec, k=k)

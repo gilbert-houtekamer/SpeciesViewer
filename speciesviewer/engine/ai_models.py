@@ -129,7 +129,40 @@ class BioClip:
             if len(tx) >= 5:
                 self.group.setdefault(sci, (str(tx[2]).lower(), str(tx[4]).lower()))
         self._subsets: dict = {}
+        self._by_common = None
         self._sub_lock = threading.Lock()
+
+    def match_list(self, allowed, taxonomy: dict) -> frozenset:
+        """eBird's names (lower-case) as BioCLIP's own names. eBird follows the
+        newest genera — Ardea ibis, Astur gentilis, Curruca communis — where
+        BioCLIP still has Bubulcus ibis, Accipiter gentilis, Sylvia communis;
+        without this those species could never be named (the cattle egret, GH
+        2026-11-24: 46 of NL's 588). A name BioCLIP lacks is matched on the
+        English name, else on the species epithet within the same family —
+        only when exactly one bird fits. `taxonomy` = ebird.taxonomy()."""
+        if self._by_common is None:
+            by_common, by_ep_fam = {}, {}
+            for s, c in zip(self.sci, self.common):
+                cl, fam = self.group.get(s, ("", ""))
+                if cl != "aves":
+                    continue
+                if c:
+                    by_common.setdefault(c.lower(), set()).add(s.lower())
+                by_ep_fam.setdefault((s.split()[-1].lower(), fam), set()).add(s.lower())
+            self._by_common, self._by_ep_fam = by_common, by_ep_fam
+            self._have = {s.lower() for s in self.sci}
+        out = set()
+        for a in allowed:
+            if a in self._have:
+                out.add(a)
+                continue
+            common, family = taxonomy.get(a, ("", ""))
+            hit = self._by_common.get(common.lower(), set()) if common else set()
+            if len(hit) != 1:
+                hit = self._by_ep_fam.get((a.split()[-1], family.lower()), set())
+            if len(hit) == 1:
+                out |= hit
+        return frozenset(out)
 
     def subset(self, allowed) -> np.ndarray | None:
         """Column indices of the names in `allowed` (lower-case scientific

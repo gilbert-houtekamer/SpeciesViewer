@@ -132,3 +132,26 @@ def test_names_match_your_list(tmp_path, monkeypatch):
     assert ai_names.match("Sitta europaea", tmp_path, family="sittidae") == ("", None)
     d = ai_names.display("Tauraco violaceus", "Violet Turaco", tmp_path, profile="nl_en")
     assert d == {"name": "violette toerako", "sci": "Tauraco violaceus", "how": "exact"}
+
+
+def test_ebird_names_in_newer_genera_find_bioclips_older_ones():
+    clip = ai_models.BioClip.__new__(ai_models.BioClip)
+    clip.sci = ["Bubulcus ibis", "Accipiter gentilis", "Charadrius alexandrinus",
+                "Ardea alba", "Sylvia communis", "Phylloscopus communis"]
+    clip.common = ["Cattle Egret", "Northern Goshawk", "Kentish Plover", "Great Egret",
+                   "Common Whitethroat", ""]
+    clip.group = {"Bubulcus ibis": ("aves", "ardeidae"), "Accipiter gentilis": ("aves", "accipitridae"),
+                  "Charadrius alexandrinus": ("aves", "charadriidae"),
+                  "Ardea alba": ("aves", "ardeidae"), "Sylvia communis": ("aves", "sylviidae"),
+                  "Phylloscopus communis": ("aves", "phylloscopidae")}
+    clip._by_common = None
+    taxonomy = {"ardea ibis": ("Western Cattle Egret", "Ardeidae"),
+                "astur gentilis": ("Eurasian Goshawk", "Accipitridae"),
+                "anarhynchus alexandrinus": ("Kentish Plover", "Charadriidae"),
+                "curruca communis": ("Greater Whitethroat", "Sylviidae"),
+                "anthus japonicus": ("Siberian Pipit", "Motacillidae")}
+    got = clip.match_list({"ardea alba", "ardea ibis", "astur gentilis",
+                           "anarhynchus alexandrinus", "curruca communis", "anthus japonicus"},
+                          taxonomy)
+    assert got == {"ardea alba", "bubulcus ibis", "accipiter gentilis",
+                   "charadrius alexandrinus", "sylvia communis"}     # family decides, not epithet
