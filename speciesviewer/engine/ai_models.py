@@ -58,6 +58,13 @@ def available() -> bool:
     return runtime_available() and not missing_files()
 
 
+def reset() -> None:
+    """Forget the loaded models (after a download replaced their files)."""
+    global _detector, _bioclip
+    with _lock:
+        _detector = _bioclip = None
+
+
 def providers() -> list[str]:
     import onnxruntime as ort
     have = ort.get_available_providers()

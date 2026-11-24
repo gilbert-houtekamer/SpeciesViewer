@@ -1822,10 +1822,16 @@ def build_menu_spec(main_window):
                     callback=lambda: SettingsWindow(main_window).exec(),
                     shortcut="Ctrl+G",
                     tooltip="Global, Look & Feel, Species, Database, Decode quality, "
-                            "Location, Lightroom & PhotoLab — one tab each",
+                            "Location, Lightroom & PhotoLab, AI models — one tab each",
                 ),
                 f"{MenuSpec.separator()}_settings_caches": None,
                 "Manage Caches…": manage_caches,
+                "AI Models…": MenuSpec(
+                    callback=lambda: __import__(
+                        "gui.ai_models_dialog", fromlist=["show"]).show(main_window),
+                    tooltip="The AI models tab of Settings: download the optional "
+                            "models for culling advice and species suggestions",
+                ),
             },
             **({"Developer Tools": developer_tools_menu} if debug_enabled() else {}),
             f"{MenuSpec.separator()}_file": None,

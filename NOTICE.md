@@ -41,6 +41,7 @@ Versions as of August 2026.
 | langdetect | 1.0.9 | MIT | deciding which language a text is in |
 | fastcrc | 0.3.6 | MIT | translation-cache keys |
 | openpyxl | 3.1.5 | MIT | the Excel checklist |
+| onnxruntime-directml (Windows) / onnxruntime | 1.24.4 | MIT | running the optional AI models |
 
 The packages these depend on in turn carry permissive licences — MIT, BSD, Apache-2.0, PSF
 and MPL-2.0 (`certifi`).
@@ -58,6 +59,7 @@ The downloadable program includes these libraries.
 | libheif | LGPL-3.0 | pillow-heif | HEIF container handling |
 | libde265 | LGPL-3.0 | pillow-heif | HEVC decoder, for reading HEIC pictures |
 | FFmpeg | LGPL-2.1 | opencv-python | video codecs |
+| DirectML (`DirectML.dll`) | Microsoft DirectML redistributable licence | onnxruntime-directml | the graphics card for the AI models, Windows only |
 
 The program is delivered as a folder, not as a single file, so each of these libraries is a
 separate file that anybody can replace with their own build, as their LGPL licences provide.
@@ -121,6 +123,18 @@ sources, each under the **Creative Commons Attribution 4.0** licence (CC BY 4.0)
 
 **Avibase** (`avibase.bsc-eoc.org`) and the **Netherlands Biodiversity API**
 (`api.biodiversitydata.nl`) — for checklists and species names.
+
+**eBird** (Cornell Lab of Ornithology, `api.ebird.org`) — the bird list per country the AI
+chooses its names from; needs your own eBird key.
+
+**The AI models** — an optional download (*File ▸ Settings ▸ AI Models…*) from
+`houtekamer.com/speciesviewer/ai/`, not inside the program:
+- **MegaDetector v5a** (Microsoft AI for Good Lab), MIT licence — where the animal is.
+- **BioCLIP 2** (Imageomics Institute), MIT licence — what it is.
+- the species names and taxonomy of **TreeOfLife-200M** (Imageomics Institute), CC0 1.0.
+
+Both models are converted to ONNX; the name vectors are stored at half precision. A
+`NOTICE.txt` with these licences comes with the download.
 
 **Google Translate**, reached through `deep-translator` — for translating blog text between
 Dutch and English.

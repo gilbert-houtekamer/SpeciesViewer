@@ -17,8 +17,8 @@ The words in it — master, trips, albums, website — are explained in
 - **Needed for their own menus:** the folders for pictures, trips and albums.
   For an empty row, **Use suggested** makes the folder and uses it in one
   click.
-- **Optional:** DxO PhotoLab, and the decode quality, which works on its
-  defaults.
+- **Optional:** DxO PhotoLab, the AI models, and the decode quality, which
+  works on its defaults.
 
 **Fill in every row anyway, in one sitting.** For the folders, *Use suggested*
 is one click each, and a menu whose folder is missing stays grey — later you
@@ -92,6 +92,7 @@ at, not documents. Choosing, creating and switching collections lives under
 |---|---|---|
 | Settings ▸ Settings… | `Ctrl+G` | |
 | Settings ▸ Manage Caches… | | |
+| Settings ▸ AI Models… | | |
 | Developer Tools ▸ … | | *Only visible when debug is enabled* — [Appendix C](appendix-c-developer-tools.md) |
 | Quit | `Ctrl+Q` | |
 
@@ -113,6 +114,7 @@ this section: [Where your settings and data are kept](#where-your-settings-and-d
 | **Decode quality** | How a RAW is turned into the picture you look at |
 | **Location** | How a GPS position becomes a place name |
 | **Lightroom & PhotoLab** | Three sub-tabs: PhotoLab location, PhotoLab denoise, Sidecar behaviour |
+| **AI models** | Download the optional AI models — see [AI Models](#ai-models) |
 
 ### Global
 
@@ -250,6 +252,25 @@ move it to another folder (a faster or bigger disk). Caches live under
   everything again.
 
 Clearing a cache never loses data. It only costs time on the next read.
+
+## AI Models…
+
+The **AI models** tab of Settings (this menu item opens Settings on it). The
+AI models let SpeciesViewer suggest which pictures of a day could go and
+name the species in them — the **AI…** button in culling and the
+**Sharpness** tab of the Editor. They are optional: without them everything
+else works as before, and those places say the models are missing.
+
+The window says whether the models are on this computer. **Download** fetches
+them: about 3.2 GB, into `%LOCALAPPDATA%\SpeciesViewer\ai`, with a progress
+bar and the time to go. **Stop** — or a broken connection — loses nothing:
+the next **Download** carries on where it stopped. Each file is checked when
+it has arrived; one that did not arrive intact is fetched again. After that
+the AI runs on this computer, also without internet, and nothing about your
+pictures is sent anywhere.
+
+The models: MegaDetector (where the animal is) and BioCLIP 2 (what it is),
+both MIT-licensed; see [NOTICE.md](../../NOTICE.md).
 
 ## Developer Tools
 

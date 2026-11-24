@@ -188,6 +188,12 @@ def locate_exiftool(parent) -> None:
                             "Restart SpeciesViewer to use it everywhere.")
 
 
+def ai_models_state():
+    from gui.ai_models_dialog import state
+    mark, text = state()
+    return (OK if mark == "ok" else OPTIONAL), text
+
+
 def decode_quality_state():
     if _config.has_section("fullres") and _config.items("fullres"):
         return OK, "Your own settings."
@@ -243,6 +249,7 @@ class SetupChecklistDialog(QDialog):
         self.refresh()
 
     def _rows(self):
+        from gui.ai_models_dialog import AiModelsDialog
         from settings.globalsettings import GlobalSettingsDialog
         from settings.photolablocation import PhotoLabLocationDialog
         from settings.rawsettings import RawProcessingDialog
@@ -270,6 +277,8 @@ class SetupChecklistDialog(QDialog):
              [("Change…", lambda: self._open(lambda: RawProcessingDialog(mw)))]),
             ("DxO PhotoLab", "editing (optional)", photolab_state,
              [("Locate…", lambda: self._open(lambda: PhotoLabLocationDialog(mw)))]),
+            ("AI models", "culling advice (optional)", ai_models_state,
+             [("Download…", lambda: self._open(lambda: AiModelsDialog(mw)))]),
         ]
         for col, head in enumerate(("", "Setting", "", "Needed for", "")):
             if head:

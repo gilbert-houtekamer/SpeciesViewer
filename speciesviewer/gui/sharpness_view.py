@@ -269,7 +269,7 @@ class _AiPanel(QWidget):
     def show_result(self, r: dict):
         if r.get("missing"):
             self.clear("Species suggestions: the AI models are not installed on this "
-                       "computer.")
+                       "computer — an optional download: File ▸ Settings ▸ AI Models….")
             return
         if r.get("error"):
             self.clear(f"The AI could not look at this picture: {r['error']}")

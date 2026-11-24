@@ -26,6 +26,7 @@ def _pages():
     from settings.photolablocation import PhotoLabLocationDialog
     from settings.photolabdenoise import PhotoLabDenoiseDialog
     from settings.sidecarsettings import SidecarSettingsDialog
+    from gui.ai_models_dialog import AiModelsDialog
     return [
         ("Global", GlobalSettingsDialog),
         ("Look && Feel", LookFeelDialog),
@@ -37,6 +38,7 @@ def _pages():
             ("PhotoLab denoise", PhotoLabDenoiseDialog),
             ("Sidecar behaviour", SidecarSettingsDialog),
         ]),
+        ("AI models", AiModelsDialog),
     ]
 
 
@@ -65,6 +67,12 @@ class SettingsWindow(QDialog):
                 self.tabs.setCurrentIndex(names.index(tab))
         self._build_current()
         self.resize(1180, 680)
+
+    def done(self, r):
+        for page in self._built.values():      # e.g. a running download stops
+            if hasattr(page, "stop_work"):
+                page.stop_work()
+        super().done(r)
 
     def _placeholder(self, cls) -> QWidget:
         w = QWidget()

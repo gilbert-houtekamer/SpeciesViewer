@@ -81,6 +81,13 @@ No animal found = sharp 0, size 0, no name.
 3. **Culling AI… read-only**: the day dialog, bins + name labels on the cards, cut-offs.
 4. **Accept + undo**: Purple and names written for the day.
 5. Installing: requirements, build, Setup checklist, Settings, docs.
+   **Done 2026-11-24:** the models are hosted at https://houtekamer.com/speciesviewer/ai/v1/
+   (`manifest.json` with size + SHA-256 per file; a new model version gets v2/). Put there by
+   `tools/svr_ai_publish.py` (dry run → --apply; the name vectors at half precision: 3.2 GB
+   instead of 4.4, no first name changed on 346 pictures). Fetched by `engine/ai_download.py`
+   (resumable `.part`, checked before it gets its real name) from *File ▸ Settings ▸ AI
+   Models…* and the Setup checklist row. Licences settled: MegaDetector MIT, BioCLIP 2 MIT,
+   TreeOfLife-200M names CC0 (NOTICE.md).
 
 ## GH 2026-11-24
 

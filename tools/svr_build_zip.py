@@ -90,8 +90,7 @@ def main() -> int:
     import svr_manual_build as manual
     if not manual.MERMAID_LOCAL.is_file():
         print("FAILED: the manual's diagram script is not vendored, so Help > "
-              "Reference Manual would need internet.
-"
+              "Reference Manual would need internet.\n"
               "  Run once: python tools/svr_manual_build.py --vendor-mermaid")
         return 1
     manual.build(manual.MANUAL_DIR, manual.DEFAULT_OUT)

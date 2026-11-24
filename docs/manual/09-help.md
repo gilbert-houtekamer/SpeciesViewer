@@ -34,6 +34,7 @@ a new master.
 | exiftool | reading pictures — found on the PATH, or **Locate…** a copy (download from exiftool.org) | ✗ |
 | Decode Quality | the 100% view; works on defaults | · |
 | DxO PhotoLab | editing; optional | – |
+| AI models | culling advice and species suggestions; optional — **Download…** opens [AI Models](01-file.md#ai-models) | – |
 
 A row that is not set at all gets a **Use suggested** button (**Create
 suggested** for the master): one click makes the folder and uses it. The

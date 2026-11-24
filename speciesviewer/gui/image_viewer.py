@@ -1294,7 +1294,8 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
             QMessageBox.information(
                 self, "AI",
                 "The AI models are not installed on this computer, so there is no "
-                "suggestion to show.")
+                "suggestion to show. They are an optional download: File ▸ Settings ▸ "
+                "AI Models….")
             return
         if self._ai_dlg is not None:
             try:
