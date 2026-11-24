@@ -7,7 +7,9 @@ carries on where it stopped (HTTP Range).
 
 INVARIANT: a model file only appears under its real name after its size AND its
 SHA-256 match the manifest — so ai_models.available() never sees half a file.
-Nothing outside `ai/` is touched; a file not in the manifest is left alone.
+Nothing outside `ai/` is touched. The only files removed are those the manifest
+names under "replaces" (the previous version's models), and only after every
+file of the new set is in place.
 """
 from __future__ import annotations
 
@@ -21,7 +23,8 @@ logger = logging.getLogger("speciesviewer")
 
 # The models live beside the author's website (2026-11-24). A new model version
 # gets a new folder (v2/ …), so an old SpeciesViewer keeps finding its own files.
-MODELS_URL = "https://houtekamer.com/speciesviewer/ai/v1/"
+# v2 (2026-11-24): the two models at 16 bit; v1 stays for older SpeciesViewers.
+MODELS_URL = "https://houtekamer.com/speciesviewer/ai/v2/"
 MANIFEST = "manifest.json"
 CHUNK = 1 << 20
 SPARE = 500 * 1024 * 1024          # leave this much free on the disk
@@ -136,3 +139,27 @@ def download(m: dict, folder: Path | None = None, base: str = MODELS_URL,
         written.append(f["name"])
         logger.info(f"AI models: {f['name']} downloaded ({f['size'] / 1e6:.0f} MB)")
     return written
+
+
+def remove_replaced(m: dict, folder: Path | None = None) -> list[tuple[str, int]]:
+    """Delete the older model files this set replaces — only once the whole new
+    set is in place. Returns [(name, bytes)] of what was removed."""
+    if folder is None:
+        from engine.ai_models import ai_dir
+        folder = ai_dir()
+    if to_fetch(m, folder):
+        return []
+    keep = {f["name"] for f in m["files"]}
+    gone = []
+    for name in m.get("replaces", []):
+        if name in keep or "/" in name or "\\" in name:
+            continue
+        for p in (folder / name, folder / (name + ".ok"), folder / (name + ".part")):
+            if p.is_file():
+                size = p.stat().st_size
+                p.unlink()
+                if p.name == name:
+                    gone.append((name, size))
+    for name, size in gone:
+        logger.info(f"AI models: removed the older {name} ({size / 1e6:.0f} MB)")
+    return gone

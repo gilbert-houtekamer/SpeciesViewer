@@ -267,7 +267,7 @@ name the species in them — the **AI…** button in culling and the
 else works as before, and those places say the models are missing.
 
 The window says whether the models are on this computer. **Download** fetches
-them: about 3.2 GB, into `%LOCALAPPDATA%\SpeciesViewer\ai`, with a progress
+them: about 2.3 GB, into `%LOCALAPPDATA%\SpeciesViewer\ai`, with a progress
 bar and the time to go. **Stop** — or a broken connection — loses nothing:
 the next **Download** carries on where it stopped. Each file is checked when
 it has arrived; one that did not arrive intact is fetched again. After that

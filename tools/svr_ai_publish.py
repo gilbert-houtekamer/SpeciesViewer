@@ -1,11 +1,13 @@
 """Put the AI model files on the download site (for engine/ai_download.py).
 
 ONE JOB: from a working `ai/` folder (app-data, made by tools/ml/svr_onnx_export.py)
-make the files to publish — the species-name vectors at half precision (1.3 GB
+and the 16-bit models (app-data `ai_variants/`, made by tools/ml/svr_ai_precision.py
+make) make the files to publish — the species-name vectors at half precision (1.3 GB
 instead of 2.7; checked 2026-11-24: on 346 pictures not one first name changed,
 certainty moved at most 0.07 %-points) — write `manifest.json` (name, size,
 SHA-256 per file) and a NOTICE.txt with the licences, and upload them over SFTP
-to the website's folder + /speciesviewer/ai/v1/ (= engine.ai_download.MODELS_URL).
+to the website's folder + /speciesviewer/ai/v2/ (= engine.ai_download.MODELS_URL).
+v1 (the 32-bit models) stays on the site for SpeciesViewers before 16 bit.
 
 INVARIANT: dry run unless --apply. The manifest is uploaded LAST, after every file
 is on the server with the right size, so a half-finished upload is never offered.
@@ -32,17 +34,21 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "speciesviewer"))
 from engine import ai_download, ai_models  # noqa: E402
 from utils.cache_paths import app_data_dir  # noqa: E402
 
-REMOTE_DIR = "speciesviewer/ai/v1"            # below the website's folder
+REMOTE_DIR = "speciesviewer/ai/v2"            # below the website's folder
+# the 16-bit models, as tools/ml/svr_ai_precision.py names them → their name here
+FP16 = {"md_fp16.onnx": ai_models.DETECTOR_FILE, "clip_fp16.onnx": ai_models.CLIP_IMAGE_FILE}
+REPLACES = ["megadetector_v5a.onnx", "bioclip2_image.onnx"]   # v1's models
 
 NOTICE = """SpeciesViewer — the optional AI models
 
-megadetector_v5a.onnx
+megadetector_v5a_fp16.onnx
   MegaDetector v5a (Microsoft AI for Good Lab), MIT licence.
-  https://github.com/agentmorris/MegaDetector — converted to ONNX.
+  https://github.com/agentmorris/MegaDetector — converted to ONNX, 16 bit.
 
-bioclip2_image.onnx, bioclip2.json
+bioclip2_image_fp16.onnx, bioclip2.json
   BioCLIP 2 (Imageomics Institute), MIT licence.
-  https://huggingface.co/imageomics/bioclip-2 — the image encoder, converted to ONNX.
+  https://huggingface.co/imageomics/bioclip-2 — the image encoder, converted to
+  ONNX, 16 bit.
 
 bioclip2_names.npy, bioclip2_names.json
   BioCLIP 2's text vectors for the species names of TreeOfLife-200M
@@ -61,14 +67,15 @@ IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED.
 """
 
 
-def stage(src: Path, out: Path) -> list[Path]:
+def stage(src: Path, out: Path, fp16: Path) -> list[Path]:
     """The files to publish, in `out` (copies; the npy at half precision)."""
     out.mkdir(parents=True, exist_ok=True)
     files = []
+    origin = {v: fp16 / k for k, v in FP16.items()}
     for name in (ai_models.DETECTOR_FILE,) + ai_models.BIOCLIP_FILES:
-        s, t = src / name, out / name
+        s, t = origin.get(name, src / name), out / name
         if not s.is_file():
-            raise SystemExit(f"missing in {src}: {name}")
+            raise SystemExit(f"missing: {s}")
         if not t.is_file() or t.stat().st_mtime < s.stat().st_mtime:
             if name.endswith(".npy"):
                 np.save(t, np.load(s).astype(np.float16))
@@ -85,8 +92,8 @@ def make_manifest(files: list[Path]) -> dict:
     for p in files:
         print(f"  checksum {p.name} ({p.stat().st_size / 1e6:.0f} MB)", flush=True)
         rows.append({"name": p.name, "size": p.stat().st_size, "sha256": ai_download.sha256(p)})
-    return {"version": ai_models.MODEL_VERSION, "made": time.strftime("%Y-%m-%d"),
-            "files": rows}
+    return {"version": ai_models.MODEL_VERSION + " fp16", "made": time.strftime("%Y-%m-%d"),
+            "files": rows, "replaces": REPLACES}
 
 
 def upload(out: Path, m: dict) -> None:
@@ -144,13 +151,14 @@ def check_web(m: dict) -> bool:
 def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("--src", default=str(ai_models.ai_dir()))
-    ap.add_argument("--stage", default=str(app_data_dir() / "ai_publish"))
+    ap.add_argument("--fp16", default=str(app_data_dir() / "ai_variants"))
+    ap.add_argument("--stage", default=str(app_data_dir() / "ai_publish_v2"))
     ap.add_argument("--apply", action="store_true")
     ap.add_argument("--check", action="store_true", help="only check what is on the web")
     a = ap.parse_args(argv)
     out = Path(a.stage)
     print(f"making the files in {out}")
-    files = stage(Path(a.src), out)
+    files = stage(Path(a.src), out, Path(a.fp16))
     m = make_manifest(files)
     total = sum(f["size"] for f in m["files"])
     print(f"{len(files)} files, {total / 1e9:.2f} GB -> {ai_download.MODELS_URL}")

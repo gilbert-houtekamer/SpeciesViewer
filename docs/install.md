@@ -15,7 +15,7 @@ written to the program folder; your settings go to `%LOCALAPPDATA%\SpeciesViewer
 
 **Optional: the AI models.** For culling advice and species suggestions (the AI… button in
 culling and the Sharpness tab of the Editor), download the AI models once with
-*File ▸ Settings ▸ AI Models…*: about 3.2 GB, into `%LOCALAPPDATA%\SpeciesViewer\ai`. A broken
+*File ▸ Settings ▸ AI Models…*: about 2.3 GB, into `%LOCALAPPDATA%\SpeciesViewer\ai`. A broken
 download carries on where it stopped. After that the AI works without internet. Without the
 models everything else works as before.
 

@@ -23,7 +23,7 @@ INTRO = (
     "With the AI models SpeciesViewer can suggest which pictures of a day could go "
     "and name the species in them (the AI… button in culling, and the Sharpness tab "
     "of the Editor). They are optional: everything else works without them.\n\n"
-    "The download is about 3.2 GB and needs about 4 GB on the disk. After that "
+    "The download is about 2.3 GB and needs about 3 GB on the disk. After that "
     "everything runs on this computer, also without internet; nothing about your "
     "pictures is sent anywhere.")
 
@@ -43,9 +43,13 @@ def state() -> tuple[str, str]:
         return "optional", text
     if ai_models.available():
         return "ok", f"Installed — {ai_models.ai_dir()}"
+    if (ai_models.ai_dir() / "megadetector_v5a.onnx").is_file():
+        return "optional", ("A newer, faster version of the AI models is available "
+                            "(16 bit) — Download fetches the two models that changed "
+                            "(0.9 GB).")
     if ai_models.missing_files() != list((ai_models.DETECTOR_FILE,) + ai_models.BIOCLIP_FILES):
         return "optional", "Partly downloaded — Download carries on where it stopped."
-    return "optional", "Not installed — species suggestions and culling advice (3.2 GB)."
+    return "optional", "Not installed — species suggestions and culling advice (2.3 GB)."
 
 
 # Running downloads, held here and not by the dialog: closing the window (or the
@@ -73,7 +77,11 @@ class _Fetch(QThread):
             ai_download.download(m, progress=lambda d, t, n: self.step.emit(d, t, n),
                                  cancelled=lambda: self.stop)
             ai_models.reset()
-            self.done.emit("")
+            gone = ai_download.remove_replaced(m)
+            self.done.emit("" if not gone else
+                           "Removed the older model files, no longer used: "
+                           + ", ".join(n for n, _s in gone)
+                           + f" ({sum(s for _n, s in gone) / 1e9:.1f} GB).")
         except ai_download.Cancelled:
             self.done.emit("Stopped. Download carries on where it stopped.")
         except Exception as e:      # network, disk, checksum — said in words
@@ -154,8 +162,9 @@ class AiModelsDialog(QDialog):
         self._stop.hide()
         self._stop.setEnabled(True)
         self._bar.hide()
-        self._line.setText(problem or f"Done in {(time.time() - self._t0) / 60:.0f} min. "
-                                      "The AI is ready to use.")
+        ok = not problem or problem.startswith("Removed")
+        self._line.setText((f"Done in {(time.time() - self._t0) / 60:.0f} min. The AI is "
+                            "ready to use. " if ok else "") + (problem or ""))
         self._show_state()
 
     def stop_work(self):

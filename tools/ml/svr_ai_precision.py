@@ -32,7 +32,7 @@ import numpy as np
 HERE = Path(__file__).resolve().parent
 
 LOCAL = Path(os.environ.get("LOCALAPPDATA", Path.home())) / "SpeciesViewer"
-AI = LOCAL / "ai"
+AI = LOCAL / "ai_publish"          # the 32-bit set as published in v1 (ai/ is 16 bit now)
 OUT = LOCAL / "ai_variants"
 MODELS = {"md": "megadetector_v5a.onnx", "clip": "bioclip2_image.onnx"}
 

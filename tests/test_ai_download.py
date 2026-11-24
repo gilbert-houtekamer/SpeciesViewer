@@ -141,3 +141,24 @@ def test_a_missing_runtime_says_why_and_how(monkeypatch):
     mark, text = ai_models_dialog.state()
     assert mark == "optional" and "No module named" in text
     assert sys.executable in text and "-m pip install onnxruntime" in text
+
+
+def test_the_replaced_models_go_only_when_the_new_set_is_complete(tmp_path, monkeypatch):
+    m = _site(monkeypatch, FILES, [])
+    m["replaces"] = ["old.onnx", "a.onnx", "../escape.onnx"]
+    (tmp_path / "old.onnx").write_bytes(b"x" * 10)
+    (tmp_path / "old.onnx.ok").write_text("sum")
+    assert dl.remove_replaced(m, tmp_path) == []          # new set not there yet
+    assert (tmp_path / "old.onnx").exists()
+    dl.download(m, tmp_path)
+    assert dl.remove_replaced(m, tmp_path) == [("old.onnx", 10)]
+    assert not (tmp_path / "old.onnx").exists() and not (tmp_path / "old.onnx.ok").exists()
+    assert (tmp_path / "a.onnx").exists()                 # in the new set: kept
+
+
+def test_an_older_model_set_is_offered_as_an_update(tmp_path, monkeypatch):
+    from engine import ai_models
+    from gui import ai_models_dialog
+    monkeypatch.setattr(ai_models, "ai_dir", lambda: tmp_path)
+    (tmp_path / "megadetector_v5a.onnx").write_bytes(b"x")
+    assert "newer, faster version" in ai_models_dialog.state()[1]

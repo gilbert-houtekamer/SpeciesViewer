@@ -22,10 +22,17 @@ import numpy as np
 
 logger = logging.getLogger("speciesviewer")
 
-DETECTOR_FILE = "megadetector_v5a.onnx"
-BIOCLIP_FILES = ("bioclip2_image.onnx", "bioclip2_names.npy", "bioclip2_names.json",
+# 16 bit (2026-11-24): 1.9x faster on a laptop's built-in graphics (SmallBoy), the
+# same box on 99 % of pictures (tools/ml/svr_ai_precision.py). Inputs and outputs
+# stay 32 bit, so nothing else changes.
+DETECTOR_FILE = "megadetector_v5a_fp16.onnx"
+CLIP_IMAGE_FILE = "bioclip2_image_fp16.onnx"
+BIOCLIP_FILES = (CLIP_IMAGE_FILE, "bioclip2_names.npy", "bioclip2_names.json",
                  "bioclip2.json")
-MODEL_VERSION = "md5a+bioclip2"       # part of every cache key that holds model output
+# Part of every cache key that holds model output. NOT changed for 16 bit: its
+# boxes and vectors are the same as 32 bit's for all practical use, and a new key
+# would make every master picture be looked at again (and empty the yardstick).
+MODEL_VERSION = "md5a+bioclip2"
 
 _lock = threading.Lock()
 # ONE model run at a time: the DirectML route on Windows does not allow two runs
@@ -109,7 +116,7 @@ class BioClip:
         self.mean = np.array(cfg["mean"], np.float32).reshape(1, 3, 1, 1)
         self.std = np.array(cfg["std"], np.float32).reshape(1, 3, 1, 1)
         self.scale = float(cfg["logit_scale"])
-        self.sess = _session(folder / "bioclip2_image.onnx")
+        self.sess = _session(folder / CLIP_IMAGE_FILE)
         self.vectors = np.load(folder / "bioclip2_names.npy").astype(np.float32)   # 768 × N
         names = json.loads((folder / "bioclip2_names.json").read_text(encoding="utf-8"))
         self.sci = [" ".join(t[-2:]).strip().capitalize() for t, _c in names]

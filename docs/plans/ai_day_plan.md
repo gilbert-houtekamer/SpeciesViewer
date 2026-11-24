@@ -88,6 +88,11 @@ No animal found = sharp 0, size 0, no name.
    (resumable `.part`, checked before it gets its real name) from *File ▸ Settings ▸ AI
    Models…* and the Setup checklist row. Licences settled: MegaDetector MIT, BioCLIP 2 MIT,
    TreeOfLife-200M names CC0 (NOTICE.md).
+   **v2, 16 bit (2026-11-24):** SmallBoy (laptop, built-in graphics) took 2.1 s per picture;
+   the models at 16 bit run 1.9x faster there (936 -> 498 ms), same box 99 %, same first name
+   97 % on two whole days (the changes mostly "not sure" coin-flips). 8 bit and a smaller
+   MegaDetector input lose. Published as ai/v2/ (2.3 GB); `replaces` in the manifest removes
+   v1's two models after the new set is complete. Cache keys unchanged on purpose.
 
 ## GH 2026-11-24
 

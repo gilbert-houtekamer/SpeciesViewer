@@ -133,7 +133,7 @@ chooses its names from; needs your own eBird key.
 - **BioCLIP 2** (Imageomics Institute), MIT licence — what it is.
 - the species names and taxonomy of **TreeOfLife-200M** (Imageomics Institute), CC0 1.0.
 
-Both models are converted to ONNX; the name vectors are stored at half precision. A
+Both models are converted to ONNX at 16 bit (half precision), and so are the name vectors. A
 `NOTICE.txt` with these licences comes with the download.
 
 **Google Translate**, reached through `deep-translator` — for translating blog text between
