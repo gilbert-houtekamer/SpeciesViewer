@@ -118,3 +118,18 @@ def test_kept_leaves_out_what_is_marked_to_go():
     st = day_ai.summary(pics, groups)
     assert st["species"]["Buteo buteo"]["kept"] == 1
     assert st["marked"] == 2
+
+
+def test_only_each_poses_leader_needs_a_name():
+    """The day dialog names only pose_leaders(); decide() must then give every
+    frame of the pose that leader's name — the same as naming every frame."""
+    pics = ([pic(i, i, sharp=s) for i, s in enumerate([50, 90, 70])]       # pose 1
+            + [pic(3, 60, box=False), pic(4, 61, sharp=40, px=300)])       # pose 2
+    leaders = day_ai.pose_leaders(pics)
+    assert [p["key"] for p in leaders] == ["k01", "k04"]
+    for p in pics:
+        if p not in leaders:
+            p["names"] = []                       # as the dialog leaves them
+    day_ai.decide(pics, DaySettings())
+    assert all(p["name"]["sci"] == "Buteo buteo" for p in pics if p["key"] != "k03")
+    assert day_ai.pose_leaders([pic(5, 0, box=False)]) == []

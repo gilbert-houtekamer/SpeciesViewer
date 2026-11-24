@@ -69,6 +69,21 @@ def day_limit(master_days: int) -> int:
     return rd.per_day_for(master_days + 1)
 
 
+def pose_leaders(pics: list[dict], s: DaySettings | None = None) -> list[dict]:
+    """Per pose, the frame whose name becomes the pose's name in decide(): the
+    best-ranked frame with an animal. Only these need the AI's names — a day of
+    363 pictures has ~126 poses (GH 2026-11-24: one name per pose)."""
+    s = s or DaySettings()
+    for p in pics:
+        p.setdefault("dhash", "0" * 16)
+    out = []
+    for g in rd.poses(pics, s.gap, s.change):
+        boxed = [p for p in g if p.get("box")]
+        if boxed:
+            out.append(max(boxed, key=_rank))
+    return out
+
+
 def decide(pics: list[dict], s: DaySettings,
            master_days: dict | None = None) -> list[list[dict]]:
     """Set p["verdict"], p["why"], p["pose"], p["name"] (dict | None) and

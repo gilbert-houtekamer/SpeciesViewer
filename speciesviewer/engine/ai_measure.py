@@ -207,15 +207,29 @@ def names_for(vec, region: str = "", master_root=None, k: int = 3) -> tuple[list
     return names, among
 
 
+def name_of(src: Path, im, box, *, cache: AiCache, region: str = "",
+            master_root=None, k: int = 3) -> tuple[list, str]:
+    """(names, among) for the animal in `box`: BioCLIP's vector of the crop
+    (cached), then the names for the region. `im` as in measure()."""
+    from engine import ai_models
+    vec = cache.vector(src, box)
+    if vec is None:
+        pic = im() if callable(im) else im
+        vec = ai_models.bioclip().picture_vectors([crop_image(pic, box)])[0]
+        cache.put_vector(src, box, vec)
+    return names_for(vec, region, master_root, k)
+
+
 def measure(src: Path, im, score: dict | None, camera: str = "", *,
             native: int = 0, cache: AiCache | None = None, region: str = "",
-            master_root=None, yardstick=None, k: int = 3) -> dict:
+            master_root=None, yardstick=None, k: int = 3, name: bool = True) -> dict:
     """The AI's view of one picture (see the module docstring). `im` = the
     upright PIL image, or a function that returns it (then it is decoded only
     when the caches do not have what is needed); `native` = the picture's own long side (the sensor, from
     EXIF; else the decoded size); `region` = the picture's country (ISO code,
     for eBird's list); `master_root` = whose species list names it;
-    `yardstick` = engine.ai_yardstick.Yardstick or None."""
+    `yardstick` = engine.ai_yardstick.Yardstick or None; `name` False = no
+    species names (the day dialog names only each pose's best frame: name_of)."""
     from engine import ai_models
     from engine.picture_score import fine_in, frame_top
     own = cache is None
@@ -251,11 +265,9 @@ def measure(src: Path, im, score: dict | None, camera: str = "", *,
             out["sharp_ratio"] = out["sharp_in"] / top if top else None
             if yardstick is not None:
                 out["sharp_pct"] = yardstick.percentile(camera, out["sharp_in"])
-        vec = cache.vector(src, box)
-        if vec is None:
-            vec = ai_models.bioclip().picture_vectors([crop_image(picture(), box)])[0]
-            cache.put_vector(src, box, vec)
-        out["names"], out["among"] = names_for(vec, region, master_root, k)
+        if name:
+            out["names"], out["among"] = name_of(src, picture, box, cache=cache,
+                                                 region=region, master_root=master_root, k=k)
         return out
     finally:
         if own:

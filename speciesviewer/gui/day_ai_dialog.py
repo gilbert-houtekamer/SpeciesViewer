@@ -143,7 +143,7 @@ class _Measure(QThread):
         try:
             import io
             from PIL import Image, ImageOps
-            from engine import af_point, ai_measure, ai_yardstick
+            from engine import af_point, ai_measure, ai_yardstick, day_ai
             from engine.picture_score import Cache, image_bytes, score_pictures
             import time
             pics, n = self.pics, len(self.pics)
@@ -170,29 +170,44 @@ class _Measure(QThread):
             yard = ai_yardstick.get(self.master_root)
             took("yardstick")
             aic = ai_measure.AiCache()
+
+            def load(src):
+                data = image_bytes(src)
+                return ImageOps.exif_transpose(Image.open(io.BytesIO(data))).convert("RGB")
             try:
                 for i, p in enumerate(pics, 1):
                     if self._stop:
                         return
                     info = af_point.lookup_info(af, p["src"])
 
-                    def load(src=p["src"]):
-                        data = image_bytes(src)
-                        return ImageOps.exif_transpose(Image.open(io.BytesIO(data))).convert("RGB")
                     try:
                         p.update(ai_measure.measure(
-                            p["src"], load, p, info.get("model", ""),
+                            p["src"], lambda src=p["src"]: load(src), p, info.get("model", ""),
                             native=info.get("native") or 0, cache=aic,
                             region=self.region, master_root=self.master_root or None,
-                            yardstick=yard))
+                            yardstick=yard, name=False))
                     except Exception as e:
                         logger.warning(f"Day AI: {p['src'].name}: {e}")
                         p.update({"box": None, "names": [], "px": 0, "sharp_pct": 0.0})
                     if i % 5 == 0 or i == n:
                         self.progress.emit("Looking for the animals", i, n)
+                took("animals")
+                # One name per pose: only the frame whose name the pose gets.
+                leaders = day_ai.pose_leaders(pics)
+                for i, p in enumerate(leaders, 1):
+                    if self._stop:
+                        return
+                    try:
+                        p["names"], p["among"] = ai_measure.name_of(
+                            p["src"], lambda src=p["src"]: load(src), p["box"], cache=aic,
+                            region=self.region, master_root=self.master_root or None)
+                    except Exception as e:
+                        logger.warning(f"Day AI: naming {p['src'].name}: {e}")
+                    if i % 5 == 0 or i == len(leaders):
+                        self.progress.emit("Naming each pose", i, len(leaders))
             finally:
                 aic.close()
-            took("animals and names")
+            took("names")
             self.progress.emit("Looking in your master", n, n)
             self.master_days = master_days(self.master_root, pics)
             took("your master")
