@@ -145,14 +145,14 @@ def _species_counts(place: int, group: str, progress=None) -> dict:
         page += 1
 
 
-def fetch(region: str, group: str, progress=None) -> dict | None:
+def fetch(region: str, group: str, progress=None, force: bool = False) -> dict | None:
     """{scientific name: [observations, English name]} of a group in a country:
-    the saved file, fetched when missing or older than REFRESH_S. None =
-    nothing saved and no internet."""
+    the saved file, fetched when missing or older than REFRESH_S (`force`:
+    fetched again now). None = nothing saved and no internet."""
     region = (region or "").strip().upper()
     path = folder() / f"inat_{region}_{group}.json"
     saved = _read(path)
-    if saved and time.time() - float(saved.get("fetched", 0)) < REFRESH_S:
+    if saved and not force and time.time() - float(saved.get("fetched", 0)) < REFRESH_S:
         return saved["species"]
     try:
         place = place_id(region)
@@ -194,17 +194,75 @@ def english_names(region: str, groups) -> dict:
     return out
 
 
-def chosen_groups(region: str) -> list[str]:
-    """The groups to use for a country: [ai] groups_<CC> in the config, else
-    [ai] groups, else mammals only (GH 2026-11-25: "mammals are always good")."""
-    from utils.config import _config
-    region = (region or "").strip().upper()
-    text = (_config.get("ai", f"groups_{region}", fallback="")
-            or _config.get("ai", "groups", fallback="mammals"))
-    return [g.strip().lower() for g in text.replace(";", ",").split(",")
+DEFAULT_GROUPS = "mammals"     # GH 2026-11-25: "mammals are always good"
+
+
+def _parse(text: str) -> list[str]:
+    return [g.strip().lower() for g in (text or "").replace(";", ",").split(",")
             if g.strip().lower() in GROUPS]
 
 
+def chosen_groups(region: str) -> list[str]:
+    """The groups to use for a country: [ai] groups_<CC> in the config, else
+    [ai] groups (all other countries), else mammals only. "none" = no groups."""
+    from utils.config import _config
+    region = (region or "").strip().upper()
+    text = ((_config.get("ai", f"groups_{region}", fallback="") if region else "")
+            or _config.get("ai", "groups", fallback=DEFAULT_GROUPS))
+    return _parse(text)
+
+
+def countries_set() -> dict[str, list[str]]:
+    """{ISO code: groups} of the countries with their own choice (Settings ▸
+    AI species lists); "" = all other countries."""
+    from utils.config import _config
+    out = {"": chosen_groups("")}
+    if _config.has_section("ai"):
+        for k, v in _config.items("ai"):
+            if k.startswith("groups_") and len(k) == 9:
+                out[k[7:].upper()] = _parse(v)
+    return out
+
+
+def set_groups(region: str, groups) -> None:
+    """Save the groups for a country ("" = all other countries); no groups is
+    saved as "none" (else the country would fall back to the others' choice)."""
+    from utils.config import _config, persist_config
+    region = (region or "").strip().upper()
+    if not _config.has_section("ai"):
+        _config.add_section("ai")
+    key = f"groups_{region.lower()}" if region else "groups"
+    _config.set("ai", key, ", ".join(g for g in GROUPS if g in groups) or "none")
+    persist_config()
+    forget()
+
+
+def remove_country(region: str) -> None:
+    """The country goes back to the others' choice. Its saved lists stay on disk."""
+    from utils.config import _config, persist_config
+    region = (region or "").strip().upper()
+    if region and _config.has_section("ai") and _config.remove_option("ai", f"groups_{region.lower()}"):
+        persist_config()
+    forget()
+
+
+def saved(region: str, group: str) -> tuple[int, float] | None:
+    """(species seen MIN_RECORDS+ times, when fetched) of the list on this
+    computer — no internet; None when it was never fetched."""
+    d = _read(folder() / f"inat_{(region or '').strip().upper()}_{group}.json")
+    if not d:
+        return None
+    n = sum(1 for k, _c in (d.get("species") or {}).values() if k >= MIN_RECORDS)
+    return n, float(d.get("fetched", 0))
+
+
 def forget() -> None:
+    """Forget the lists read this session (a list fetched or a choice changed);
+    also the AI's lists made from them (engine.ai_measure)."""
     with _lock:
         _memo.clear()
+    try:
+        from engine import ai_measure
+        ai_measure._matched.clear()
+    except Exception:
+        pass

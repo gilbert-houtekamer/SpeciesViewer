@@ -61,6 +61,12 @@ def country_name(text: str, lang: str = "en") -> str:
     return names.get(lang) or names["en"]
 
 
+def all_countries(lang: str = "en") -> list[tuple[str, str]]:
+    """[(ISO code, name in `lang`)] of every country we know, by name."""
+    return sorted(((iso, n.get(lang) or n["en"]) for iso, n in _table()[0].items()),
+                  key=lambda r: _fold(r[1]))
+
+
 def gui_language(profile: str = "") -> str:
     """'en' or 'nl' for the app's own windows: the first of the two in a names
     profile (sci_en → en, nl_sci → nl). A window with its own Names: combo passes

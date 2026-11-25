@@ -115,3 +115,34 @@ No animal found = sharp 0, size 0, no name.
   cache exists); unmatched = "new species?" for you to confirm.
 - **Hosting** of the 4.5 GB model download, and the licence of BioCLIP's name list — to settle
   before step 5.
+
+## Status 2026-11-25 — and next (start here in a new session)
+
+Done (all on SpeciesViewer04):
+- **Other animals** (73f6a21): iNaturalist's species of the country per group
+  (`engine/inat_lists.py`, 16 groups as on waarneming.nl), added to eBird's birds. Madagascar:
+  non-birds right 21/30 → 54/70, birds unchanged. Country packs (`tools/svr_country_pack.py`):
+  command line only — fetching a country takes about a minute, so no GUI needed.
+- **AI button in Set species** (ad03e3b): while AI… is open, "AI: name · sci  NN %" in both
+  Set species panels; a name not in your list is looked up in GBIF and added.
+- **Plants** (8d0bc85): a pose with no animal is named from its whole sharpest frame among the
+  country's plants, only when BioCLIP's own open first name agrees (≥ 15 %). Madagascar trip:
+  264 poses without an animal, 36 named, all credible; missed birds left unnamed.
+  `tools/ml/svr_plant_names.py` makes an HTML sheet to judge by eye.
+- **Settings ▸ AI species lists**: per country, which groups the AI names (+ Add a country,
+  Choose groups with All/None, Fetch lists now, Remove; "All other countries" row).
+
+Next, in this order (GH 2026-11-25):
+1. **"AI: name what I see"** in the large view (#1) — name only the part you zoomed in on (a
+   manual crop, no file): IMG_7284 of Madagascar 2026-11-07 shows a Moringa drouhardii, the
+   whole picture says Fony baobab 32 %. The models stay loaded after AI… → one picture is
+   quick. The answer feeds the same AI button in Set species. Test on Madagascar.
+2. **AI in Read SD Card** (#6) — the card read only MEASURES (animals, names, sharpness) and
+   fills the cache; AI… then opens at once per day, reviewed one day at a time (2000 pictures
+   cannot be reviewed in one go). Also slow on SmallBoy. Test on GH's pseudo SD cards of
+   "2023 zomer".
+3. Open question: on a pipeline day Accept writes colours only, no names (names only on a
+   culling day). Accept never overwrites an existing name (by design, #5).
+4. SmallBoy: `git pull`, then test the above (#7).
+
+Noted, not planned: birds in bushes are often named wrong (the crop is mostly branches).

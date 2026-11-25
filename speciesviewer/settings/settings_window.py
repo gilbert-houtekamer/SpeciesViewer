@@ -27,6 +27,7 @@ def _pages():
     from settings.photolabdenoise import PhotoLabDenoiseDialog
     from settings.sidecarsettings import SidecarSettingsDialog
     from gui.ai_models_dialog import AiModelsDialog
+    from gui.ai_countries_dialog import AiCountriesDialog
     return [
         ("Global", GlobalSettingsDialog),
         ("Look && Feel", LookFeelDialog),
@@ -39,6 +40,7 @@ def _pages():
             ("Sidecar behaviour", SidecarSettingsDialog),
         ]),
         ("AI models", AiModelsDialog),
+        ("AI species lists", AiCountriesDialog),
     ]
 
 

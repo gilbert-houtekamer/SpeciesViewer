@@ -115,6 +115,7 @@ this section: [Where your settings and data are kept](#where-your-settings-and-d
 | **Location** | How a GPS position becomes a place name |
 | **Lightroom & PhotoLab** | Three sub-tabs: PhotoLab location, PhotoLab denoise, Sidecar behaviour |
 | **AI models** | Download the optional AI models — see [AI Models](#ai-models) |
+| **AI species lists** | Per country, what the AI names there — see [AI species lists](#ai-species-lists) |
 
 ### Global
 
@@ -138,9 +139,9 @@ this section: [Where your settings and data are kept](#where-your-settings-and-d
     names birds only from eBird's list for the picture's country, which makes
     its names far better; without one it chooses from every species it knows.
     A key is free with an eBird account, at `ebird.org/api/keygen`. Other
-    animals come from iNaturalist's list for that country: mammals always,
-    more groups (reptiles, dragonflies, butterflies, …) when you ask for them.
-    Each country's lists are fetched once and kept for use without internet.
+    animals and plants come from iNaturalist's list for that country: mammals
+    unless you choose more, per country, in
+    [AI species lists](#ai-species-lists).
 - **Website and publishing** — SpeciesViewer makes a website of your pictures
   (species pages, blogs). Choose where it goes:
   - **On this computer** — nothing is uploaded. SpeciesViewer shows the website in
@@ -282,6 +283,42 @@ same animal share one name.
 
 The models: MegaDetector (where the animal is) and BioCLIP 2 (what it is),
 both MIT-licensed; see [NOTICE.md](../../NOTICE.md).
+
+### AI species lists
+
+The **AI species lists** tab of Settings says, per country, what the AI names
+in your pictures there. The AI chooses a name only among the species of the
+picture's country. The fewer groups you tick, the fewer wrong names: tick only
+what you photograph.
+
+- **Birds** always come from eBird's list for the country (needs the eBird key,
+  see [Global](#global)).
+- **Other groups** come from iNaturalist: the species people photographed in
+  that country, seen at least 3 times. There are 16 groups, the same as on
+  waarneming.nl: mammals, reptiles and amphibians, butterflies, moths,
+  dragonflies, grasshoppers, bees and wasps, beetles, flies, bugs, other
+  insects, spiders, molluscs, fish, plants and fungi.
+- **Plants and fungi** are named from the whole picture, and only when no
+  animal is found in it, and only when the AI's own first guess (among
+  everything it knows) is that same species. A beach or a village street gets
+  no plant name.
+
+The table has a row per country with its own choice, and **All other
+countries** (mammals, unless you change it) for every other country.
+
+- **+ Add a country…** — type part of its name, then tick its groups.
+- **Choose groups…** (or double-click a row) — tick the groups (**All** and
+  **None** at the bottom left). A list that is not on this computer yet is
+  fetched as soon as you press OK; the line under the table says what is being
+  fetched, in orange, until it is done.
+- **Fetch lists now** — fetches the country's lists again (about a minute;
+  iNaturalist allows one question a second). A list older than a year is
+  fetched again by itself; without internet the saved list is used.
+- **Remove country** — it follows *All other countries* again. Its lists stay
+  on this computer.
+
+The right-click menu of a row has the same items. The lists live in
+`%LOCALAPPDATA%\SpeciesViewer\species_lists` and `…\ebird`.
 
 ## Developer Tools
 

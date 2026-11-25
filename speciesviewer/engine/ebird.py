@@ -81,6 +81,16 @@ def taxonomy() -> dict:
         return _taxonomy
 
 
+def saved(region: str) -> tuple[int, float] | None:
+    """(bird species on the saved list, when fetched) — no internet; None when
+    the country's list was never fetched."""
+    path = _dir() / f"spplist_{(region or '').strip().upper()}.json"
+    try:
+        return len(json.loads(path.read_text(encoding="utf-8"))), path.stat().st_mtime
+    except (OSError, ValueError, TypeError):
+        return None
+
+
 def forget() -> None:
     """Forget the lists looked up this session (a new key: try again)."""
     with _lock:
