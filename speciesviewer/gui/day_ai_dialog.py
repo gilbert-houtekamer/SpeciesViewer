@@ -206,9 +206,6 @@ class _Measure(QThread):
                 logger.info(f"Day AI: animals detected {count['detected']}, followed "
                             f"{count['followed']}, from earlier {count['cached']}")
                 took("animals")
-                # Not on the side while the animals are found: starting BioCLIP
-                # is Python work that then slows the detector down as much as
-                # it saves (BigBoy 2026-11-25: detector 105 → 115-142 ms each).
                 with clock.part("starting the names (BioCLIP, eBird's list)"):
                     ai_measure.prepare_names(self.region)
                 # One name per pose: only the frame whose name the pose gets.
@@ -218,40 +215,31 @@ class _Measure(QThread):
                           [[p] for p in day_ai.pose_leaders(pics)])
                 firsts = [x[0] for x in series]
                 ahead = day_ai.Prefetch([p["src"] for p in firsts
-                                         if aic.vector(p["src"], p["box"]) is None],
-                                        load, ahead=4)
-
-                def picture(src):
-                    with clock.part("waiting for a decoded picture (names)"):
-                        return ahead.get(src)
+                                         if aic.vector(p["src"], p["box"]) is None], load)
                 try:
-                    B = ai_measure.BATCH
-                    for j in range(0, len(series), B):
+                    for i, x in enumerate(series, 1):
                         if self._stop:
                             return
-                        chunk = series[j:j + B]
-                        # BioCLIP on up to B pictures at once, then only the names
+                        p = x[0]
+
+                        def picture(src=p["src"]):
+                            with clock.part("waiting for a decoded picture (names)"):
+                                return ahead.get(src)
+                        part = ("first name" if i == 1 else
+                                "a name" if aic.vector(p["src"], p["box"]) is None else
+                                "a name, picture seen before")
                         try:
-                            with clock.part(f"BioCLIP, {B} at a time"):
-                                ai_measure.vectors_for(
-                                    [(x[0]["src"], lambda s=x[0]["src"]: picture(s), x[0]["box"])
-                                     for x in chunk], aic)
-                        except Exception as e:      # name_of tries them one by one
-                            logger.warning(f"Day AI: BioCLIP on {len(chunk)} pictures: {e}")
-                        for x in chunk:
-                            p = x[0]
-                            try:
-                                with clock.part("choosing the names"):
-                                    p["names"], p["among"] = ai_measure.name_of(
-                                        p["src"], lambda s=p["src"]: picture(s), p["box"],
-                                        cache=aic, region=self.region,
-                                        master_root=self.master_root or None)
-                            except Exception as e:
-                                logger.warning(f"Day AI: naming {p['src'].name}: {e}")
-                            for q in x[1:]:
-                                q["names"], q["among"] = p.get("names", []), p.get("among", "")
-                        self.progress.emit("Naming each series",
-                                           min(j + B, len(series)), len(series))
+                            with clock.part(part):
+                                p["names"], p["among"] = ai_measure.name_of(
+                                    p["src"], picture, p["box"],
+                                    cache=aic, region=self.region,
+                                    master_root=self.master_root or None)
+                        except Exception as e:
+                            logger.warning(f"Day AI: naming {p['src'].name}: {e}")
+                        for q in x[1:]:
+                            q["names"], q["among"] = p.get("names", []), p.get("among", "")
+                        if i % 5 == 0 or i == len(series):
+                            self.progress.emit("Naming each series", i, len(series))
                 finally:
                     ahead.close()
                 logger.info(f"Day AI: {len(series)} series named "
