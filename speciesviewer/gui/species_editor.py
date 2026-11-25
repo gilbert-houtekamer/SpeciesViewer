@@ -169,8 +169,12 @@ class SpeciesInfoPanel(QWidget):
 
     def __init__(self, fpr, file_paths: list, species_names: list, error_msgs: list, *,
                  parent=None, collapsible_error: bool = False,
-                 scope_correction: bool = False, offer_landscape: bool = True):
+                 scope_correction: bool = False, offer_landscape: bool = True,
+                 ai_name: dict | None = None):
         """
+        ai_name            The AI… window's name for these pictures (while it is
+                           open): an "AI: …" button puts its scientific name in
+                           the field and validates it (GBIF when new).
         collapsible_error  When True the error-message text is hidden behind a
                            ⚠ toggle button — useful when the panel is embedded
                            in a narrow sidebar rather than a standalone dialog.
@@ -301,6 +305,10 @@ class SpeciesInfoPanel(QWidget):
             _psum.setWordWrap(True)
             _psum.setStyleSheet(f"color:{theme.WARN}; font-size:11px;")
             layout.addWidget(_psum)
+
+        if ai_name and ai_name.get("sci"):
+            from gui.culling_species import ai_name_button
+            layout.addWidget(ai_name_button(ai_name, self._use_ai_name, "Commit"))
 
         # Immediate as-you-type suggestions — a contains-match auto-complete over
         # every NL / EN / scientific species name, mirroring the culling dialog
@@ -528,6 +536,13 @@ class SpeciesInfoPanel(QWidget):
         self.status_label.setText(f"🔄 Replaced with: {selected_name}")
 
     # ── Validate ──────────────────────────────────────────────────────────────
+
+    def _use_ai_name(self, sci: str, known: bool):
+        """The AI button: its scientific name in the field, then Validate —
+        which looks a new name up in GBIF and adds it to your species list."""
+        self.subject_field.field.setText(sci.lower())
+        self._on_validate_clicked()
+        self.subject_field.field.setFocus()
 
     def _on_validate_clicked(self):
         raw_input = self.subject_field.get_text().strip()

@@ -470,10 +470,11 @@ class DayAiDialog(QDialog):
         self._show_on_grid()
 
     def _show_on_grid(self):
-        marks = {}
+        marks, names = {}, {}
         for p in self._pics:
             n = p.get("name")
             if n is not None:
+                names[p["key"]] = dict(n)
                 tag, sure = f"{n.get('name') or n.get('sci')} {n['prob'] * 100:.0f}%", True
             elif p.get("has_animal_pose"):
                 tag, sure = "? not sure", False
@@ -481,7 +482,7 @@ class DayAiDialog(QDialog):
                 tag, sure = "", True
             marks[p["key"]] = (p.get("verdict"), tag, sure)
         try:
-            self._grid.show_ai_marks(marks)
+            self._grid.show_ai_marks(marks, names)
         except RuntimeError:
             pass
 

@@ -964,6 +964,26 @@ def edit_master_qualifiers(parent, collection, key: str) -> bool:
     return True
 
 
+def ai_name_button(ai: dict, use, set_word: str) -> QPushButton:
+    """"AI: <name> · <scientific name>  52 %  (4 of 6 pictures)" — the AI…
+    window's name for the selected pictures, offered in both Set species
+    panels. A click calls use(sci, known); known = already in your species
+    list. Nothing is written until you press <set_word>."""
+    known = ai.get("how") in ("exact", "renamed")
+    name, sci = (ai.get("name") or "").strip(), ai["sci"].strip()
+    text = f"AI: {name} · {sci}" if name and name.lower() != sci.lower() else f"AI: {sci}"
+    text += f"  {(ai.get('prob') or 0) * 100:.0f} %"
+    if ai.get("of", 1) > 1:
+        text += f"  ({ai.get('count', 1)} of {ai['of']} pictures)"
+    b = QPushButton(text)
+    b.setToolTip("Put the AI's name in the field. "
+                 + ("It is in your species list." if known else
+                    "It is not in your species list yet: it is looked up "
+                    f"online (GBIF) and added. Press {set_word} to use it."))
+    b.clicked.connect(lambda: use(sci, known))
+    return b
+
+
 class CullingSpeciesWidget(QWidget):
     """Assign a species name to one or more pictures during culling — the editor
     proper, reusable both as a modal dialog (CullingSpeciesDialog) and embedded
@@ -982,7 +1002,7 @@ class CullingSpeciesWidget(QWidget):
 
     def __init__(self, sc, current_name: str, n_pictures: int = 1, parent=None,
                  *, embedded: bool = False, n_landscape: int = 0,
-                 preset_summary: str = ""):
+                 preset_summary: str = "", ai_name: dict | None = None):
         super().__init__(parent)
         self._sc = sc
         self._embedded = embedded
@@ -1074,6 +1094,8 @@ class CullingSpeciesWidget(QWidget):
             landscape_btn.clicked.connect(lambda: self.committed.emit("landscape"))
             gbif_row.addWidget(landscape_btn)
         layout.addLayout(gbif_row)
+        if ai_name and ai_name.get("sci"):
+            layout.addWidget(self._ai_button(ai_name))
 
         # Optional qualifiers — sex / age / plumage. Stored in the keyword as
         # "<species>, <token>"; the pipeline reads them to caption the picture and
@@ -1140,6 +1162,16 @@ class CullingSpeciesWidget(QWidget):
         # and a focused field would swallow them on every rebuild.
         if not embedded:
             self.field.setFocus()
+
+    def _ai_button(self, ai: dict) -> QPushButton:
+        return ai_name_button(ai, lambda sci, known: self._use_ai_name(sci, look_up=not known),
+                              "Set species")
+
+    def _use_ai_name(self, sci: str, look_up: bool):
+        self.field.setText(sci.lower())
+        if look_up:
+            self._resolve(use_gbif=True)
+        self.field.setFocus()
 
     def _attach_completer(self):
         """(Re)build the field's contains-match auto-complete popup — the full
@@ -1429,7 +1461,8 @@ class CullingSpeciesDialog(QDialog):
     callers rely on; the inline large-viewer editor uses the widget directly."""
 
     def __init__(self, sc, current_name: str, n_pictures: int, parent=None,
-                 *, n_landscape: int = 0, preset_summary: str = ""):
+                 *, n_landscape: int = 0, preset_summary: str = "",
+                 ai_name: dict | None = None):
         super().__init__(parent)
         self.setWindowTitle("Set species")
         self.setMinimumWidth(560)
@@ -1438,7 +1471,8 @@ class CullingSpeciesDialog(QDialog):
         layout = QVBoxLayout(self)
         self.panel = CullingSpeciesWidget(sc, current_name, n_pictures, self,
                                           n_landscape=n_landscape,
-                                          preset_summary=preset_summary)
+                                          preset_summary=preset_summary,
+                                          ai_name=ai_name)
         self.panel.committed.connect(self._on_committed)
         self.panel.cancelled.connect(self.reject)
         layout.addWidget(self.panel)

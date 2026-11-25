@@ -3128,6 +3128,7 @@ class LargeImageView(QDialog):
                 parent=self._species_container,
                 collapsible_error=True,
                 offer_landscape=False,   # _add_mark_landscape_button below
+                ai_name=self._ai_name_for({key}),
             )
             panel.committed.connect(self._on_species_committed)
             self._species_cl.addWidget(panel)
@@ -3161,9 +3162,11 @@ class LargeImageView(QDialog):
                 self._species_cl.addWidget(ph)
             if can_inline:
                 from gui.culling_species import CullingSpeciesWidget
+                ai = getattr(self.parent(), "ai_name_for", None)
                 editor = CullingSpeciesWidget(
                     self._inline_species_sc(), item.species or "", 1,
-                    parent=self._species_container, embedded=True)
+                    parent=self._species_container, embedded=True,
+                    ai_name=ai([key]) if ai else None)
                 editor.committed.connect(
                     lambda subject, k=key: self._commit_inline_species(subject, k))
                 self._species_cl.addWidget(editor)
@@ -3790,7 +3793,8 @@ class LargeImageView(QDialog):
         dlg.setMinimumWidth(600)
         layout = QVBoxLayout(dlg)
         panel = SpeciesInfoPanel(
-            fpr, file_paths, species_names, error_msgs, parent=dlg)
+            fpr, file_paths, species_names, error_msgs, parent=dlg,
+            ai_name=self._ai_name_for(keys))
         panel.committed.connect(lambda upns: (
             self._on_species_committed(upns),
             dlg.accept(),
@@ -3803,6 +3807,12 @@ class LargeImageView(QDialog):
         row.addWidget(cancel_btn)
         layout.addLayout(row)
         dlg.exec()  # modal — prevents the panel from z-fighting with the main viewer
+
+    def _ai_name_for(self, keys):
+        """The AI… window's name for these pictures, from the grid behind
+        this view (None when AI… is not open)."""
+        ai = getattr(self.parent(), "ai_name_for", None)
+        return ai(keys) if ai else None
 
     def _species_subject_of(self, key):
         """This picture's stored species subject — the literal XMP:Subject via
@@ -3978,9 +3988,11 @@ class LargeImageView(QDialog):
         # field blank.
         current, preset_summary, n_landscape = species_prefill_for_keys(
             keys, _species_of, _is_landscape)
+        ai = getattr(host, "ai_name_for", None)
         dlg = CullingSpeciesDialog(sc, current, len(keys), self,
                                    n_landscape=n_landscape,
-                                   preset_summary=preset_summary)
+                                   preset_summary=preset_summary,
+                                   ai_name=ai(keys) if ai else None)
         if dlg.exec() == QDialog.DialogCode.Accepted:
             name = dlg.chosen_name()
             for k in keys:

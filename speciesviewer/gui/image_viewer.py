@@ -322,6 +322,7 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
         # The AI… dialog's marks: {key: (verdict "purple"|"keep"|None, name tag, sure)}.
         # Applied whenever a pool card is bound to a key (cards are reused).
         self._ai_marks: dict[str, tuple] = {}
+        self._ai_names: dict[str, dict] = {}   # key → the AI's name (Set species offers it)
         self._ai_dlg = None
         self._card_h = 0                # measured from a pool card; re-measured on a width change
         self._pool_w = 0               # card width the pool cards are currently fitted to
@@ -1310,14 +1311,31 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
         self._ai_dlg.finished.connect(lambda *_: setattr(self, "_ai_dlg", None))
         self._ai_dlg.show()
 
-    def show_ai_marks(self, marks: dict) -> None:
-        """The AI… dialog's marks on the grid (a view only)."""
+    def show_ai_marks(self, marks: dict, names: dict | None = None) -> None:
+        """The AI… dialog's marks on the grid (a view only), and its name per
+        picture ({"name", "sci", "prob", "how"}) for Set species to offer."""
         self._ai_marks = dict(marks)
+        self._ai_names = dict(names or {})
         self._relayout(force=True)
 
     def clear_ai_marks(self) -> None:
         self._ai_marks = {}
+        self._ai_names = {}
         self._relayout(force=True)
+
+    def ai_name_for(self, keys) -> dict | None:
+        """The AI's name for these pictures: the one most of them carry, with
+        its best probability; None when the AI named none of them."""
+        keys = list(keys)
+        found = [self._ai_names[k] for k in keys if k in self._ai_names]
+        if not found:
+            return None
+        from collections import Counter
+        sci = Counter(n["sci"].lower() for n in found).most_common(1)[0][0]
+        same = [n for n in found if n["sci"].lower() == sci]
+        best = dict(max(same, key=lambda n: n.get("prob") or 0))
+        best["count"], best["of"] = len(same), len(keys)
+        return best
 
     # The AI… Accept writes through the grid's own routes — the same as the
     # colour keys and 'a' / Ctrl+V — and reads each picture back afterwards.
@@ -2392,7 +2410,8 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
         dlg = CullingSpeciesDialog(self._culling_sc(), current, len(keys),
                                    parent or self,
                                    n_landscape=n_landscape,
-                                   preset_summary=preset_summary)
+                                   preset_summary=preset_summary,
+                                   ai_name=self.ai_name_for(keys))
         if dlg.exec() == QDialog.DialogCode.Accepted:
             name = dlg.chosen_name()
             # One exiftool call for the whole selection where the collection
@@ -2444,7 +2463,8 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
         dlg.setWindowTitle(f"Set species — {len(file_paths)} picture{'s' if len(file_paths) != 1 else ''}")
         dlg.setMinimumWidth(600)
         dlg_layout = QVBoxLayout(dlg)
-        panel = SpeciesInfoPanel(self.fpr, file_paths, species_names, error_msgs, parent=dlg)
+        panel = SpeciesInfoPanel(self.fpr, file_paths, species_names, error_msgs, parent=dlg,
+                                 ai_name=self.ai_name_for(keys))
         panel.committed.connect(lambda upns: (
             self.refresh_after_species_change(upns),
             self._clear_selection(),
