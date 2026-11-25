@@ -244,8 +244,11 @@ def prepare_names(region: str = "") -> None:
     """Everything names_for needs before the first name, loaded now: BioCLIP
     and its names, and eBird's list for the region matched to them (all kept
     for the next pictures). Lets a run time this apart from the names."""
+    from PIL import Image
     from engine import ai_models, ebird
-    ai_models.bioclip()
+    clip = ai_models.bioclip()
+    # the first run on a graphics card sets it up (~0.5 s): do it now, unseen
+    clip.picture_vectors([Image.new("RGB", (64, 64))] * BATCH, batch=BATCH)
     listed = ebird.species(region) if region else None
     if listed:
         _as_bioclip(region, listed)
@@ -287,6 +290,27 @@ def follow(prev, cur, box, grow: float = 0.15, search: float = 1.0):
     dx, dy = (rx0 + loc[0] - tx0) / W, (ry0 + loc[1] - ty0) / H
     nb = (max(0.0, x0 + dx), max(0.0, y0 + dy), min(1.0, x1 + dx), min(1.0, y1 + dy))
     return nb, float(score)
+
+
+BATCH = 8        # crops BioCLIP looks at in one go (a graphics card does several
+#                  faster per picture: BigBoy 15 → 13 ms at 8, 9 ms at 16)
+
+
+def vectors_for(items, cache: AiCache, batch: int = BATCH) -> int:
+    """BioCLIP's vectors for [(src, im, box)] that the cache does not have yet,
+    BATCH crops at a time, into the cache — name_of then only chooses the
+    names. `im` as in measure(); a picture is decoded only when needed and
+    only its crop is kept. Returns how many vectors were made."""
+    from engine import ai_models
+    need = [(src, im, box) for src, im, box in items
+            if box and cache.vector(src, box) is None]
+    for i in range(0, len(need), batch):
+        part = need[i:i + batch]
+        crops = [crop_image(im() if callable(im) else im, box) for _s, im, box in part]
+        vecs = ai_models.bioclip().picture_vectors(crops, batch=batch)
+        for (src, _im, box), vec in zip(part, vecs):
+            cache.put_vector(src, box, vec)
+    return len(need)
 
 
 def name_of(src: Path, im, box, *, cache: AiCache, region: str = "",

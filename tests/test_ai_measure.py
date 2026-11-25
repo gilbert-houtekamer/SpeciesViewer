@@ -155,3 +155,32 @@ def test_ebird_names_in_newer_genera_find_bioclips_older_ones():
                           taxonomy)
     assert got == {"ardea alba", "bubulcus ibis", "accipiter gentilis",
                    "charadrius alexandrinus", "sylvia communis"}     # family decides, not epithet
+
+
+def test_vectors_for_batches_and_skips_cached(tmp_path, monkeypatch):
+    from PIL import Image
+    runs = []
+
+    class Clip:
+        def picture_vectors(self, ims, batch=8):
+            runs.append(len(ims))
+            return np.ones((len(ims), 4), np.float32)
+    monkeypatch.setattr(ai_models, "bioclip", lambda: Clip())
+    cache = am.AiCache(tmp_path / "c.sqlite")
+    srcs = []
+    for i in range(11):
+        p = tmp_path / f"p{i}.jpg"
+        p.write_bytes(b"x" * (i + 1))
+        srcs.append(p)
+    box = (0.1, 0.1, 0.5, 0.5)
+    cache.put_vector(srcs[0], box, np.zeros(4, np.float32))     # seen before
+    decoded = []
+
+    def load(p):
+        decoded.append(p)
+        return Image.new("RGB", (100, 80))
+    made = am.vectors_for([(p, lambda p=p: load(p), box) for p in srcs], cache, batch=4)
+    assert made == 10 and runs == [4, 4, 2]
+    assert srcs[0] not in decoded                                # not decoded again
+    assert all(cache.vector(p, box) is not None for p in srcs)
+    cache.close()
