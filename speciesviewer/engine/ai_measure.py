@@ -23,7 +23,11 @@ engine.picture_score) return
              confident non-bird from everything BioCLIP knows ("outside" = not
              on the list)
   among      what the names were chosen from, in words
-No animal found = no box, sharp 0, size 0, and no names.
+No animal found = no box, sharp 0, size 0, and no names. Plants and fungi
+(when chosen for the country) are never names for an animal: a picture with
+no animal is named as a WHOLE by plant_name_of — only when BioCLIP's own
+first name, among everything it knows, is that same plant (a beach, a
+village street or a missed bird is then left unnamed; GH 2026-11-25).
 
 INVARIANT: read-only for the picture. The boxes and picture vectors are cached in
 app-data (`scores/bird_boxes.sqlite`, keyed on path + size + mtime + model), so
@@ -47,6 +51,8 @@ ELSEWHERE = 0.3          # sharp_ratio below this: "the sharpest part is elsewhe
 DETECT_EDGE = 1280
 NOT_SURE = 0.45          # below this the first name is a guess (GH: 45–50 % per day)
 SIZE_FULL_PX = 2500      # GH 2026-11-23: frame-filling geese
+PLANT_AGREE = 0.15       # a whole picture's plant name: the open first name must be it, this sure
+STILL_GROUPS = ("plants", "fungi")   # named from the whole picture, never as an animal
 _DET_MODEL = "MDV5A"     # the same model whether run through PyTorch or ONNX
 
 
@@ -238,6 +244,7 @@ def _allowed(region: str, groups=None) -> tuple[frozenset | None, str]:
     words = f"eBird's list for {region} ({len(listed)} bird species)"
     if groups is None:
         groups = inat_lists.chosen_groups(region)
+    groups = [g for g in groups if g not in STILL_GROUPS]
     extra = _as_bioclip_inat(region, groups) if groups else frozenset()
     if extra:
         allowed = allowed | extra
@@ -263,6 +270,12 @@ def names_for(vec, region: str = "", master_root=None, k: int = 3,
                 among = "everything the AI knows (nothing on the list fits)"
     else:
         top = clip.top(vec, k=k)
+    return _shown(clip, top, master_root, outside), among
+
+
+def _shown(clip, top, master_root, outside: bool = False) -> list[dict]:
+    """BioCLIP's (sci, common, prob) in your words (engine.ai_names)."""
+    from engine import ai_names
     names = []
     for sci, common, prob in top:
         fam = clip.group.get(sci, ("", ""))[1]
@@ -270,7 +283,51 @@ def names_for(vec, region: str = "", master_root=None, k: int = 3,
         d["prob"] = prob
         d["outside"] = outside
         names.append(d)
-    return names, among
+    return names
+
+
+def still_groups(region: str) -> list[str]:
+    """The plant / fungus groups chosen for a country (none = no whole-picture names)."""
+    from engine import inat_lists
+    if not region:
+        return []
+    return [g for g in inat_lists.chosen_groups(region) if g in STILL_GROUPS]
+
+
+def plant_names(vec, region: str, master_root=None, k: int = 3,
+                groups=None) -> tuple[list, str]:
+    """(names, among) for the vector of a WHOLE picture with no animal: the
+    first names among iNaturalist's plants (and fungi) of the country — only
+    when BioCLIP's open first name (everything it knows) is that same species,
+    at PLANT_AGREE or more. Else ([], ""): scenery, people, a missed animal.
+    tools/ml/svr_plant_names.py: Madagascar 2026-11-07, baobabs/Moringa/Delonix
+    kept; beach, village, street, birders, egret scene left out."""
+    from engine import ai_models, inat_lists
+    groups = still_groups(region) if groups is None else groups
+    allowed = _as_bioclip_inat(region, groups) if groups else frozenset()
+    if not allowed:
+        return [], ""
+    clip = ai_models.bioclip()
+    top = clip.top(vec, k=k, allowed=allowed)
+    wide = clip.top(vec, k=1)
+    if not top or not wide or wide[0][0] != top[0][0] or wide[0][2] < PLANT_AGREE:
+        return [], ""
+    labels = ", ".join(inat_lists.GROUPS[g][0].lower() for g in groups)
+    return (_shown(clip, top, master_root),
+            f"iNaturalist's {labels} for {region} ({len(allowed)} species), the whole picture")
+
+
+def plant_name_of(src: Path, im, *, cache: AiCache, region: str = "",
+                  master_root=None, k: int = 3) -> tuple[list, str]:
+    """plant_names for a picture: BioCLIP's vector of the whole picture
+    (cached, as box None). `im` as in measure()."""
+    from engine import ai_models
+    vec = cache.vector(src, None)
+    if vec is None:
+        pic = im() if callable(im) else im
+        vec = ai_models.bioclip().picture_vectors([crop_image(pic, None)])[0]
+        cache.put_vector(src, None, vec)
+    return plant_names(vec, region, master_root, k)
 
 
 def prepare_names(region: str = "") -> None:
@@ -281,6 +338,8 @@ def prepare_names(region: str = "") -> None:
     ai_models.bioclip()
     if region:
         _allowed(region)
+        if still_groups(region):
+            _as_bioclip_inat(region, still_groups(region))
 
 
 def small_gray(im) -> np.ndarray:

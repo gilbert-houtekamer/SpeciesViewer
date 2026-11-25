@@ -244,6 +244,8 @@ class _Measure(QThread):
                     ahead.close()
                 logger.info(f"Day AI: {len(series)} series named "
                             f"({sum(len(x) for x in series)} poses with an animal)")
+                if ai_measure.still_groups(self.region):
+                    self._name_plants(pics, aic, load, clock)
             finally:
                 aic.close()
             took("names")
@@ -256,6 +258,37 @@ class _Measure(QThread):
         except Exception as e:
             logger.error(f"Day AI failed: {e}", exc_info=True)
             self.failed.emit(str(e))
+
+
+    def _name_plants(self, pics, aic, load, clock):
+        """Poses without an animal: the whole sharpest frame, named among the
+        country's plants (only when BioCLIP agrees: ai_measure.plant_names)."""
+        from engine import ai_measure, day_ai
+        still = day_ai.still_leaders(pics)
+        ahead = day_ai.Prefetch([p["src"] for p in still
+                                 if aic.vector(p["src"], None) is None], load)
+        named = 0
+        try:
+            for i, p in enumerate(still, 1):
+                if self._stop:
+                    return
+
+                def picture(src=p["src"]):
+                    with clock.part("waiting for a decoded picture (plants)"):
+                        return ahead.get(src)
+                try:
+                    with clock.part("a plant name"):
+                        p["names"], p["among"] = ai_measure.plant_name_of(
+                            p["src"], picture, cache=aic, region=self.region,
+                            master_root=self.master_root or None)
+                    named += bool(p["names"])
+                except Exception as e:
+                    logger.warning(f"Day AI: plant name {p['src'].name}: {e}")
+                if i % 5 == 0 or i == len(still):
+                    self.progress.emit("Naming the plants", i, len(still))
+        finally:
+            ahead.close()
+        logger.info(f"Day AI: {len(still)} poses without an animal, {named} named as a plant")
 
 
 class DayAiDialog(QDialog):
@@ -438,7 +471,12 @@ class DayAiDialog(QDialog):
         st = day_ai.summary(self._pics, self._groups)
         why = st["why"]
         reasons = ", ".join(f"{n} {w}" for w, n in sorted(why.items(), key=lambda x: -x[1]))
-        among = next((p.get("among") for p in self._pics if p.get("among")), "")
+        among = next((p.get("among") for p in self._pics
+                      if p.get("among") and not p.get("plant_pose")), "")
+        plants = next((p.get("among") for p in self._pics
+                       if p.get("among") and p.get("plant_pose")), "")
+        if plants:
+            among = f"{among}; plants: {plants}" if among else plants
         self._stats.setText(
             f"<b>{st['pictures']}</b> pictures in <b>{st['poses']}</b> poses"
             f"{' · ' + self._region if self._region else ''}<br>"
@@ -476,7 +514,7 @@ class DayAiDialog(QDialog):
             if n is not None:
                 names[p["key"]] = dict(n)
                 tag, sure = f"{n.get('name') or n.get('sci')} {n['prob'] * 100:.0f}%", True
-            elif p.get("has_animal_pose"):
+            elif p.get("has_animal_pose") or p.get("plant_pose"):
                 tag, sure = "? not sure", False
             else:
                 tag, sure = "", True

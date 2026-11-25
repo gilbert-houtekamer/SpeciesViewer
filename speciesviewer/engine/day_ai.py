@@ -10,8 +10,10 @@ per picture a verdict and per pose a name:
            or decided: Blue, Purple), exactly the candidate rule of the master
            suggestion (engine.redundancy.is_candidate);
   name     the first name of the pose's best frame when it is at or above the
-           threshold, else "not sure"; no name when nothing in the pose has an
-           animal.
+           threshold, else "not sure"; a pose where nothing has an animal is
+           named only from its sharpest frame as a whole picture (plants, when
+           chosen for the country: still_leaders, engine.ai_measure.plant_names);
+           p["plant_pose"] says so.
 Within a pose the frames are ranked: a whole animal before one cut off by the
 frame's edge (GH 2026-11-24: "strafpunten"), then sharp on the animal, then
 size. A cut-off frame goes when its pose has a whole one that is in focus.
@@ -239,6 +241,17 @@ def pose_leaders(pics: list[dict], s: DaySettings | None = None) -> list[dict]:
     return out
 
 
+def still_leaders(pics: list[dict], s: DaySettings | None = None) -> list[dict]:
+    """Per pose WITHOUT an animal in any frame, its sharpest frame: the one a
+    plant name comes from (the whole picture)."""
+    s = s or DaySettings()
+    for p in pics:
+        p.setdefault("dhash", "0" * 16)
+    return [max(g, key=lambda p: p.get("sharp") or 0.0)
+            for g in rd.poses(pics, s.gap, s.change)
+            if not any(p.get("box") for p in g)]
+
+
 def name_series(pics: list[dict], s: DaySettings | None = None) -> list[list[dict]]:
     """The frames to name, as series: each series = the leaders (pose_leaders)
     of consecutive poses showing the SAME animal — a pose joins the one before
@@ -276,9 +289,12 @@ def decide(pics: list[dict], s: DaySettings,
     for gi, g in enumerate(groups):
         order = sorted(g, key=_rank, reverse=True)
         best = next((p for p in order if p.get("box")), None)
+        still = (None if best is not None else
+                 next((p for p in g if p.get("names")), None))   # a plant: the whole picture
         name, sure = None, False
-        if best is not None and best.get("names"):
-            first = best["names"][0]
+        named = best if best is not None else still
+        if named is not None and named.get("names"):
+            first = named["names"][0]
             sure = first["prob"] * 100 >= s.threshold
             name = first if sure else None
         biggest = max((p.get("px") or 0) for p in g)
@@ -289,6 +305,7 @@ def decide(pics: list[dict], s: DaySettings,
         for p in order:
             p["pose"], p["name"], p["sure"] = gi, name, sure
             p["has_animal_pose"] = best is not None
+            p["plant_pose"] = still is not None
             p["why"] = ""
             if not rd.is_candidate(p):
                 p["verdict"] = None
@@ -330,7 +347,7 @@ def summary(pics: list[dict], groups: list[list[dict]]) -> dict:
     not_sure = no_animal = 0
     for g in groups:
         p0 = g[0]
-        if not p0.get("has_animal_pose"):
+        if not p0.get("has_animal_pose") and not p0.get("plant_pose"):
             no_animal += 1
             continue
         if p0.get("name") is None:
