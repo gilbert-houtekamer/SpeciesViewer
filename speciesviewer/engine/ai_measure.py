@@ -17,9 +17,11 @@ engine.picture_score) return
              nothing (a flock or a phone scene can be low and still a keeper)
   names      BioCLIP 2's top species, in YOUR words (engine.ai_names):
              [{"sci", "name", "prob", "how", "outside"}] — chosen among eBird's
-             list for the picture's country (engine.ebird) when there is one; a
-             weak bird name gives way to a confident non-bird from everything
-             BioCLIP knows ("outside" = not on the bird list)
+             list for the picture's country (engine.ebird) when there is one,
+             plus iNaturalist's species of the chosen groups there (engine.inat_lists,
+             mammals unless the config says more); a weak name gives way to a
+             confident non-bird from everything BioCLIP knows ("outside" = not
+             on the list)
   among      what the names were chosen from, in words
 No animal found = no box, sharp 0, size 0, and no names.
 
@@ -209,27 +211,58 @@ def _as_bioclip(region: str, listed: frozenset) -> frozenset:
     return _matched[key]
 
 
-def names_for(vec, region: str = "", master_root=None, k: int = 3) -> tuple[list, str]:
-    """(names, among) for a picture vector: see the module docstring."""
-    from engine import ai_models, ai_names, ebird
-    clip = ai_models.bioclip()
+def _as_bioclip_inat(region: str, groups) -> frozenset:
+    """iNaturalist's species of those groups in a region, in BioCLIP's own names."""
+    from engine import ai_models, inat_lists
+    key = ("inat", region, tuple(groups))
+    if key not in _matched:
+        names: set = set()
+        for g in groups:
+            names |= inat_lists.species(region, g) or frozenset()
+        _matched[key] = (ai_models.bioclip().match_any(
+            names, inat_lists.english_names(region, groups)) if names else frozenset())
+    return _matched[key]
+
+
+def _allowed(region: str, groups=None) -> tuple[frozenset | None, str]:
+    """(BioCLIP names to choose among, in words) for a region: eBird's birds
+    plus iNaturalist's species of the chosen groups (engine.inat_lists.chosen_groups;
+    `groups` overrides). None = everything: without eBird's list the birds
+    would be missing, so iNaturalist's groups alone never narrow the choice."""
+    from engine import ebird, inat_lists
     listed = ebird.species(region) if region else None
-    allowed = _as_bioclip(region, listed) if listed else None
+    if not listed:
+        return None, ("everything the AI knows (no country known)" if not region else
+                      f"everything the AI knows (no eBird list for {region})")
+    allowed = _as_bioclip(region, listed)
+    words = f"eBird's list for {region} ({len(listed)} bird species)"
+    if groups is None:
+        groups = inat_lists.chosen_groups(region)
+    extra = _as_bioclip_inat(region, groups) if groups else frozenset()
+    if extra:
+        allowed = allowed | extra
+        labels = ", ".join(inat_lists.GROUPS[g][0].lower() for g in groups)
+        words += f" + iNaturalist's {labels} ({len(extra)} species)"
+    return allowed, words
+
+
+def names_for(vec, region: str = "", master_root=None, k: int = 3,
+              groups=None) -> tuple[list, str]:
+    """(names, among) for a picture vector: see the module docstring.
+    `groups` = iNaturalist groups to add to eBird's birds (None = from the config)."""
+    from engine import ai_models, ai_names
+    clip = ai_models.bioclip()
+    allowed, among = _allowed(region, groups)
+    outside = False
     if allowed:
         top = clip.top(vec, k=k, allowed=allowed)
-        among = f"eBird's list for {region} ({len(listed)} bird species)"
-        outside = False
         if not top or top[0][2] < NOT_SURE:
             wide = clip.top(vec, k=k)
-            if wide and clip.group.get(wide[0][0], ("",))[0] != "aves" \
-                    and wide[0][2] > (top[0][2] if top else 0):
+            if wide and clip.group.get(wide[0][0], ("",))[0] != "aves"                     and wide[0][0].lower() not in allowed                     and wide[0][2] > (top[0][2] if top else 0):
                 top, outside = wide, True
-                among = "everything the AI knows (no bird on the list fits)"
+                among = "everything the AI knows (nothing on the list fits)"
     else:
         top = clip.top(vec, k=k)
-        outside = False
-        among = ("everything the AI knows (no country known)" if not region else
-                 f"everything the AI knows (no eBird list for {region})")
     names = []
     for sci, common, prob in top:
         fam = clip.group.get(sci, ("", ""))[1]
@@ -242,13 +275,12 @@ def names_for(vec, region: str = "", master_root=None, k: int = 3) -> tuple[list
 
 def prepare_names(region: str = "") -> None:
     """Everything names_for needs before the first name, loaded now: BioCLIP
-    and its names, and eBird's list for the region matched to them (all kept
+    and its names, and the lists for the region matched to them (all kept
     for the next pictures). Lets a run time this apart from the names."""
-    from engine import ai_models, ebird
+    from engine import ai_models
     ai_models.bioclip()
-    listed = ebird.species(region) if region else None
-    if listed:
-        _as_bioclip(region, listed)
+    if region:
+        _allowed(region)
 
 
 def small_gray(im) -> np.ndarray:

@@ -137,8 +137,10 @@ this section: [Where your settings and data are kept](#where-your-settings-and-d
   - *eBird key* — optional, for the [AI models](#ai-models). With a key the AI
     names birds only from eBird's list for the picture's country, which makes
     its names far better; without one it chooses from every species it knows.
-    A key is free with an eBird account, at `ebird.org/api/keygen`. Each
-    country's list is fetched once and kept for use without internet.
+    A key is free with an eBird account, at `ebird.org/api/keygen`. Other
+    animals come from iNaturalist's list for that country: mammals always,
+    more groups (reptiles, dragonflies, butterflies, …) when you ask for them.
+    Each country's lists are fetched once and kept for use without internet.
 - **Website and publishing** — SpeciesViewer makes a website of your pictures
   (species pages, blogs). Choose where it goes:
   - **On this computer** — nothing is uploaded. SpeciesViewer shows the website in

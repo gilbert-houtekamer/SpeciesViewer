@@ -164,6 +164,37 @@ class BioClip:
                 out |= hit
         return frozenset(out)
 
+    def match_any(self, allowed, english: dict) -> frozenset:
+        """iNaturalist's names (lower-case, any group) as BioCLIP's own names.
+        iNaturalist follows the newest genera, BioCLIP often an older one: the
+        same name, else the one BioCLIP name with the same English name, else
+        the one BioCLIP name with the same species epithet in a class that the
+        list's other names are in — only when exactly one fits.
+        `english` = {name: English name} (engine.inat_lists.english_names)."""
+        if getattr(self, "_by_common_all", None) is None:
+            by_common: dict = {}
+            by_ep_cls: dict = {}
+            for s, c in zip(self.sci, self.common):
+                cls = self.group.get(s, ("", ""))[0]
+                if c:
+                    by_common.setdefault(c.lower(), set()).add(s.lower())
+                by_ep_cls.setdefault((s.split()[-1].lower(), cls), set()).add(s.lower())
+            self._by_common_all, self._by_ep_cls = by_common, by_ep_cls
+            self._have = {s.lower() for s in self.sci}
+        out = {a for a in allowed if a in self._have}
+        lower = {s.lower(): s for s in self.sci}
+        classes = {self.group.get(lower[a], ("", ""))[0] for a in out} - {""}
+        for a in allowed:
+            if a in out:
+                continue
+            hit = self._by_common_all.get((english.get(a) or "").lower(), set())                 if english.get(a) else set()
+            if len(hit) != 1:
+                hit = set().union(*(self._by_ep_cls.get((a.split()[-1], c), set())
+                                    for c in classes)) if classes else set()
+            if len(hit) == 1:
+                out |= hit
+        return frozenset(out)
+
     def subset(self, allowed) -> np.ndarray | None:
         """Column indices of the names in `allowed` (lower-case scientific
         names), cached per set; None = all names."""
