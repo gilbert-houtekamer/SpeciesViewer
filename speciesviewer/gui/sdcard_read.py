@@ -436,7 +436,21 @@ class ReadSDCardDialog(QDialog):
             self._ai_available = False
         self.ai_checkbox.setVisible(self._ai_available)
         input_layout.addWidget(self.ai_checkbox)
+        # … and, when the read is done, accept what it suggests without asking
+        # (names from your list + Purple on what could go). Off unless ticked.
+        self.ai_accept_checkbox = QCheckBox(
+            "When the read is done, accept the AI's suggestion: names from your "
+            "species list, Purple on the pictures that could go")
+        self.ai_accept_checkbox.setChecked(
+            get_cache_gui_section("sdcard_ingest", "ai_accept") == "1")
+        self.ai_accept_checkbox.setToolTip(
+            "The pictures open in the culling viewer with AI… on top, and its suggestion "
+            "is written at once. Nothing is deleted: Purple pictures go only when you "
+            "delete Purple, and \"Undo the last accept\" in AI… puts everything back.")
+        self.ai_accept_checkbox.setVisible(self._ai_available)
+        input_layout.addWidget(self.ai_accept_checkbox)
         self.bucket_checkbox.toggled.connect(self._update_ai_checkbox_enabled)
+        self.ai_checkbox.toggled.connect(self._update_ai_checkbox_enabled)
         self._update_ai_checkbox_enabled()
 
         # Re-apply the culling on a restore. A card holds every frame ever shot,
@@ -1173,6 +1187,7 @@ class ReadSDCardDialog(QDialog):
     def _update_ai_checkbox_enabled(self):
         bucketed = self.bucket_checkbox.isChecked()
         self.ai_checkbox.setEnabled(bucketed)
+        self.ai_accept_checkbox.setEnabled(bucketed and self.ai_checkbox.isChecked())
         self.ai_checkbox.setToolTip(
             "Each day is measured as soon as it is copied (sharpness, the animals, "
             "a closer look at each pose) while the card copies the next day. "
@@ -1819,6 +1834,8 @@ class ReadSDCardDialog(QDialog):
         if self._ai_available:
             update_cache_gui_section("sdcard_ingest", "ai",
                                      "1" if self.ai_checkbox.isChecked() else "0")
+            update_cache_gui_section("sdcard_ingest", "ai_accept",
+                                     "1" if self.ai_accept_checkbox.isChecked() else "0")
 
         # Day selection (None = no scan done → copy every day). Guard against a
         # stale scan from a different source folder, and against ticking nothing.
@@ -1899,9 +1916,12 @@ class ReadSDCardDialog(QDialog):
     def _start_ai(self, bucket_by_date: bool):
         """Start the AI worker when it is ticked; the copy hands it each day."""
         self._ai = None
+        self._read_done = False
+        self._auto_accept_pending = False
         if not (bucket_by_date and self._ai_available
                 and self.ai_checkbox.isChecked()):
             return
+        self._auto_accept_pending = self.ai_accept_checkbox.isChecked()
         from gui.card_ai import CardAiWorker
         master = _config.get("master", "masterbiotadatabase", fallback="").strip().strip('"')
         aggressive = _config.get("ai", "group_aggressively", fallback="no") == "yes"
@@ -1931,6 +1951,7 @@ class ReadSDCardDialog(QDialog):
             self._ai.wait()
         self._ai = None
         if not total.get("days"):
+            self._maybe_auto_accept()
             return
         mins, secs = divmod(int(total.get("seconds", 0)), 60)
         took = f"{mins} min {secs} s" if mins else f"{secs} s"
@@ -1943,6 +1964,26 @@ class ReadSDCardDialog(QDialog):
                                      + (f" {total['failed']} day(s) could not be looked "
                                         f"at — see the log." if total.get("failed") else ""))
         self.ai_status_label.setVisible(True)
+        if total.get("stopped"):
+            self._auto_accept_pending = False
+        self._maybe_auto_accept()
+
+    def _maybe_auto_accept(self):
+        """"Accept the AI's suggestion" ticked: once BOTH the read (with its
+        tracklog and place names — the country decides the names) and the AI
+        are done, open the culling viewer with AI… on top, which writes its
+        suggestion as soon as it has measured (seconds: the AI already looked)."""
+        if not (getattr(self, "_auto_accept_pending", False)
+                and getattr(self, "_read_done", False) and self._ai is None):
+            return
+        self._auto_accept_pending = False
+        if getattr(self, "_cancelled", False) or not self._last_targets:
+            return
+        self.on_view()
+        grid = self._preview_dlg
+        if grid is not None:
+            self.logger.info("Card read: opening AI… to accept its suggestion.")
+            grid._on_ai(auto_accept=True)
 
     def _remember_trip_read_settings(self, prefix, tz_offset, dest):
         """Record the filename prefix AND the timezone offset in the open trip's
@@ -2192,6 +2233,8 @@ class ReadSDCardDialog(QDialog):
         self._mark_run_done()
         if self.days_mode:
             self._register_ingested_days()
+        self._read_done = True
+        self._maybe_auto_accept()
 
     def _register_ingested_days(self):
         """After a Days-lane card copy, register each YYYY-MM-DD folder the copy

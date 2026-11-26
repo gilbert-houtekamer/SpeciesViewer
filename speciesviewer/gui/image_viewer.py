@@ -488,7 +488,7 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
         self.ai_btn.setFixedHeight(24)
         self.ai_btn.setToolTip("The AI's suggestion for this day: which pictures could "
                                "go, and what each pose is")
-        self.ai_btn.clicked.connect(self._on_ai)
+        self.ai_btn.clicked.connect(lambda: self._on_ai())
         controls_layout.addWidget(self.ai_btn)
 
         self.all_btn = QPushButton("All")
@@ -1288,7 +1288,9 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
 
     # ── the AI… dialog ──────────────────────────────────────────────────────
 
-    def _on_ai(self):
+    def _on_ai(self, auto_accept: bool = False):
+        """Open AI… on this grid; `auto_accept` (the card read's option) writes
+        the suggestion as soon as it is measured."""
         from PyQt6.QtWidgets import QMessageBox
         from engine import ai_models
         if not ai_models.available():
@@ -1307,7 +1309,7 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
                 self._ai_dlg = None
         from gui.day_ai_dialog import DayAiDialog
         master = _config_master()
-        self._ai_dlg = DayAiDialog(self, master)
+        self._ai_dlg = DayAiDialog(self, master, auto_accept=auto_accept)
         self._ai_dlg.finished.connect(lambda *_: setattr(self, "_ai_dlg", None))
         self._ai_dlg.show()
 
@@ -1399,6 +1401,37 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
         self.refresh_after_species_change(set(by_key))
         logger.info(f"AI… species: {len(done)} of {len(by_key)} pictures written.")
         return done, set(by_key) - done
+
+    def ai_learn_species(self, scis, progress=None) -> dict:
+        """AI… Accept "also names not in your list yet": add each scientific
+        name to your species list the way Set species ▸ Check online does
+        (GBIF, then saved). → {lower-case sci: subject to write}. Offline or
+        unknown to GBIF: the name is stored as given (lower case), as Set
+        species does — the list learns it later."""
+        from PyQt6.QtWidgets import QApplication
+        from gui.culling_species import flush_learned_species
+        sc = self._culling_sc()
+        out, learned = {}, 0
+        scis = sorted({s.strip() for s in scis if s and s.strip()}, key=str.lower)
+        for i, sci in enumerate(scis, 1):
+            if progress:
+                progress(f"Adding to your species list: {sci} ({i} of {len(scis)})…")
+                QApplication.processEvents()
+            got = ""
+            try:
+                got = sc.getKnownSpecies(sci.lower(), False, LookUpInGBIF=False) or ""
+                if not got:
+                    got = sc.getSpecies(sci, fuzzy=False) or ""
+                    learned += bool(got)
+            except Exception as e:
+                logger.warning(f"AI… could not add {sci!r} to the species list: {e}")
+            out[sci.lower()] = (got or sci).lower()
+        if learned:
+            ok, msg = flush_learned_species(sc)
+            if not ok:
+                logger.warning(f"AI… learned {learned} species but could not save them yet: {msg}")
+        logger.info(f"AI… new names: {learned} of {len(scis)} added to the species list.")
+        return out
 
     def select_keys(self, keys) -> None:
         """Select these pictures (those on the grid) and go to the first."""

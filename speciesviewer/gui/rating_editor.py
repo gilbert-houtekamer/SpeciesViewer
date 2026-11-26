@@ -441,17 +441,34 @@ class _FramedPhoto(QLabel):
         self._name_tag.setStyleSheet(
             f"color:{fg}; background:{bg}; font-size:10px; font-weight:600;"
             f" padding:1px 7px; border-radius:9px;")
+        self._name_tag_text = text
         self._name_tag.setText(text)
         self._name_tag.show()
         self._place_name_tag()
         self._name_tag.raise_()
 
     def _place_name_tag(self):
-        if self._name_tag is None or not self._name_tag.isVisible():
+        """Wide enough for the whole name; shortened with "…" only when it
+        does not fit the picture. The width is measured fresh each time — a
+        reused grid card used to keep the width of the first name it showed."""
+        if self._name_tag is None or self._name_tag.isHidden():
             return
-        self._name_tag.adjustSize()
-        w = min(self._name_tag.width(), max(40, self.width() - 16))
-        self._name_tag.setFixedWidth(w)
+        from PyQt6.QtGui import QFontMetrics
+        lab = self._name_tag
+        lab.setMinimumWidth(0)
+        lab.setMaximumWidth(16777215)
+        lab.setText(getattr(self, "_name_tag_text", lab.text()))
+        lab.ensurePolished()
+        fm = QFontMetrics(lab.font())
+        pad = 7 * 2 + 4                     # the style's padding + a little air
+        room = max(40, self.width() - 16)
+        text = lab.text()
+        if fm.horizontalAdvance(text) + pad > room:
+            text = fm.elidedText(text, Qt.TextElideMode.ElideRight, room - pad)
+            lab.setText(text)
+        w = min(room, fm.horizontalAdvance(text) + pad)
+        lab.setFixedWidth(w)
+        lab.adjustSize()
         # Below the top corner badges (file type, attention), centred.
         top = 7 + max((b.height() for b, c in self._badges if "t" in c), default=0) + 4
         self._name_tag.move((self.width() - w) // 2, top)

@@ -9,7 +9,9 @@ you can change — the view follows at once.
 
 INVARIANTS
 - Nothing is written until you press Accept… and say what (step 4 of
-  docs/plans/ai_day_plan.md): names (only from your own species list, at or
+  docs/plans/ai_day_plan.md) — or, opened by a card read with "accept the AI's
+  suggestion" ticked, Accept's defaults (names + Purple) at once. Names not in
+  your list yet only when ticked (they are added to your list first): names (only from your own species list, at or
   above the threshold, only on pictures without a species), Purple on what
   could go, Green on what stays (off unless ticked). Only candidates change
   colour. The Accept is recorded first (engine.day_ai_marks) and checked per
@@ -161,11 +163,12 @@ class _Measure(QThread):
 
 
 class DayAiDialog(QDialog):
-    def __init__(self, grid, master_root: str):
+    def __init__(self, grid, master_root: str, auto_accept: bool = False):
         super().__init__(grid)
         from engine.day_ai import DaySettings
         self.setWindowTitle("AI — this day")
         self._grid = grid
+        self._auto = auto_accept       # write the suggestion as soon as it is measured
         self._pics: list[dict] = []
         self._groups: list = []
         lay = QVBoxLayout(self)
@@ -200,6 +203,13 @@ class DayAiDialog(QDialog):
             "you never photographed, down to 4 of one you have on 32 days or more")
         self._use_master.toggled.connect(self._recompute)
         form.addRow(self._use_master)
+        self._no_animal = QCheckBox("Purple where no animal was found")
+        self._no_animal.setChecked(d.no_animal_goes)
+        self._no_animal.setToolTip(
+            "Off: pictures without an animal (flowers, landscapes, or an insect the AI "
+            "missed) keep no colour — they are yours to judge.\nOn: they could go.")
+        self._no_animal.toggled.connect(self._recompute)
+        form.addRow(self._no_animal)
         from utils.config import _config
         self._aggressive = QCheckBox("Group similar pictures aggressively")
         self._aggressive.setChecked(
@@ -298,7 +308,8 @@ class DayAiDialog(QDialog):
         from engine.day_ai import DaySettings
         return DaySettings(threshold=self._thr.value(), sharp_cut=self._sharp.value(),
                            per_pose=self._per_pose.value(), small_px=self._small.value(),
-                           use_master=self._use_master.isChecked())
+                           use_master=self._use_master.isChecked(),
+                           no_animal_goes=self._no_animal.isChecked())
 
     # ── the run ─────────────────────────────────────────────────────────────
 
@@ -324,6 +335,9 @@ class DayAiDialog(QDialog):
             self._detail.show()
         self._accept_btn.setEnabled(True)
         self._recompute()
+        if self._auto:
+            self._auto = False
+            self._auto_accept()
 
     def _on_stop(self):
         self._run.stop()
@@ -407,25 +421,34 @@ class DayAiDialog(QDialog):
         """What Accept would write: ({key: [before, name]}, {key: [before, "Purple"]},
         {key: [before, "Green"]}) — names only from your list and only where no
         species is set; colours only on candidates."""
-        names, purple, green = {}, {}, {}
+        names, purple, green = self._plan_with_new()[:3]
+        return names, purple, green
+
+    def _plan_with_new(self):
+        """_plan, plus {key: scientific name} for the names NOT in your list yet
+        (the AI's name from the country's list, at or above the threshold, on
+        pictures without a species) — written only when you tick it."""
+        names, purple, green, new = {}, {}, {}, {}
         can_name = self._grid.ai_can_write_species()
         for p in self._pics:
             k = p["key"]
             n = p.get("name")
-            if (can_name and n is not None and n.get("how") in ("exact", "renamed")
-                    and n.get("name") and not self._grid.ai_species_of(k)):
+            free = can_name and n is not None and not self._grid.ai_species_of(k)
+            if free and n.get("how") in ("exact", "renamed") and n.get("name"):
                 names[k] = ["", n["name"]]
+            elif free and not n.get("how") and not n.get("outside") and n.get("sci"):
+                new[k] = n["sci"]
             before = self._grid.ai_colour_of(k)
             if p.get("verdict") == "purple" and before != "Purple":
                 purple[k] = [before, "Purple"]
             elif p.get("verdict") == "keep" and before != "Green":
                 green[k] = [before, "Green"]
-        return names, purple, green
+        return names, purple, green, new
 
     def _on_accept(self):
         from PyQt6.QtWidgets import QCheckBox, QMessageBox
         from engine import day_ai_marks
-        names, purple, green = self._plan()
+        names, purple, green, new = self._plan_with_new()
         dlg = _BusyDialog(self)
         dlg.setWindowTitle("Accept the AI's suggestion")
         lay = QVBoxLayout(dlg)
@@ -434,19 +457,31 @@ class DayAiDialog(QDialog):
                              f"species get the AI's name")
         cb_names.setChecked(bool(names))
         cb_names.setEnabled(bool(names))
+        n_new = len({s.lower() for s in new.values()})
+        cb_new = QCheckBox(f"Also names not in your list yet: {len(new)} pictures, "
+                           f"{n_new} species — added to your species list")
+        cb_new.setToolTip(
+            "For a trip with creatures you have not named before. Each species is "
+            "looked up online (GBIF) and added to your species list; without internet "
+            "the scientific name is written as it is, and your list learns it later.\n"
+            + "\n".join(sorted({s for s in new.values()}, key=str.lower)[:25]))
+        cb_new.setEnabled(bool(new))
+        lay.addWidget(cb_names)
+        lay.addWidget(cb_new)
         cb_purple = QCheckBox(f"Purple: {len(purple)} pictures that could go")
         cb_purple.setChecked(bool(purple))
         cb_purple.setEnabled(bool(purple))
         cb_green = QCheckBox(f"Green: {len(green)} pictures that stay")
         cb_green.setEnabled(bool(green))
-        for w in (cb_names, cb_purple, cb_green):
+        for w in (cb_purple, cb_green):
             lay.addWidget(w)
         extra = []
         if not self._grid.ai_can_write_species():
             extra.append("Names are given on a culling day only; this day has its own "
                          "species step.")
-        extra.append("Only names from your own species list, at or above the threshold, "
-                     "and only on pictures that have no species yet. Nothing is deleted: "
+        extra.append("Only names at or above the threshold, only on pictures that have no "
+                     "species yet, and only from your own species list unless you tick "
+                     "\"also names not in your list yet\". Nothing is deleted: "
                      "Purple pictures go when you delete Purple. \"Undo the last accept\" "
                      "puts everything back.")
         lay.addWidget(wrapped(" ".join(extra)))
@@ -465,34 +500,64 @@ class DayAiDialog(QDialog):
         bb.rejected.connect(dlg.reject)
 
         def write():
-            n_names = names if cb_names.isChecked() else {}
+            n_names = dict(names if cb_names.isChecked() else {})
             colours = dict(purple if cb_purple.isChecked() else {})
             if cb_green.isChecked():
                 colours.update(green)
-            if not n_names and not colours:
+            if not n_names and not colours and not (new and cb_new.isChecked()):
                 dlg.reject()
                 return
-            for w in (cb_names, cb_purple, cb_green, write_btn, close_btn):
+            for w in (cb_names, cb_new, cb_purple, cb_green, write_btn, close_btn):
                 w.setEnabled(False)
             dlg.busy = True
             bar.show()
-            eid = day_ai_marks.start(self._folder, colours, n_names)     # BEFORE writing
-            c_done, c_failed, s_done, s_failed = self._write_steps(
-                {k: v[1] for k, v in colours.items()},
-                {k: v[1] for k, v in n_names.items()}, bar, status)
-            day_ai_marks.confirm(eid, c_done, s_done)
+            if new and cb_new.isChecked():
+                subject = self._grid.ai_learn_species(new.values(), progress=status.setText)
+                n_names.update({k: ["", subject.get(s.lower(), s.lower())]
+                                for k, s in new.items()})
+            text, failed = self._write_accept(n_names, colours, bar, status)
             dlg.busy = False
-            text = f"Written: {len(s_done)} names, {len(c_done)} colours."
-            if c_failed or s_failed:
-                text += f" {len(c_failed | s_failed)} could not be changed (see the log)."
             status.setText(text)
             write_btn.hide()
             close_btn.setText("Close")
             close_btn.setEnabled(True)
-            self._after_write(text, c_failed | s_failed, warn=False)
+            self._after_write(text, failed, warn=False)
 
         bb.accepted.connect(write)
         dlg.exec()
+
+    def _write_accept(self, names: dict, colours: dict, bar, status) -> tuple[str, set]:
+        """Write an Accept ({key: [before, new]} each), recorded BEFORE writing
+        so "Undo the last accept" can put it back. → (what was written, failed)."""
+        from engine import day_ai_marks
+        eid = day_ai_marks.start(self._folder, colours, names)     # BEFORE writing
+        c_done, c_failed, s_done, s_failed = self._write_steps(
+            {k: v[1] for k, v in colours.items()},
+            {k: v[1] for k, v in names.items()}, bar, status)
+        day_ai_marks.confirm(eid, c_done, s_done)
+        text = f"Written: {len(s_done)} names, {len(c_done)} colours."
+        if c_failed or s_failed:
+            text += f" {len(c_failed | s_failed)} could not be changed (see the log)."
+        return text, c_failed | s_failed
+
+    def _auto_accept(self):
+        """Accept at once, without asking (the card read's "accept the AI's
+        suggestion" option): names from your list and Purple on what could go —
+        the Accept… dialog's defaults; Green stays off. Undo puts it back."""
+        names, purple, _green = self._plan()
+        if not names and not purple:
+            self._note.setText("Accepted automatically: nothing to write.")
+            return
+        self._accept_btn.setEnabled(False)
+        try:
+            text, failed = self._write_accept(names, purple, self._bar, self._bar_text)
+        finally:
+            self._bar.hide()
+            self._accept_btn.setEnabled(True)
+        text = ("Accepted automatically — " + text[0].lower() + text[1:]
+                + " \"Undo the last accept\" puts it all back.")
+        logger.info(f"AI… on the card read: {text}")
+        self._after_write(text, failed)
 
     def _on_undo(self):
         from PyQt6.QtWidgets import QMessageBox

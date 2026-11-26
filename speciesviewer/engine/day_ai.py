@@ -50,6 +50,7 @@ class DaySettings:
     per_pose: int = 2        # frames kept per pose (your keepers count)
     small_px: int = 0        # px — smaller animals go when the pose has a bigger one (0 = off)
     use_master: bool = True  # fewer per day of a species your master has often
+    no_animal_goes: bool = False   # Purple where no animal was found (off: left to you)
     gap: float = rd.Settings().gap
     change: float = rd.Settings().change
 
@@ -326,7 +327,10 @@ def decide(pics: list[dict], s: DaySettings,
                 p["verdict"] = None
                 continue
             if not p.get("box"):
-                p["verdict"], p["why"] = "purple", NO_ANIMAL
+                # No animal found: a flower, a landscape — or an animal the
+                # detector missed (insects on flowers). Left to you unless asked.
+                p["verdict"], p["why"] = (("purple", NO_ANIMAL) if s.no_animal_goes
+                                          else (None, ""))
             elif (p.get("sharp_pct") is not None) and p["sharp_pct"] < s.sharp_cut:
                 p["verdict"], p["why"] = "purple", OUT_OF_FOCUS
             elif s.small_px and (p.get("px") or 0) < s.small_px <= biggest:
@@ -339,11 +343,15 @@ def decide(pics: list[dict], s: DaySettings,
             else:
                 p["verdict"], p["why"] = "purple", TOO_MANY
     if s.use_master and master_days is not None:
-        by_species: dict[str, list[dict]] = {}
+        # Per species PER CALENDAR DAY: a card read of 41 days is opened as one
+        # set, and "no more today" over all of it kept one Egyptian goose in
+        # two months (2026-11-26).
+        by_species: dict[tuple, list[dict]] = {}
         for p in pics:
             if p.get("name") is not None:
-                by_species.setdefault(p["name"]["sci"].lower(), []).append(p)
-        for sci, group in by_species.items():
+                day = p["time"].date() if p.get("time") else None
+                by_species.setdefault((p["name"]["sci"].lower(), day), []).append(p)
+        for (sci, _day), group in by_species.items():
             limit = day_limit(master_days.get(sci, 0))
             kept = sum(1 for p in group if rd.is_keeper(p))
             for p in sorted((p for p in group if p.get("verdict") == "keep"),

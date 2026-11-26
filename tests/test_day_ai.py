@@ -31,11 +31,19 @@ def test_a_burst_keeps_the_sharpest_two():
 
 def test_out_of_focus_and_no_animal_go_first():
     pics = [pic(0, 0, sharp=5), pic(1, 1, box=False), pic(2, 2, sharp=60)]
-    day_ai.decide(pics, DaySettings(per_pose=3, sharp_cut=15))
+    day_ai.decide(pics, DaySettings(per_pose=3, sharp_cut=15, no_animal_goes=True))
     by = {p["key"]: (p["verdict"], p["why"]) for p in pics}
     assert by["k00"] == ("purple", day_ai.OUT_OF_FOCUS)
     assert by["k01"] == ("purple", day_ai.NO_ANIMAL)
     assert by["k02"] == ("keep", "")
+
+
+def test_no_animal_is_left_to_you_by_default():
+    """A flower, a landscape, an insect the detector missed: no colour unless
+    "Purple where no animal was found" is ticked."""
+    pics = [pic(0, 0, box=False), pic(1, 1, box=False)]
+    day_ai.decide(pics, DaySettings())
+    assert [(p["verdict"], p["why"]) for p in pics] == [(None, ""), (None, "")]
 
 
 def test_your_keepers_count_and_are_never_marked():
@@ -96,6 +104,17 @@ def test_common_species_thinned_by_the_master():
     day_ai.decide(pics, DaySettings(per_pose=2, use_master=False),
                   master_days={"buteo buteo": 200})
     assert sum(p["verdict"] == "keep" for p in pics) == 20
+
+
+def test_the_master_rule_counts_per_calendar_day():
+    """A card read of many days opened at once: the limit holds per day, not
+    over all of it (one Egyptian goose in two months, 2026-11-26)."""
+    pics = [pic(i, (i // 10) * 86400 + (i % 10) * 100, sharp=50 + i) for i in range(30)]
+    day_ai.decide(pics, DaySettings(per_pose=2), master_days={"buteo buteo": 200})
+    per_day = {}
+    for p in pics:
+        per_day[p["time"].date()] = per_day.get(p["time"].date(), 0) + (p["verdict"] == "keep")
+    assert sorted(per_day.values()) == [4, 4, 4]          # day_limit(200) on each day
 
 
 def test_cut_off_by_the_edge_goes_when_the_pose_has_a_whole_one():
