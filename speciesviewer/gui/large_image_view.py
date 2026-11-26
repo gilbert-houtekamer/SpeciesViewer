@@ -1127,6 +1127,10 @@ class LargeImageView(QDialog):
         self._bracket_left, self._bracket_right = initial_brackets if initial_brackets else (None, None)
         self._crop_mode = False
         self._crop_overlay = None
+        # The crop rectangle serves two tools: "crop" (a crop for PhotoLab, written
+        # to the sidecars) and "ai" (AI: name a part — nothing written).
+        self._crop_purpose = "crop"
+        self._part_names: dict[str, dict] = {}   # key → the name you picked for a part
 
         # ── Root layout ───────────────────────────────────────────────────────
         root = QVBoxLayout(self)
@@ -1179,6 +1183,25 @@ class LargeImageView(QDialog):
         self._crop_btn.setStyleSheet("font-size: 10px; padding: 1px 5px;")
         self._crop_btn.clicked.connect(self._toggle_crop_mode)
         top_bar_row.addWidget(self._crop_btn)
+        # AI: name a part — draw a square around what you want named (a tree in a
+        # landscape); the AI names only that part. Nothing is written.
+        self._ai_part_btn = QToolButton()
+        self._ai_part_btn.setAutoRaise(True)
+        self._ai_part_btn.setCheckable(True)
+        self._ai_part_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._ai_part_btn.setStyleSheet("font-size: 10px; padding: 1px 5px;")
+        self._ai_part_btn.setText("✦ AI: name a part")
+        self._ai_part_btn.setToolTip(
+            "Draw a square around what you want named — a tree in a landscape, a "
+            "bird in a bush — and press Enter: the AI names only that part. Its "
+            "name is then offered in Set species. Nothing is written.")
+        self._ai_part_btn.clicked.connect(self._toggle_ai_part_mode)
+        try:
+            from engine import ai_models
+            self._ai_part_btn.setVisible(ai_models.available())
+        except Exception:
+            self._ai_part_btn.setVisible(False)
+        top_bar_row.addWidget(self._ai_part_btn)
         # Snap the drawn crop to the nearest standard long-side size — only useful
         # (and only visible) while cropping.
         self._snap_btn = QToolButton()
@@ -2121,7 +2144,7 @@ class LargeImageView(QDialog):
 
     # ── Crop tool ─────────────────────────────────────────────────────────────
     def _update_crop_btn(self):
-        if getattr(self, "_crop_mode", False):
+        if getattr(self, "_crop_mode", False) and self._crop_purpose == "crop":
             self._crop_btn.setText("✂ Cropping…")
             self._crop_btn.setToolTip("Drawing a crop — click here or press Enter to "
                                       "apply it, Esc cancels.")
@@ -2132,6 +2155,8 @@ class LargeImageView(QDialog):
                 "full frame (aspect locked to the camera's), then press Enter.")
 
     def _toggle_crop_mode(self):
+        if self._crop_mode and self._crop_purpose == "ai":
+            self._exit_crop_mode(reload=False)     # from naming a part to cropping
         if self._crop_mode:
             # A second click APPLIES, as Enter does — it used to cancel, which
             # threw the drawn crop away (his expectation, 2026-10-21). Esc cancels.
@@ -2139,6 +2164,65 @@ class LargeImageView(QDialog):
                 self._exit_crop_mode(reload=True)   # nothing drawn: just leave
         else:
             self._enter_crop_mode()
+
+    # ── AI: name a part ───────────────────────────────────────────────────────
+    def _toggle_ai_part_mode(self):
+        if self._crop_mode:
+            was_ai = self._crop_purpose == "ai"
+            self._exit_crop_mode(reload=not was_ai)
+            if was_ai:
+                return                              # a second click leaves
+        self._enter_ai_part_mode()
+
+    def _enter_ai_part_mode(self):
+        """The crop rectangle, square, over the picture AS SHOWN (no reload to
+        the uncropped frame: you name what you see)."""
+        if (self._item is None or getattr(self._item, "is_video", False)
+                or self._pixmap.isNull()):
+            self._ai_part_btn.setChecked(False)
+            return
+        if self._view_tabs.currentIndex() != self._TAB_FIT:
+            self._view_tabs.setCurrentIndex(self._TAB_FIT)   # a Fit-tab tool
+            if self._pixmap.isNull():
+                self._ai_part_btn.setChecked(False)
+                return
+        self._crop_purpose = "ai"
+        self._crop_mode = True
+        self._ai_part_btn.setChecked(True)
+        self._show_crop_overlay()
+
+    def _name_part(self, crop: dict):
+        """Cut your square from the picture on screen and let the AI name it."""
+        pm = self._pixmap
+        if pm.isNull() or self._item is None:
+            return
+        from PyQt6.QtCore import QRect
+        W, H = pm.width(), pm.height()
+        part = pm.copy(QRect(round(crop["left"] * W), round(crop["top"] * H),
+                             max(1, round(crop["width"] * W)),
+                             max(1, round(crop["height"] * H))))
+        key = self._item.key
+        from gui.ai_part import PartNamesDialog
+        from utils.config import _config
+        master = _config.get("master", "masterbiotadatabase", fallback="").strip().strip('"')
+        dlg = PartNamesDialog(part, self._part_region(key), master, self, self)
+        if dlg.exec() and dlg.chosen:
+            self._part_names[key] = dlg.chosen
+            if self._item is not None and self._item.key == key:
+                self._rebuild_species_section(self._item, key)
+
+    def _part_region(self, key) -> str:
+        """The picture's country (ISO code) for the AI's lists: its own location,
+        else the country the AI… window found for the day; "" when unknown."""
+        try:
+            from engine.countries import iso_of
+            iso = iso_of((self._collection.read_location(key) or {}).get("Country", ""))
+            if iso:
+                return iso
+        except Exception:
+            pass
+        dlg = getattr(self.parent(), "_ai_dlg", None)
+        return getattr(dlg, "_region", "") or ""
 
     def _on_rotate_crop(self):
         if self._crop_mode and self._crop_overlay is not None:
@@ -2188,6 +2272,21 @@ class LargeImageView(QDialog):
             self._crop_overlay.cancelled.connect(
                 lambda: self._exit_crop_mode(reload=True))
         self._sync_crop_overlay_geom()
+        if self._crop_purpose == "ai":
+            # A square: the AI looks at a square, so what you frame is what it sees.
+            self._crop_overlay.hints = (
+                "Drag a square around what the AI should name  ·  Esc to cancel",
+                "Enter: the AI names this part  ·  Esc to cancel")
+            self._crop_overlay.set_aspect(1.0)
+            self._crop_overlay.set_full_size(self._pixmap.width(), self._pixmap.height())
+            self._crop_overlay.set_normalized(None)
+            self._crop_overlay.show()
+            self._crop_overlay.raise_()
+            self._crop_overlay.setFocus()
+            QTimer.singleShot(0, self._sync_crop_overlay_geom)
+            return
+        from gui.crop_overlay import CROP_HINTS
+        self._crop_overlay.hints = CROP_HINTS
         # Lock to the camera's NOMINAL ratio (4:3 / 3:2) so standard sizes come out
         # round (1200×900, not 1200×899); fall back to the shown frame's ratio.
         fw, fh = self._full_frame_size()
@@ -2263,10 +2362,18 @@ class LargeImageView(QDialog):
         exactly as it is."""
         if not self._crop_mode or self._crop_overlay is None:
             return False
+        if self._crop_purpose == "ai":
+            # PhotoLab / Make JPG while naming a part: the square is not a crop.
+            self._exit_crop_mode(reload=False)
+            return False
         return self._crop_overlay.commit()
 
     def _on_crop_committed(self, crop: dict):
         if self._item is None:
+            return
+        if self._crop_purpose == "ai":
+            self._exit_crop_mode(reload=False)
+            self._name_part(crop)
             return
         key = self._item.key
         had_jpg = self._shows_a_jpg(self._item)   # before the rebind below
@@ -2459,7 +2566,9 @@ class LargeImageView(QDialog):
         if not self._crop_mode and self._crop_overlay is None:
             return
         self._crop_mode = False
+        self._crop_purpose = "crop"
         self._crop_btn.setChecked(False)
+        self._ai_part_btn.setChecked(False)
         self._snap_btn.setVisible(False)
         self._rotate_btn.setVisible(False)
         self._update_crop_btn()
@@ -2698,7 +2807,10 @@ class LargeImageView(QDialog):
         if (event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter)
                 and getattr(self, "_crop_mode", False)
                 and not text_input_focused()):
-            self._apply_pending_crop()
+            if self._crop_purpose == "ai" and self._crop_overlay is not None:
+                self._crop_overlay.commit()
+            else:
+                self._apply_pending_crop()
             event.accept()
             return
         if self._keys and handle_cull_key(
@@ -3162,11 +3274,10 @@ class LargeImageView(QDialog):
                 self._species_cl.addWidget(ph)
             if can_inline:
                 from gui.culling_species import CullingSpeciesWidget
-                ai = getattr(self.parent(), "ai_name_for", None)
                 editor = CullingSpeciesWidget(
                     self._inline_species_sc(), item.species or "", 1,
                     parent=self._species_container, embedded=True,
-                    ai_name=ai([key]) if ai else None)
+                    ai_name=self._ai_name_for([key]))
                 editor.committed.connect(
                     lambda subject, k=key: self._commit_inline_species(subject, k))
                 self._species_cl.addWidget(editor)
@@ -3810,7 +3921,16 @@ class LargeImageView(QDialog):
 
     def _ai_name_for(self, keys):
         """The AI… window's name for these pictures, from the grid behind
-        this view (None when AI… is not open)."""
+        this view (None when AI… is not open). A name you picked with "AI: name
+        a part" wins: you showed the AI what to look at."""
+        keys = list(keys)
+        mine = [self._part_names[k] for k in keys if k in self._part_names]
+        if mine:
+            best = dict(mine[-1])
+            best["count"] = sum(1 for k in keys
+                                if self._part_names.get(k, {}).get("sci") == best["sci"])
+            best["of"] = len(keys)
+            return best
         ai = getattr(self.parent(), "ai_name_for", None)
         return ai(keys) if ai else None
 

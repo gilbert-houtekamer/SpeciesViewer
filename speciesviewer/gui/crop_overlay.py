@@ -24,6 +24,10 @@ _MIN_FRAC = 0.05    # smallest crop, as a fraction of the frame
 _SIZE_PRESETS = (1000, 1200, 1500, 2000)
 _SNAP_TOL = 1.05
 
+# The hint line before / after a rectangle is drawn, when cropping.
+CROP_HINTS = ("Drag to draw a crop  ·  Esc to cancel",
+              "Enter to apply  ·  Esc to cancel")
+
 
 def _snap_target(long_px: int):
     """The standard size the given long side snaps to, or None if it's larger
@@ -73,6 +77,9 @@ class CropOverlay(QWidget):
         self._anchor = QPointF()        # fixed point during a drag
         self._move_off = QPointF()      # cursor→rect offset while moving
         self._flash_msg = ""            # transient note shown in the hint line
+        # The hint line before / after a rectangle is drawn (the host may reword
+        # it: the large view's "AI: name a part" uses this overlay too).
+        self.hints = CROP_HINTS
 
     # ── configuration ────────────────────────────────────────────────────────
     def set_aspect(self, aspect: float):
@@ -330,7 +337,7 @@ class CropOverlay(QWidget):
         full = QRectF(0, 0, self.width(), self.height())
         if not self._rect:
             p.fillRect(full, QColor(0, 0, 0, 60))
-            self._draw_hint(p, self._flash_msg or "Drag to draw a crop  ·  Esc to cancel")
+            self._draw_hint(p, self._flash_msg or self.hints[0])
             return
 
         r = self._rect.normalized()
@@ -363,7 +370,7 @@ class CropOverlay(QWidget):
         if px:
             self._draw_size(p, r, f"{px[0]} × {px[1]}")
 
-        self._draw_hint(p, self._flash_msg or "Enter to apply  ·  Esc to cancel")
+        self._draw_hint(p, self._flash_msg or self.hints[1])
 
     def _draw_size(self, p: QPainter, r: QRectF, text: str):
         f = QFont()

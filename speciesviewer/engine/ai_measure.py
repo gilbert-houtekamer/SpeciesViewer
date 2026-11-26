@@ -330,6 +330,35 @@ def plant_name_of(src: Path, im, *, cache: AiCache, region: str = "",
     return plant_names(vec, region, master_root, k)
 
 
+def part_names(im, region: str = "", master_root=None, k: int = 3) -> list[tuple[str, list]]:
+    """[(what the names were chosen from, names)] for a PART of a picture that
+    YOU framed (the large view's "AI: name a part"): `im` is that part, as it is,
+    no room added. Three answers, because you know better than the AI what you
+    pointed at: the country's list (as names_for), the country's plants and
+    fungi WITHOUT plant_names' agreement test (you chose the part, so a tree is
+    meant), and the first names among everything BioCLIP knows. A list that does
+    not apply (no country, no plants chosen) is left out."""
+    from engine import ai_models, inat_lists
+    clip = ai_models.bioclip()
+    pic = im.copy()
+    pic.thumbnail((1024, 1024))
+    vec = clip.picture_vectors([pic])[0]
+    out = []
+    if region:
+        names, among = names_for(vec, region, master_root, k)
+        if names and not names[0].get("outside"):
+            out.append((among, names))
+        groups = still_groups(region)
+        allowed = _as_bioclip_inat(region, groups) if groups else frozenset()
+        if allowed:
+            labels = ", ".join(inat_lists.GROUPS[g][0].lower() for g in groups)
+            out.append((f"iNaturalist's {labels} for {region} ({len(allowed)} species)",
+                        _shown(clip, clip.top(vec, k=k, allowed=allowed), master_root)))
+    out.append(("everything the AI knows",
+                _shown(clip, clip.top(vec, k=k), master_root, outside=True)))
+    return out
+
+
 def prepare_names(region: str = "") -> None:
     """Everything names_for needs before the first name, loaded now: BioCLIP
     and its names, and the lists for the region matched to them (all kept
