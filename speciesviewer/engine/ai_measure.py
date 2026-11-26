@@ -321,13 +321,7 @@ def plant_name_of(src: Path, im, *, cache: AiCache, region: str = "",
                   master_root=None, k: int = 3) -> tuple[list, str]:
     """plant_names for a picture: BioCLIP's vector of the whole picture
     (cached, as box None). `im` as in measure()."""
-    from engine import ai_models
-    vec = cache.vector(src, None)
-    if vec is None:
-        pic = im() if callable(im) else im
-        vec = ai_models.bioclip().picture_vectors([crop_image(pic, None)])[0]
-        cache.put_vector(src, None, vec)
-    return plant_names(vec, region, master_root, k)
+    return plant_names(vector_of(src, im, None, cache=cache), region, master_root, k)
 
 
 def part_names(im, region: str = "", master_root=None, k: int = 3) -> list[tuple[str, list]]:
@@ -413,13 +407,19 @@ def name_of(src: Path, im, box, *, cache: AiCache, region: str = "",
             master_root=None, k: int = 3) -> tuple[list, str]:
     """(names, among) for the animal in `box`: BioCLIP's vector of the crop
     (cached), then the names for the region. `im` as in measure()."""
+    return names_for(vector_of(src, im, box, cache=cache), region, master_root, k)
+
+
+def vector_of(src: Path, im, box, *, cache: AiCache):
+    """BioCLIP's vector of the crop around `box` (None = the whole picture),
+    from the cache or made and stored. `im` as in measure()."""
     from engine import ai_models
     vec = cache.vector(src, box)
     if vec is None:
         pic = im() if callable(im) else im
         vec = ai_models.bioclip().picture_vectors([crop_image(pic, box)])[0]
         cache.put_vector(src, box, vec)
-    return names_for(vec, region, master_root, k)
+    return vec
 
 
 def measure(src: Path, im, score: dict | None, camera: str = "", *,

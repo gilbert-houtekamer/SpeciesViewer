@@ -49,8 +49,9 @@ class _SDCardCopyWorker(QObject):
 
     def __init__(self, source, dest, prefix="", bucket_by_date=False, tz_offset_hours=0.0,
                  write_sidecars=True, include_dates=None, trip_stamp=None,
-                 include_names=None, newer_wins=False):
+                 include_names=None, newer_wins=False, on_day_copied=None):
         super().__init__()
+        self._on_day_copied = on_day_copied     # the AI (gui.card_ai), or None
         self._newer_wins = newer_wins
         self._source = source
         self._dest = dest
@@ -76,6 +77,7 @@ class _SDCardCopyWorker(QObject):
                 trip_stamp=self._trip_stamp,
                 include_names=self._include_names,
                 newer_wins=self._newer_wins,
+                on_day_copied=self._on_day_copied,
                 progress=lambda done, total, name: self.progress.emit(done, total, name),
                 should_cancel=lambda: self._cancel,
             )
@@ -157,7 +159,7 @@ _PL_RAW_EXTS = DXO_RAW  # canonical table — see utils/raw_extensions.py
 # Day-table columns. Named because a sixth column shifted every index below it,
 # and the old magic numbers were spread across six methods.
 (DAY_COL, FILES_COL, COPIED_COL, DELETED_COL, KEPT_COL, TO_COPY_COL, META_COL,
- TRACK_COL) = range(8)
+ TRACK_COL, AI_COL) = range(9)
 
 
 class ReadSDCardDialog(QDialog):
@@ -418,6 +420,25 @@ class ReadSDCardDialog(QDialog):
         self.bucket_checkbox.toggled.connect(self._update_tracklog_checkbox_enabled)
         self._update_tracklog_checkbox_enabled()
 
+        # The AI looks at each day while the card copies the next one (a card is
+        # slow, the AI uses the processor): AI… on a day then opens at once.
+        # Only with the AI models installed, and only into day folders.
+        self.ai_checkbox = QCheckBox("Let the AI look at the pictures while copying "
+                                     "(AI… then opens at once)")
+        self.ai_checkbox.setChecked(get_cache_gui_section("sdcard_ingest", "ai") != "0")
+        # Asked as a flag, never with isVisible(): the box sits on the Input tab,
+        # and Read switches to the SD card tab first — a widget on a hidden tab
+        # says "not visible", which once kept the AI from ever starting.
+        try:
+            from engine import ai_models
+            self._ai_available = ai_models.available()
+        except Exception:
+            self._ai_available = False
+        self.ai_checkbox.setVisible(self._ai_available)
+        input_layout.addWidget(self.ai_checkbox)
+        self.bucket_checkbox.toggled.connect(self._update_ai_checkbox_enabled)
+        self._update_ai_checkbox_enabled()
+
         # Re-apply the culling on a restore. A card holds every frame ever shot,
         # including the ones deleted during the trip, so a plain re-read undoes
         # a fortnight of culling. The backup recorded which pictures each day
@@ -484,10 +505,14 @@ class ReadSDCardDialog(QDialog):
         self.all_days_checkbox.setChecked(True)
         self.all_days_checkbox.clicked.connect(self._on_all_days_clicked)
         days_layout.addWidget(self.all_days_checkbox)
-        self.days_table = QTableWidget(0, 8)
+        self.days_table = QTableWidget(0, 9)
         self.days_table.setHorizontalHeaderLabels(
             ["Day", "Files", "Copied", "Deleted", "Kept", "To copy",
-             "Metadata on this source", "Tracklog"])
+             "Metadata on this source", "Tracklog", "AI"])
+        self.days_table.horizontalHeaderItem(AI_COL).setToolTip(
+            "The AI looking at each day while the card copies the next one — "
+            "AI… on that day then opens at once")
+        self.days_table.setColumnHidden(AI_COL, True)   # shown when the AI runs
         for _col, _tip in ((TO_COPY_COL, "Pictures a Read would add to this day: not "
                                          "here yet, not culled on the trip, and not "
                                          "deleted on this computer"),
@@ -554,6 +579,12 @@ class ReadSDCardDialog(QDialog):
         self.status_label = QLabel("")
         self.status_label.setWordWrap(True)
         card_layout.addWidget(self.status_label)
+        # The AI's own line: it finishes at its own pace, before or after the
+        # copy's Done — on the status line it was overwritten by that Done.
+        self.ai_status_label = QLabel("")
+        self.ai_status_label.setWordWrap(True)
+        self.ai_status_label.setVisible(False)
+        card_layout.addWidget(self.ai_status_label)
 
         # "What to do next" note after a read. Colours come from the theme: the
         # hard-coded pale-blue card was invisible on the dark theme — a white box
@@ -613,6 +644,7 @@ class ReadSDCardDialog(QDialog):
         self._scan_worker = None
         self._tracklog_thread = None
         self._tracklog_worker = None
+        self._ai = None             # gui.card_ai.CardAiWorker during a read
         self._scanned_source = ""   # source the day table was built from
         self._preview_dlg = None    # the open culling grid (single instance)
 
@@ -776,6 +808,10 @@ class ReadSDCardDialog(QDialog):
         # destroy the thread out from under it.
         if self._tracklog_thread is not None and self._tracklog_thread.isRunning():
             self._tracklog_thread.wait(5000)
+        # The AI stops between two pictures; a detector call takes under a second.
+        if self._ai is not None and self._ai.isRunning():
+            self._ai.stop()
+            self._ai.wait(15000)
 
     # Independent taskbar entry: Windows hides any window with a native
     # "owner" HWND from the taskbar regardless of Qt's WindowType, and this
@@ -1133,6 +1169,16 @@ class ReadSDCardDialog(QDialog):
             f"({want.name}). Pictures will be filed in the folder above, "
             f"not in the trip. Expected: {want}")
         self.dest_note.setVisible(True)
+
+    def _update_ai_checkbox_enabled(self):
+        bucketed = self.bucket_checkbox.isChecked()
+        self.ai_checkbox.setEnabled(bucketed)
+        self.ai_checkbox.setToolTip(
+            "Each day is measured as soon as it is copied (sharpness, the animals, "
+            "a closer look at each pose) while the card copies the next day. "
+            "Nothing is written to your pictures; the names come when you open AI…"
+            if bucketed else
+            "Needs \"Sort into date subfolders\" ticked — the AI looks at a day at a time")
 
     def _update_tracklog_checkbox_enabled(self):
         """Auto-geotag needs each entry grouped by its destination day-folder
@@ -1770,6 +1816,9 @@ class ReadSDCardDialog(QDialog):
         update_cache_gui_section("sdcard_ingest", "write_sidecars", "1" if write_sidecars else "0")
         update_cache_gui_section("sdcard_ingest", "add_location",
                                  "1" if self.location_checkbox.isChecked() else "0")
+        if self._ai_available:
+            update_cache_gui_section("sdcard_ingest", "ai",
+                                     "1" if self.ai_checkbox.isChecked() else "0")
 
         # Day selection (None = no scan done → copy every day). Guard against a
         # stale scan from a different source folder, and against ticking nothing.
@@ -1833,16 +1882,67 @@ class ReadSDCardDialog(QDialog):
         use_filter = (self._survivors
                       if (self.recull_checkbox.isVisible()
                           and self.recull_checkbox.isChecked()) else None)
+        self._start_ai(bucket_by_date)
         self._worker = _SDCardCopyWorker(source, dest, prefix, bucket_by_date, tz_offset,
                                          write_sidecars, include_dates=include_dates,
                                          trip_stamp=self._trip_stamp(),
                                          include_names=use_filter,
-                                         newer_wins=self.trip_mode)
+                                         newer_wins=self.trip_mode,
+                                         on_day_copied=self._ai.add if self._ai else None)
         self._worker.moveToThread(self._thread)
         self._thread.started.connect(self._worker.run)
         self._worker.progress.connect(self.on_progress)
         self._worker.finished.connect(self.on_finished)
         self._thread.start()
+
+    # ── the AI during the read (gui.card_ai) ─────────────────────────────────
+    def _start_ai(self, bucket_by_date: bool):
+        """Start the AI worker when it is ticked; the copy hands it each day."""
+        self._ai = None
+        if not (bucket_by_date and self._ai_available
+                and self.ai_checkbox.isChecked()):
+            return
+        from gui.card_ai import CardAiWorker
+        master = _config.get("master", "masterbiotadatabase", fallback="").strip().strip('"')
+        aggressive = _config.get("ai", "group_aggressively", fallback="no") == "yes"
+        self._ai = CardAiWorker(master, aggressive, self)
+        self._ai.state.connect(self._on_ai_state)
+        self._ai.all_done.connect(self._on_ai_done)
+        self.days_table.setColumnHidden(AI_COL, False)
+        self.ai_status_label.setText("⏳ The AI looks at each day as soon as it is copied…")
+        self.ai_status_label.setVisible(True)
+        self._ai.start()
+        self._ai.setPriority(QThread.Priority.LowPriority)   # the copy comes first
+
+    def _on_ai_state(self, day: str, text: str):
+        table = getattr(self, "days_table", None)
+        if table is None:
+            return
+        for r in range(table.rowCount()):
+            item = table.item(r, DAY_COL)
+            if item is not None and item.text() == day:
+                cell = QTableWidgetItem(text)
+                cell.setFlags(Qt.ItemFlag.ItemIsEnabled)
+                table.setItem(r, AI_COL, cell)
+                return
+
+    def _on_ai_done(self, total: dict):
+        if self._ai is not None:
+            self._ai.wait()
+        self._ai = None
+        if not total.get("days"):
+            return
+        mins, secs = divmod(int(total.get("seconds", 0)), 60)
+        took = f"{mins} min {secs} s" if mins else f"{secs} s"
+        line = (f"The AI looked at {total['pictures']} pictures of {total['days']} "
+                f"day(s) — {total['animals']} with an animal — in {took}"
+                + (" (stopped)." if total.get("stopped") else
+                   ". AI… on those days opens at once."))
+        self.logger.info(line)
+        self.ai_status_label.setText(("⚠️ " if total.get("failed") else "✅ ") + line
+                                     + (f" {total['failed']} day(s) could not be looked "
+                                        f"at — see the log." if total.get("failed") else ""))
+        self.ai_status_label.setVisible(True)
 
     def _remember_trip_read_settings(self, prefix, tz_offset, dest):
         """Record the filename prefix AND the timezone offset in the open trip's
@@ -1895,6 +1995,11 @@ class ReadSDCardDialog(QDialog):
     def on_finished(self, summary, error):
         self._thread.quit()
         self._thread.wait()
+        if self._ai is not None:
+            if error or getattr(self, "_cancelled", False):
+                self._ai.stop()
+            else:
+                self._ai.no_more()          # it finishes the days already copied
         self.read_btn.setEnabled(True)
         self._restore_close_btn()
         if error:

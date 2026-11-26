@@ -146,149 +146,23 @@ class _Measure(QThread):
 
     def run(self):
         try:
-            import io
-            from PIL import Image, ImageOps
-            from engine import af_point, ai_measure, ai_yardstick, day_ai
-            from engine.picture_score import Cache, image_bytes, score_pictures
-            import time
-            pics, n = self.pics, len(self.pics)
-            t = [time.time()]
-
-            def took(step):
-                now = time.time()
-                self.timing.append((step, now - t[0]))
-                t[0] = now
-            cache = Cache()
-            try:
-                score_pictures(pics, cache, cancelled=lambda: self._stop,
-                               progress=lambda i, t: self.progress.emit(
-                                   "Measuring sharpness", i, t))
-            finally:
-                cache.close()
+            from engine.day_measure import measure_day
+            self.counts = measure_day(
+                self.pics, self.region, self.master_root or None, names=True,
+                aggressive=self.aggressive, progress=self.progress.emit,
+                stopped=lambda: self._stop, clock=self.clock, timing=self.timing)
             if self._stop:
                 return
-            took("sharpness")
-            self.progress.emit("Reading the cameras", 0, n)
-            af = af_point.read([p["src"] for p in pics])
-            took("cameras")
-            self.progress.emit("Getting the yardstick (your master pictures)", 0, n)
-            yard = ai_yardstick.get(self.master_root)
-            took("yardstick")
-            aic = ai_measure.AiCache()
-
-            def load(src):
-                data = image_bytes(src)
-                return ImageOps.exif_transpose(Image.open(io.BytesIO(data))).convert("RGB")
-            try:
-                def measure_one(p, im, box):
-                    info = af_point.lookup_info(af, p["src"])
-                    try:
-                        p.update(ai_measure.measure(
-                            p["src"], im if im is not None else (lambda s=p["src"]: load(s)),
-                            p, info.get("model", ""),
-                            native=info.get("native") or 0, cache=aic,
-                            region=self.region, master_root=self.master_root or None,
-                            yardstick=yard, name=False, box=box))
-                    except Exception as e:
-                        logger.warning(f"Day AI: {p['src'].name}: {e}")
-                        p.update({"box": None, "names": [], "px": 0, "sharp_pct": 0.0})
-                from engine import ai_models
-                clock = self.clock
-                with clock.part("starting the detector"):
-                    ai_models.detector()
-                count = day_ai.find_animals(
-                    pics, measure_one, load, aic,
-                    progress=lambda i, t: self.progress.emit("Looking for the animals", i, t),
-                    stopped=lambda: self._stop, join=self.aggressive, clock=clock)
-                if self._stop:
-                    return
-                self.counts = count
-                logger.info(f"Day AI: animals detected {count['detected']}, followed "
-                            f"{count['followed']}, from earlier {count['cached']}")
-                took("animals")
-                with clock.part("starting the names (BioCLIP, eBird's list)"):
-                    ai_measure.prepare_names(self.region)
-                # One name per pose: only the frame whose name the pose gets.
-                # One name per series: poses that show the same animal (it was
-                # followed from one into the next) share their best frame's name.
-                series = (day_ai.name_series(pics) if self.aggressive else
-                          [[p] for p in day_ai.pose_leaders(pics)])
-                firsts = [x[0] for x in series]
-                ahead = day_ai.Prefetch([p["src"] for p in firsts
-                                         if aic.vector(p["src"], p["box"]) is None], load)
-                try:
-                    for i, x in enumerate(series, 1):
-                        if self._stop:
-                            return
-                        p = x[0]
-
-                        def picture(src=p["src"]):
-                            with clock.part("waiting for a decoded picture (names)"):
-                                return ahead.get(src)
-                        part = ("first name" if i == 1 else
-                                "a name" if aic.vector(p["src"], p["box"]) is None else
-                                "a name, picture seen before")
-                        try:
-                            with clock.part(part):
-                                p["names"], p["among"] = ai_measure.name_of(
-                                    p["src"], picture, p["box"],
-                                    cache=aic, region=self.region,
-                                    master_root=self.master_root or None)
-                        except Exception as e:
-                            logger.warning(f"Day AI: naming {p['src'].name}: {e}")
-                        for q in x[1:]:
-                            q["names"], q["among"] = p.get("names", []), p.get("among", "")
-                        if i % 5 == 0 or i == len(series):
-                            self.progress.emit("Naming each series", i, len(series))
-                finally:
-                    ahead.close()
-                logger.info(f"Day AI: {len(series)} series named "
-                            f"({sum(len(x) for x in series)} poses with an animal)")
-                if ai_measure.still_groups(self.region):
-                    self._name_plants(pics, aic, load, clock)
-            finally:
-                aic.close()
-            took("names")
-            self.progress.emit("Looking in your master", n, n)
-            self.master_days = master_days(self.master_root, pics)
-            took("your master")
+            t0 = time.time()
+            self.progress.emit("Looking in your master", len(self.pics), len(self.pics))
+            self.master_days = master_days(self.master_root, self.pics)
+            self.timing.append(("your master", time.time() - t0))
             logger.info("Day AI timing: " + ", ".join(f"{s} {v:.1f} s" for s, v in self.timing))
             logger.info("Day AI detail: " + self.clock.line())
-            self.done.emit(pics)
+            self.done.emit(self.pics)
         except Exception as e:
             logger.error(f"Day AI failed: {e}", exc_info=True)
             self.failed.emit(str(e))
-
-
-    def _name_plants(self, pics, aic, load, clock):
-        """Poses without an animal: the whole sharpest frame, named among the
-        country's plants (only when BioCLIP agrees: ai_measure.plant_names)."""
-        from engine import ai_measure, day_ai
-        still = day_ai.still_leaders(pics)
-        ahead = day_ai.Prefetch([p["src"] for p in still
-                                 if aic.vector(p["src"], None) is None], load)
-        named = 0
-        try:
-            for i, p in enumerate(still, 1):
-                if self._stop:
-                    return
-
-                def picture(src=p["src"]):
-                    with clock.part("waiting for a decoded picture (plants)"):
-                        return ahead.get(src)
-                try:
-                    with clock.part("a plant name"):
-                        p["names"], p["among"] = ai_measure.plant_name_of(
-                            p["src"], picture, cache=aic, region=self.region,
-                            master_root=self.master_root or None)
-                    named += bool(p["names"])
-                except Exception as e:
-                    logger.warning(f"Day AI: plant name {p['src'].name}: {e}")
-                if i % 5 == 0 or i == len(still):
-                    self.progress.emit("Naming the plants", i, len(still))
-        finally:
-            ahead.close()
-        logger.info(f"Day AI: {len(still)} poses without an animal, {named} named as a plant")
 
 
 class DayAiDialog(QDialog):

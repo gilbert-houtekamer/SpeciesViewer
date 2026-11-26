@@ -27,10 +27,14 @@ INVARIANT: a view only — nothing is written here. Only candidates are ever
 """
 from __future__ import annotations
 
+import logging
 from collections import Counter
 from dataclasses import dataclass
+from pathlib import Path
 
 from engine import redundancy as rd
+
+logger = logging.getLogger("speciesviewer")
 
 NO_ANIMAL, OUT_OF_FOCUS, SMALL, CUT_OFF, TOO_MANY, PLENTY = (
     "no animal found", "out of focus", "small", "cut off by the edge",
@@ -207,8 +211,19 @@ def _find(groups, measure_one, load, cache, done, n, progress, stopped, join, cl
                 done["cached"] += 1
                 prev = None
             else:
-                with clock.part("waiting for a decoded picture"):
-                    im, cur = load(src)
+                try:
+                    with clock.part("waiting for a decoded picture"):
+                        im, cur = load(src)
+                except Exception as e:
+                    # One picture that cannot be decoded (a damaged preview in
+                    # the RAW, 2023 augustus-P8030779.ORF) must not stop the
+                    # day: it is looked at as a picture without an animal.
+                    logger.warning(f"AI: could not read {Path(src).name} ({e}) — skipped")
+                    p.update({"box": None, "names": [], "px": 0, "sharp_pct": 0.0})
+                    prev = None
+                    if progress and (i % 5 == 0 or i == n):
+                        progress(i, n)
+                    continue
                 with clock.part("following"):
                     box, score = follow(prev[0], cur, prev[1]) if prev else (None, 0.0)
                 if box is not None and score >= FOLLOW_MIN:

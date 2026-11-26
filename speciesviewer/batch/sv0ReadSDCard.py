@@ -1403,7 +1403,7 @@ def copy_card(source, dest, prefix="", bucket_by_date=False, tz_offset_hours=0.0
               skip_if_on_disk=True, write_sidecars=True, use_card_cache=True,
               include_dates=None, include_names=None, trip_stamp=None,
               newer_wins=False,
-              logger=None, progress=None, should_cancel=None):
+              logger=None, progress=None, should_cancel=None, on_day_copied=None):
     """Copy picture files from `source` (recursively) into `dest`.
 
     prefix            - optional filename prefix (see target_name).
@@ -1445,6 +1445,12 @@ def copy_card(source, dest, prefix="", bucket_by_date=False, tz_offset_hours=0.0
                         was read into and when. See _CardCache.record_read.
     progress(done, total, name) - optional callback, called per file before copy.
     should_cancel()             - optional callable; return True to stop early.
+    on_day_copied(day, paths)   - optional (bucket_by_date only): called on the
+                        copy thread as soon as every picture of a day is on
+                        disk (copied now or already there), with that day's
+                        picture paths — so the AI can look at a day while the
+                        card copies the next. Copies are submitted day by day
+                        for this. Not called for a day cut short by Cancel.
 
     Returns a summary dict: total / copied / skipped / conflict / failed / bytes.
     """
@@ -1459,6 +1465,7 @@ def copy_card(source, dest, prefix="", bucket_by_date=False, tz_offset_hours=0.0
                "culled": 0,
                "failed_names": [], "planned_bytes": 0, "error": ""}
     targets = []   # destination paths now present (copied or already-there)
+    day_targets: dict[str, list[str]] = {}   # the same, per day (on_day_copied)
 
     log.info(f"Found {total} picture(s) under {source}")
     summary["ignored"] = ignored
@@ -1518,6 +1525,12 @@ def copy_card(source, dest, prefix="", bucket_by_date=False, tz_offset_hours=0.0
         day = buckets.get(_norm(src_path), UNKNOWN_DATE_DIR)
         slot = per_day.setdefault(day, {"copied": 0, "skipped": 0, "failed": 0})
         slot[key] += 1
+
+    def _present(src_path: Path, target) -> None:
+        """`target` (the copy of src_path) is on disk now."""
+        targets.append(str(target))
+        day_targets.setdefault(buckets.get(_norm(src_path), UNKNOWN_DATE_DIR),
+                               []).append(str(target))
 
     def _plan_sidecars(src_picture: Path, picture_target: Path) -> None:
         for sc in sidecar_index.for_picture(src_picture):
@@ -1579,7 +1592,7 @@ def copy_card(source, dest, prefix="", bucket_by_date=False, tz_offset_hours=0.0
                 if match is not None:
                     summary["skipped"] += 1
                     _tally(src, "skipped")
-                    targets.append(str(match))
+                    _present(src, match)
                     _plan_sidecars(src, match)
                     continue
 
@@ -1591,7 +1604,7 @@ def copy_card(source, dest, prefix="", bucket_by_date=False, tz_offset_hours=0.0
                 if target.exists() and _already_copied(src, target, src_hash=cached_sha):
                     summary["skipped"] += 1
                     _tally(src, "skipped")
-                    targets.append(str(target))
+                    _present(src, target)
                     _plan_sidecars(src, target)
                     continue
                 # Newer wins for a rendered JPG (trip import only): the later
@@ -1675,6 +1688,26 @@ def copy_card(source, dest, prefix="", bucket_by_date=False, tz_offset_hours=0.0
         to_copy = [t for t in to_copy
                    if t[1] not in replace_pictures or t[1] in moved_aside]
         n_to_copy = len(to_copy)
+    # Day by day (a stable sort: the card's order within a day), so a day is
+    # complete early and on_day_copied can hand it to the AI while the card
+    # copies the next one.
+    day_of = (lambda t: buckets.get(_norm(t[0]), UNKNOWN_DATE_DIR))
+    pending: dict[str, int] = {}
+    if on_day_copied and bucket_by_date:
+        to_copy.sort(key=day_of)
+        for t in to_copy:
+            pending[day_of(t)] = pending.get(day_of(t), 0) + 1
+
+    def _day_done(day: str) -> None:
+        try:
+            on_day_copied(day, list(day_targets.get(day, [])))
+        except Exception as e:      # the AI's problem must never stop a copy
+            log.warning(f"After copying {day}: {e}")
+
+    if on_day_copied and bucket_by_date and not (should_cancel and should_cancel()):
+        for day in sorted(day_targets):          # already complete: nothing to copy
+            if day not in pending:
+                _day_done(day)
     if n_to_copy and not (should_cancel and should_cancel()):
         done_copying = 0
         with ThreadPoolExecutor(max_workers=_COPY_WORKERS) as pool:
@@ -1693,7 +1726,7 @@ def copy_card(source, dest, prefix="", bucket_by_date=False, tz_offset_hours=0.0
                     summary["copied"] += 1
                     _tally(src, "copied")
                     summary["bytes"] += target.stat().st_size
-                    targets.append(str(target))
+                    _present(src, target)
                     if dest_index is not None:
                         dest_index.add(target, sha256=src_hash)
                     if cache:
@@ -1709,6 +1742,11 @@ def copy_card(source, dest, prefix="", bucket_by_date=False, tz_offset_hours=0.0
                             os.replace(moved_aside.pop(target), target)
                         except OSError:
                             pass
+                if pending:
+                    day = day_of((src,))
+                    pending[day] -= 1
+                    if pending[day] == 0 and not (should_cancel and should_cancel()):
+                        _day_done(day)
 
                 if should_cancel and should_cancel():
                     for f in future_map:
