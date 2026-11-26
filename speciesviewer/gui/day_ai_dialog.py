@@ -28,7 +28,7 @@ from pathlib import Path
 
 from PyQt6.QtCore import Qt, QThread, pyqtSignal
 from PyQt6.QtWidgets import (
-    QDialog, QDialogButtonBox, QFormLayout, QHBoxLayout, QHeaderView, QLabel,
+    QDialog, QDialogButtonBox, QFormLayout, QGridLayout, QHBoxLayout, QHeaderView, QLabel,
     QProgressBar, QPushButton, QSpinBox, QTableWidget, QTableWidgetItem, QVBoxLayout,
 )
 
@@ -233,6 +233,31 @@ class DayAiDialog(QDialog):
         lay.addWidget(self._detail)
         lay.addWidget(self._bar)
 
+        # Show one group of pictures on its own on the grid (press again: all).
+        row = QGridLayout()
+        row.addWidget(QLabel("Show only:"), 0, 0)
+        self._group_btns = {}
+        self._group_on = None
+        for i, (g, tip) in enumerate((
+                ("keep", "The pictures the AI would keep (Green): the best of each pose"),
+                ("redundant", "Could go because there are enough of the same pose "
+                              "or of this species: good pictures, just more than needed"),
+                ("faulty", "Could go because of the picture itself: out of focus, "
+                           "small, cut off by the edge, or no animal found"),
+                ("new", "Named by the AI, but the name is not in your species list yet"),
+                ("nothing", "No animal found and no name: nothing the AI recognises as alive"))):
+            b = QPushButton("")
+            b.setCheckable(True)
+            b.setToolTip(tip)
+            b.setEnabled(False)
+            b.clicked.connect(lambda _c=False, g=g: self._on_group(g))
+            self._group_btns[g] = b
+            row.addWidget(b, i // 3, 1 + i % 3)
+        row.setColumnStretch(4, 1)
+        lay.addLayout(row)
+        self._groups_keys = {g: [] for g in self._group_btns}
+        self._label_groups()
+
         self._table = QTableWidget(0, 6)
         self._table.setHorizontalHeaderLabels(["Species", "Poses", "Pictures", "Best",
                                                "Days in master", "Kept"])
@@ -243,7 +268,8 @@ class DayAiDialog(QDialog):
         hh.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
         for c in (1, 2, 3, 4, 5):
             hh.setSectionResizeMode(c, QHeaderView.ResizeMode.ResizeToContents)
-        self._table.setToolTip("Click a species to select its pictures on the grid")
+        self._table.setToolTip("Click a species to show only its pictures on the grid; "
+                               "click it again to show all")
         self._table.cellClicked.connect(self._on_row)
         lay.addWidget(self._table, 1)
 
@@ -366,9 +392,18 @@ class DayAiDialog(QDialog):
             f"Poses named: {sum(e['poses'] for e in st['species'].values())} · "
             f"not sure: {st['not_sure_poses']} · no animal: {st['no_animal_poses']}"
             + (f"<br><span style='color:gray'>Names chosen from {among}</span>" if among else ""))
+        self._groups_keys = day_ai.groups_of(self._pics)
+        self._groups_keys.update({f"sp:{n}": e["keys"] for n, e in st["species"].items()})
+        if self._group_on and self._group_on not in self._groups_keys:
+            self._group_on = None       # that species is no longer named
+            self._show_group()
+        self._label_groups()
+        if self._group_on:
+            self._show_group()
         rows = sorted(st["species"].items(), key=lambda kv: -kv[1]["pictures"])
         self._table.setRowCount(len(rows))
         self._row_keys = []
+        self._row_names = []
         days = self._run.master_days
         for r, (name, e) in enumerate(rows):
             note = "" if e["how"] == "exact" else " (not in your list)" if not e["how"] else ""
@@ -383,6 +418,7 @@ class DayAiDialog(QDialog):
                     it.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
                 self._table.setItem(r, c, it)
             self._row_keys.append(e["keys"])
+            self._row_names.append(name)
         self._show_on_grid()
 
     def _show_on_grid(self):
@@ -402,13 +438,42 @@ class DayAiDialog(QDialog):
         except RuntimeError:
             pass
 
+    _GROUP_NAMES = {"keep": "Stays", "redundant": "Too many", "faulty": "Not good enough",
+                    "new": "Not in your list", "nothing": "Nothing alive"}
+
+    def _label_groups(self):
+        for g, b in self._group_btns.items():
+            n = len(self._groups_keys.get(g, []))
+            b.setText(f"{self._GROUP_NAMES[g]} ({n})")
+            b.setEnabled(bool(n) or g == self._group_on)
+            b.setChecked(g == self._group_on)
+
+    def _on_group(self, g):
+        """Show only that group on the grid; the same button again shows all."""
+        self._group_on = None if self._group_on == g else g
+        self._label_groups()
+        self._show_group()
+
+    def _show_group(self):
+        g = self._group_on
+        try:
+            if g is None:
+                self._grid.show_ai_group(None)
+            else:
+                label = (g[3:] if g.startswith("sp:")
+                         else self._GROUP_NAMES[g].lower())
+                self._grid.show_ai_group(self._groups_keys.get(g, []), f"AI: {label}")
+        except RuntimeError:
+            pass
+
     def _on_row(self, row, _col):
-        """Select that species' pictures on the grid, and go to the first."""
-        if 0 <= row < len(getattr(self, "_row_keys", [])) and self._row_keys[row]:
-            try:
-                self._grid.select_keys(self._row_keys[row])
-            except RuntimeError:
-                pass
+        """Show only that species' pictures on the grid; the same row again
+        shows all."""
+        if not 0 <= row < len(getattr(self, "_row_names", [])):
+            return
+        self._on_group(f"sp:{self._row_names[row]}")
+        if self._group_on is None:
+            self._table.clearSelection()
 
     # ── accept + undo ───────────────────────────────────────────────────────
 

@@ -259,3 +259,22 @@ def test_stopwatch_adds_up_per_part():
         pass
     assert c.count["detector"] == 2 and abs(c.secs["detector"] - 0.8) < 1e-9
     assert c.line().startswith("detector 0.8 s (2×, 400 ms each); following")
+
+
+def test_groups_split_could_go_by_cause_and_find_new_and_nothing():
+    pics = [
+        {"key": "a", "verdict": "purple", "why": day_ai.TOO_MANY,
+         "name": {"sci": "Anas", "how": "exact"}, "has_animal_pose": True},
+        {"key": "b", "verdict": "purple", "why": day_ai.PLENTY,
+         "name": {"sci": "Anas", "how": "exact"}, "has_animal_pose": True},
+        {"key": "c", "verdict": "purple", "why": day_ai.OUT_OF_FOCUS,
+         "name": None, "has_animal_pose": True},
+        {"key": "d", "verdict": "keep", "name": {"sci": "Novus", "how": ""},
+         "has_animal_pose": True},
+        {"key": "e", "verdict": None, "name": None, "has_animal_pose": False},
+        {"key": "f", "verdict": "keep", "name": {"sci": "Rosa", "how": "exact"},
+         "has_animal_pose": False, "plant_pose": True},
+    ]
+    g = day_ai.groups_of(pics)
+    assert g == {"keep": ["d", "f"], "redundant": ["a", "b"], "faulty": ["c"], "new": ["d"],
+                 "nothing": ["e"]}

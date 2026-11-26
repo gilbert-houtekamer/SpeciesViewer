@@ -322,6 +322,8 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
         # The AI… dialog's marks: {key: (verdict "purple"|"keep"|None, name tag, sure)}.
         # Applied whenever a pool card is bound to a key (cards are reused).
         self._ai_marks: dict[str, tuple] = {}
+        self._ai_only: set | None = None    # AI… group shown on its own (None = off)
+        self._ai_only_label = ""
         self._ai_names: dict[str, dict] = {}   # key → the AI's name (Set species offers it)
         self._ai_dlg = None
         self._card_h = 0                # measured from a pool card; re-measured on a width change
@@ -815,7 +817,8 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
         keys = set(base)
         coll = self._collection
         overlays_on = bool(self._color_filter or self._find_query
-                           or self._findfile_query or self._jpg_only)
+                           or self._findfile_query or self._jpg_only
+                           or self._ai_only is not None)
         f = self._active_filter
         if f is None and not overlays_on:
             return []  # clean day, nothing until a radio or a search is chosen
@@ -838,6 +841,8 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
             keys &= set(coll.find_keys(self._find_query))
         elif self._findfile_query and hasattr(coll, "file_keys"):
             keys &= set(coll.file_keys(self._findfile_query))
+        if self._ai_only is not None:
+            keys &= self._ai_only
         return [k for k in base if k in keys]
 
     def _apply_filters(self):
@@ -1164,6 +1169,8 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
         """Colour + find descriptors appended to the radio's label so the title
         reflects every active filter dimension."""
         parts = []
+        if self._ai_only is not None:
+            parts.append(self._ai_only_label or "AI group")
         if self._jpg_only:
             parts.append("JPG only")
         if self._color_filter:
@@ -1322,7 +1329,16 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
     def clear_ai_marks(self) -> None:
         self._ai_marks = {}
         self._ai_names = {}
+        if self._ai_only is not None:
+            self.show_ai_group(None)
         self._relayout(force=True)
+
+    def show_ai_group(self, keys, label: str = "") -> None:
+        """Show only these pictures (an AI… group: its own filter, combined with
+        the others); None shows the grid as before. A view only."""
+        self._ai_only = None if keys is None else set(keys)
+        self._ai_only_label = label
+        self._apply_filters()
 
     def ai_name_for(self, keys) -> dict | None:
         """The AI's name for these pictures: the one most of them carry, with

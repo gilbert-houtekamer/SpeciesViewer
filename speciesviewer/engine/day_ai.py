@@ -68,6 +68,31 @@ def going(p) -> bool:
     return p.get("verdict") == "purple" or p.get("label") in ("Blue", "Purple")
 
 
+REDUNDANT = (TOO_MANY, PLENTY)                       # good pictures, just more than needed
+FAULTY = (OUT_OF_FOCUS, SMALL, CUT_OFF, NO_ANIMAL)   # the picture itself falls short
+
+
+def groups_of(pics: list[dict]) -> dict[str, list]:
+    """The day's pictures in the groups worth a look of their own (keys, in
+    order): "keep" — the AI would keep (Green); "redundant" — could go because there are enough of the same or of
+    the species; "faulty" — could go because of the picture itself; "new" —
+    named, but not a name in your list; "nothing" — no animal found and no
+    name (no life the AI recognises). A view only."""
+    out = {"keep": [], "redundant": [], "faulty": [], "new": [], "nothing": []}
+    for p in pics:
+        k = p.get("key")
+        if p.get("verdict") == "keep":
+            out["keep"].append(k)
+        elif p.get("verdict") == "purple":
+            out["redundant" if p.get("why") in REDUNDANT else "faulty"].append(k)
+        n = p.get("name")
+        if n is not None and not n.get("how"):
+            out["new"].append(k)
+        if n is None and not p.get("has_animal_pose"):
+            out["nothing"].append(k)
+    return out
+
+
 def _rank(p) -> tuple:
     return (not cut_off(p.get("box")), p.get("sharp_pct") or 0.0, p.get("px") or 0)
 
