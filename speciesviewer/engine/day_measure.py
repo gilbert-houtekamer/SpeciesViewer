@@ -119,80 +119,77 @@ def _name_animals(pics, aic, region, master_root, names, aggressive,
                   progress, stopped, clock):
     """One name per pose: only the frame whose name the pose gets. One name per
     series: poses that show the same animal (followed from one into the next)
-    share their best frame's name. names=False: only the vector is stored."""
+    share their best frame's name. First every vector (stored), then — with
+    names — all names at once (ai_measure.names_many: one sum, not one per pose)."""
     from engine import ai_measure, day_ai
     series = (day_ai.name_series(pics) if aggressive else
               [[p] for p in day_ai.pose_leaders(pics)])
-    firsts = [x[0] for x in series]
-    ahead = day_ai.Prefetch([p["src"] for p in firsts
-                             if aic.vector(p["src"], p["box"]) is None], load_upright)
-    try:
-        for i, x in enumerate(series, 1):
-            if stopped():
-                return
-            p = x[0]
-
-            def picture(src=p["src"]):
-                with clock.part("waiting for a decoded picture (names)"):
-                    return ahead.get(src)
-            part = ("first name" if i == 1 else
-                    "a name" if aic.vector(p["src"], p["box"]) is None else
-                    "a name, picture seen before")
-            try:
-                with clock.part(part):
-                    if names:
-                        p["names"], p["among"] = ai_measure.name_of(
-                            p["src"], picture, p["box"], cache=aic, region=region,
-                            master_root=master_root or None)
-                    else:
-                        ai_measure.vector_of(p["src"], picture, p["box"], cache=aic)
-            except Exception as e:
-                logger.warning(f"Day AI: naming {p['src'].name}: {e}")
-            for q in x[1:]:
-                q["names"], q["among"] = p.get("names", []), p.get("among", "")
-            if i % 5 == 0 or i == len(series):
-                progress("Naming each series" if names else "Looking closer at each animal",
-                         i, len(series))
-    finally:
-        ahead.close()
+    vecs = _vectors([x[0] for x in series], aic, lambda p: p["box"],
+                    "Looking closer at each animal", "names", progress, stopped, clock)
+    if stopped():
+        return
+    if names:
+        done = [i for i, v in enumerate(vecs) if v is not None]
+        with clock.part("names, all at once"):
+            found = ai_measure.names_many([vecs[i] for i in done], region,
+                                          master_root or None)
+        for i, (nm, among) in zip(done, found):
+            for q in series[i]:
+                q["names"], q["among"] = nm, among
     logger.info(f"Day AI: {len(series)} series {'named' if names else 'looked at'} "
                 f"({sum(len(x) for x in series)} poses with an animal)")
 
 
 def _name_plants(pics, aic, region, master_root, names, progress, stopped, clock):
     """Poses without an animal: the whole sharpest frame, named among the
-    country's plants (only when BioCLIP agrees: ai_measure.plant_names)."""
+    country's plants (only when BioCLIP agrees: ai_measure.plant_names_many)."""
     from engine import ai_measure, day_ai
     still = day_ai.still_leaders(pics)
-    ahead = day_ai.Prefetch([p["src"] for p in still
-                             if aic.vector(p["src"], None) is None], load_upright)
+    vecs = _vectors(still, aic, lambda p: None, "Looking at the scenery", "plants",
+                    progress, stopped, clock)
+    if stopped():
+        return
     named = 0
-    try:
-        for i, p in enumerate(still, 1):
-            if stopped():
-                return
-
-            def picture(src=p["src"]):
-                with clock.part("waiting for a decoded picture (plants)"):
-                    return ahead.get(src)
-            try:
-                with clock.part("a plant name"):
-                    if names:
-                        p["names"], p["among"] = ai_measure.plant_name_of(
-                            p["src"], picture, cache=aic, region=region,
-                            master_root=master_root or None)
-                        named += bool(p["names"])
-                    else:
-                        ai_measure.vector_of(p["src"], picture, None, cache=aic)
-            except Exception as e:
-                logger.warning(f"Day AI: plant name {p['src'].name}: {e}")
-            if i % 5 == 0 or i == len(still):
-                progress("Naming the plants" if names else "Looking at the scenery",
-                         i, len(still))
-    finally:
-        ahead.close()
+    if names:
+        done = [i for i, v in enumerate(vecs) if v is not None]
+        with clock.part("plant names, all at once"):
+            found = ai_measure.plant_names_many([vecs[i] for i in done], region,
+                                                master_root or None)
+        for i, (nm, among) in zip(done, found):
+            still[i]["names"], still[i]["among"] = nm, among
+            named += bool(nm)
     logger.info(f"Day AI: {len(still)} poses without an animal"
                 + (f", {named} named as a plant" if names else ""))
+
+
+def _vectors(leaders, aic, box_of, what, label, progress, stopped, clock) -> list:
+    """BioCLIP's vector per leader (from the cache, or made and stored; the
+    pictures decoded ahead on helper threads). None where a picture fails."""
+    from engine import ai_measure, day_ai
+    ahead = day_ai.Prefetch([p["src"] for p in leaders
+                             if aic.vector(p["src"], box_of(p)) is None], load_upright)
+    out: list = []
+    try:
+        for i, p in enumerate(leaders, 1):
+            if stopped():
+                break
+
+            def picture(src=p["src"]):
+                with clock.part(f"waiting for a decoded picture ({label})"):
+                    return ahead.get(src)
+            seen = aic.vector(p["src"], box_of(p)) is not None
+            try:
+                with clock.part(f"a vector ({label}), seen before" if seen
+                                else f"a vector ({label})"):
+                    out.append(ai_measure.vector_of(p["src"], picture, box_of(p), cache=aic))
+            except Exception as e:
+                logger.warning(f"Day AI: {p['src'].name}: {e}")
+                out.append(None)
+            if i % 5 == 0 or i == len(leaders):
+                progress(what, i, len(leaders))
+    finally:
+        ahead.close()
+    return out
 
 
 # ── a batch of copied files, for the card read ──────────────────────────────

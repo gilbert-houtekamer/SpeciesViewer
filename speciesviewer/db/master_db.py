@@ -612,6 +612,41 @@ class MasterDB:
                 pics += self.pictures_for_species(name)
         return pics
 
+    def days_per_species(self, names) -> dict[str, int]:
+        """{lower-case scientific name: days with a master picture of it}, its
+        subspecies' days included as in pictures_for_species_and_subspecies —
+        for many names in ONE pass (AI…: one name per species found; asking
+        per species re-read the species list and scanned every picture each
+        time, 25 s for a 41-day read). A day = a valid DateTimeOriginal's date."""
+        from datetime import datetime
+        from engine.subspecies import read_subspecies
+        want = {(n or "").strip().lower() for n in names} - {""}
+        if not want:
+            return {}
+        subs = read_subspecies(Path(self.master_root) / "metadata" / "active" / "speciescollection.csv")
+        # which asked-for names a picture's name counts for
+        counts_for: dict[str, set] = {n: {n} for n in want}
+        for sub, row in subs.items():
+            if row["SubspeciesOf"] in want and row["SubspeciesOf"] not in subs:
+                counts_for.setdefault(sub, set()).add(row["SubspeciesOf"])
+        keys = sorted(counts_for)
+        days: dict[str, set] = {n: set() for n in want}
+        con = self._connect()
+        for i in range(0, len(keys), 500):               # SQLite's variable limit
+            part = keys[i:i + 500]
+            rows = con.execute(
+                'SELECT LOWER(TRIM("WetSoortNaam")), "DateTimeOriginal" FROM pictures '
+                f'WHERE LOWER(TRIM("WetSoortNaam")) IN ({",".join("?" * len(part))})',
+                part).fetchall()
+            for name, dto in rows:
+                try:
+                    day = datetime.strptime((dto or "")[:19], "%Y:%m:%d %H:%M:%S").date()
+                except ValueError:
+                    continue
+                for n in counts_for.get(name, ()):
+                    days[n].add(day)
+        return {n: len(d) for n, d in days.items()}
+
     @staticmethod
     def _day_key(d) -> str:
         """Coerce a date / 'YYYY-MM-DD' / 'YYYY:MM:DD' into the DateTimeOriginal

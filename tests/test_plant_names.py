@@ -15,6 +15,9 @@ class _Clip:
     def top(self, vec, k=3, allowed=None):
         return [self.plant] if allowed is not None else [self.wide]
 
+    def top_many(self, vecs, k=3, allowed=None):
+        return [self.top(v, k, allowed) for v in vecs]
+
 
 def _setup(monkeypatch, plant, wide):
     monkeypatch.setattr(ai_models, "bioclip", lambda: _Clip(plant, wide))

@@ -257,20 +257,32 @@ def names_for(vec, region: str = "", master_root=None, k: int = 3,
               groups=None) -> tuple[list, str]:
     """(names, among) for a picture vector: see the module docstring.
     `groups` = iNaturalist groups to add to eBird's birds (None = from the config)."""
-    from engine import ai_models, ai_names
+    return names_many([vec], region, master_root, k, groups)[0]
+
+
+def names_many(vecs, region: str = "", master_root=None, k: int = 3,
+               groups=None) -> list[tuple[list, str]]:
+    """names_for for many vectors at once (one matrix product, not one per
+    picture: AI… on a 41-day read named 1089 poses in 24 s one by one)."""
+    from engine import ai_models
     clip = ai_models.bioclip()
     allowed, among = _allowed(region, groups)
-    outside = False
-    if allowed:
-        top = clip.top(vec, k=k, allowed=allowed)
-        if not top or top[0][2] < NOT_SURE:
-            wide = clip.top(vec, k=k)
-            if wide and clip.group.get(wide[0][0], ("",))[0] != "aves"                     and wide[0][0].lower() not in allowed                     and wide[0][2] > (top[0][2] if top else 0):
-                top, outside = wide, True
-                among = "everything the AI knows (nothing on the list fits)"
-    else:
-        top = clip.top(vec, k=k)
-    return _shown(clip, top, master_root, outside), among
+    if not allowed:
+        return [(_shown(clip, t, master_root), among) for t in clip.top_many(vecs, k)]
+    tops = clip.top_many(vecs, k, allowed=allowed)
+    unsure = [i for i, t in enumerate(tops) if not t or t[0][2] < NOT_SURE]
+    wides = dict(zip(unsure, clip.top_many([vecs[i] for i in unsure], k)))
+    out = []
+    for i, top in enumerate(tops):
+        wide = wides.get(i)
+        if (wide and clip.group.get(wide[0][0], ("",))[0] != "aves"
+                and wide[0][0].lower() not in allowed
+                and wide[0][2] > (top[0][2] if top else 0)):
+            out.append((_shown(clip, wide, master_root, True),
+                        "everything the AI knows (nothing on the list fits)"))
+        else:
+            out.append((_shown(clip, top, master_root), among))
+    return out
 
 
 def _shown(clip, top, master_root, outside: bool = False) -> list[dict]:
@@ -302,19 +314,30 @@ def plant_names(vec, region: str, master_root=None, k: int = 3,
     at PLANT_AGREE or more. Else ([], ""): scenery, people, a missed animal.
     tools/ml/svr_plant_names.py: Madagascar 2026-11-07, baobabs/Moringa/Delonix
     kept; beach, village, street, birders, egret scene left out."""
+    return plant_names_many([vec], region, master_root, k, groups)[0]
+
+
+def plant_names_many(vecs, region: str, master_root=None, k: int = 3,
+                     groups=None) -> list[tuple[list, str]]:
+    """plant_names for many vectors at once: the open first name (among all
+    ~870,000) is what costs, 50 ms a picture alone, 1.6 ms in a batch."""
     from engine import ai_models, inat_lists
     groups = still_groups(region) if groups is None else groups
     allowed = _as_bioclip_inat(region, groups) if groups else frozenset()
     if not allowed:
-        return [], ""
+        return [([], "")] * len(vecs)
     clip = ai_models.bioclip()
-    top = clip.top(vec, k=k, allowed=allowed)
-    wide = clip.top(vec, k=1)
-    if not top or not wide or wide[0][0] != top[0][0] or wide[0][2] < PLANT_AGREE:
-        return [], ""
+    tops = clip.top_many(vecs, k, allowed=allowed)
+    wides = clip.top_many(vecs, 1)
     labels = ", ".join(inat_lists.GROUPS[g][0].lower() for g in groups)
-    return (_shown(clip, top, master_root),
-            f"iNaturalist's {labels} for {region} ({len(allowed)} species), the whole picture")
+    among = f"iNaturalist's {labels} for {region} ({len(allowed)} species), the whole picture"
+    out = []
+    for top, wide in zip(tops, wides):
+        if not top or not wide or wide[0][0] != top[0][0] or wide[0][2] < PLANT_AGREE:
+            out.append(([], ""))
+        else:
+            out.append((_shown(clip, top, master_root), among))
+    return out
 
 
 def plant_name_of(src: Path, im, *, cache: AiCache, region: str = "",

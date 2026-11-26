@@ -107,17 +107,12 @@ def master_days(master_root, pics) -> dict:
     if not master_root:
         return {}
     from db.master_db import MasterDB
-    from engine import redundancy as rd
     names = {p["names"][0]["sci"].lower() for p in pics if p.get("names")}
     out = {}
     db = MasterDB(master_root)
     try:
         db.ensure_fresh()
-        for sci in names:
-            days = {t.date() for t in (rd._time(r.get("DateTimeOriginal"))
-                                       for r in db.pictures_for_species_and_subspecies(sci))
-                    if t}
-            out[sci] = len(days)
+        out = db.days_per_species(names)
     except Exception as e:
         logger.warning(f"Day AI: master lookup failed: {e}")
     finally:

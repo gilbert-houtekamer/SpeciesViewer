@@ -129,6 +129,7 @@ class BioClip:
             if len(tx) >= 5:
                 self.group.setdefault(sci, (str(tx[2]).lower(), str(tx[4]).lower()))
         self._subsets: dict = {}
+        self._mats: dict = {}            # allowed → the name matrix cut to it
         self._by_common = None
         self._sub_lock = threading.Lock()
 
@@ -208,6 +209,26 @@ class BioClip:
                 self._subsets[key] = idx
             return idx
 
+    def _matrix(self, allowed):
+        """(column indices | None, the name matrix for `allowed`). The cut-out
+        is kept: cutting it from the 768 × 867,455 matrix took 17 ms per name,
+        nearly all of a name's time (2026-11-26)."""
+        if allowed is None:
+            return None, self.vectors
+        key = frozenset(allowed)
+        with self._sub_lock:
+            if getattr(self, "_mats", None) is None:
+                self._mats = {}
+            mat = self._mats.get(key)
+        idx = self.subset(key)
+        if mat is None:
+            mat = np.ascontiguousarray(self.vectors[:, idx])
+            with self._sub_lock:
+                if len(self._mats) >= 8:              # a handful of lists per run
+                    self._mats.pop(next(iter(self._mats)))
+                self._mats[key] = mat
+        return idx, mat
+
     def _prep(self, ims) -> np.ndarray:
         from PIL import Image
         arr = np.stack([np.asarray(im.convert("RGB").resize(
@@ -225,22 +246,32 @@ class BioClip:
 
     def top(self, vec: np.ndarray, k: int = 3, allowed=None) -> list[tuple[str, str, float]]:
         """[(scientific name, common name, probability)] for ONE picture vector,
-        best first, among `allowed` names (None = all ~950,000)."""
-        idx = self.subset(allowed)
-        mat = self.vectors if idx is None else self.vectors[:, idx]
+        best first, among `allowed` names (None = all ~870,000)."""
+        return self.top_many([vec], k, allowed)[0]
+
+    def top_many(self, vecs, k: int = 3, allowed=None,
+                 chunk: int = 32) -> list[list[tuple[str, str, float]]]:
+        """top() for many picture vectors at once: one matrix product per chunk
+        instead of one per picture — against all names 1.6 ms a picture in a
+        batch, 50 ms alone (2026-11-26). `chunk` rows at a time keeps the
+        product small (32 × 867,455 floats = 110 MB)."""
+        idx, mat = self._matrix(allowed)
+        out: list = []
         if mat.shape[1] == 0:
-            return []
-        logits = self.scale * (np.asarray(vec, np.float32) @ mat)
-        logits -= logits.max()
-        p = np.exp(logits)
-        p /= p.sum()
-        k = min(k, p.size)
-        best = np.argpartition(-p, k - 1)[:k]
-        best = best[np.argsort(-p[best])]
-        out = []
-        for j in best:
-            g = int(j if idx is None else idx[j])
-            out.append((self.sci[g], self.common[g], float(p[j])))
+            return [[] for _ in vecs]
+        V = np.asarray(np.stack([np.asarray(v, np.float32) for v in vecs]), np.float32)             if len(vecs) else np.zeros((0, mat.shape[0]), np.float32)
+        kk = min(k, mat.shape[1])
+        for i in range(0, len(V), chunk):
+            logits = self.scale * (V[i:i + chunk] @ mat)
+            logits -= logits.max(axis=1, keepdims=True)
+            p = np.exp(logits)
+            p /= p.sum(axis=1, keepdims=True)
+            best = np.argpartition(-p, kk - 1, axis=1)[:, :kk]
+            for row, cols in zip(p, best):
+                cols = cols[np.argsort(-row[cols])]
+                out.append([(self.sci[int(c if idx is None else idx[c])],
+                             self.common[int(c if idx is None else idx[c])],
+                             float(row[c])) for c in cols])
         return out
 
 
