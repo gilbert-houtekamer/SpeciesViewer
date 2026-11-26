@@ -1288,9 +1288,8 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
 
     # ── the AI… dialog ──────────────────────────────────────────────────────
 
-    def _on_ai(self, auto_accept: bool = False):
-        """Open AI… on this grid; `auto_accept` (the card read's option) writes
-        the suggestion as soon as it is measured."""
+    def _on_ai(self):
+        """Open AI… on this grid (the AI… button, or a card read's option)."""
         from PyQt6.QtWidgets import QMessageBox
         from engine import ai_models
         if not ai_models.available():
@@ -1309,7 +1308,7 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
                 self._ai_dlg = None
         from gui.day_ai_dialog import DayAiDialog
         master = _config_master()
-        self._ai_dlg = DayAiDialog(self, master, auto_accept=auto_accept)
+        self._ai_dlg = DayAiDialog(self, master)
         self._ai_dlg.finished.connect(lambda *_: setattr(self, "_ai_dlg", None))
         self._ai_dlg.show()
 

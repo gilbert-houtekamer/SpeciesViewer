@@ -9,8 +9,7 @@ you can change — the view follows at once.
 
 INVARIANTS
 - Nothing is written until you press Accept… and say what (step 4 of
-  docs/plans/ai_day_plan.md) — or, opened by a card read with "accept the AI's
-  suggestion" ticked, Accept's defaults (names + Purple) at once. Names not in
+  docs/plans/ai_day_plan.md) — also when a card read opened it. Names not in
   your list yet only when ticked (they are added to your list first): names (only from your own species list, at or
   above the threshold, only on pictures without a species), Purple on what
   could go, Green on what stays (off unless ticked). Only candidates change
@@ -163,12 +162,11 @@ class _Measure(QThread):
 
 
 class DayAiDialog(QDialog):
-    def __init__(self, grid, master_root: str, auto_accept: bool = False):
+    def __init__(self, grid, master_root: str):
         super().__init__(grid)
         from engine.day_ai import DaySettings
         self.setWindowTitle("AI — this day")
         self._grid = grid
-        self._auto = auto_accept       # write the suggestion as soon as it is measured
         self._pics: list[dict] = []
         self._groups: list = []
         lay = QVBoxLayout(self)
@@ -335,9 +333,6 @@ class DayAiDialog(QDialog):
             self._detail.show()
         self._accept_btn.setEnabled(True)
         self._recompute()
-        if self._auto:
-            self._auto = False
-            self._auto_accept()
 
     def _on_stop(self):
         self._run.stop()
@@ -540,24 +535,6 @@ class DayAiDialog(QDialog):
             text += f" {len(c_failed | s_failed)} could not be changed (see the log)."
         return text, c_failed | s_failed
 
-    def _auto_accept(self):
-        """Accept at once, without asking (the card read's "accept the AI's
-        suggestion" option): names from your list and Purple on what could go —
-        the Accept… dialog's defaults; Green stays off. Undo puts it back."""
-        names, purple, _green = self._plan()
-        if not names and not purple:
-            self._note.setText("Accepted automatically: nothing to write.")
-            return
-        self._accept_btn.setEnabled(False)
-        try:
-            text, failed = self._write_accept(names, purple, self._bar, self._bar_text)
-        finally:
-            self._bar.hide()
-            self._accept_btn.setEnabled(True)
-        text = ("Accepted automatically — " + text[0].lower() + text[1:]
-                + " \"Undo the last accept\" puts it all back.")
-        logger.info(f"AI… on the card read: {text}")
-        self._after_write(text, failed)
 
     def _on_undo(self):
         from PyQt6.QtWidgets import QMessageBox
