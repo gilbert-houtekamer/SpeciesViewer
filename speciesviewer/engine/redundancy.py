@@ -224,6 +224,31 @@ def select(pics, s: Settings) -> list[list[dict]]:
     return groups
 
 
+ENCOUNTER_GAP = 3600     # s — seen again more than an hour later: a new encounter
+
+
+def best_per_encounter(pics, gap: float = ENCOUNTER_GAP) -> set:
+    """After select(): the UniquePictureName of the sharpest KEPT picture of each
+    encounter (pictures closer than `gap` seconds), to suggest as Yellow — none
+    for an encounter that has your Yellow / Red or a JPG already."""
+    out, run = set(), []
+
+    def close():
+        if run and not any(p["jpg"] or p["label"] in ("Yellow", "Red") for p in run):
+            kept = [p for p in run if p.get("verdict") == KEEP]
+            if kept:
+                out.add(max(kept, key=lambda p: p.get("sharp") or 0)["upn"])
+    last = None
+    for p in sorted((p for p in pics if p["time"]), key=lambda p: p["time"]):
+        if last is not None and (p["time"] - last).total_seconds() > gap:
+            close()
+            run = []
+        run.append(p)
+        last = p["time"]
+    close()
+    return out
+
+
 def apply_overrides(pics, overrides: dict) -> int:
     """Your own say over the suggestion, after select(): {UniquePictureName:
     KEEP | PURPLE}. Only a candidate can be overridden (a keeper or a Blue/

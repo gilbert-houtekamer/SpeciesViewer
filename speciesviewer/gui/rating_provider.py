@@ -993,6 +993,12 @@ class RatingEditorCollection(PictureCollection):
     def index_of(self, key: str) -> int:
         return self._order.index(key)
 
+    def item_for_key(self, key: str) -> RatingEditorItem:
+        """Any picture of the trip, also of another species than the one in view
+        (an item is only its key; the row is read when asked) — so AI… can show
+        one of its groups across species."""
+        return RatingEditorItem(self, key)
+
     # ── map support (read-only plotting) ──────────────────────────────────────
     def all_keys(self) -> list[str]:
         return list(self._order)
@@ -1971,6 +1977,84 @@ class RatingEditorCollection(PictureCollection):
         upn_row["Rate"] = str(new_rate)
         self._persist_upn(upn_key, wrote_file)
         return new_rate
+
+    def apply_colour_many(self, upn_keys, colour: str) -> tuple[set, set]:
+        """One colour on many TRIP pictures in one go → (done, failed) keys.
+
+        apply() per picture costs a sidecar write, a .dop write and a rewrite of
+        the day's CSV — for every picture. Here: ONE exiftool write over all the
+        sidecars (and JPGs), then ONE read-back — exiftool exits 0 on a refused
+        write, so only a file that really shows the colour counts — the .dop
+        files, and each day's CSVs written once. A picture is done when every
+        file that could hold the colour holds it (or none could: then the
+        colour lives in the index only, as with apply()). Master pictures and
+        frozen days are never changed here: they come back failed."""
+        from engine.exif_writer import run_exiftool_files_parallel
+        keys = [k for k in upn_keys
+                if k not in self._master_keys and not self.is_frozen_day(k)
+                and self.fpr.upn.UniquePictureName_dict.get(k)]
+        failed = set(upn_keys) - set(keys)
+        targets: dict[str, list] = {}         # key → [(file row, path)]
+        raws: dict[str, str] = {}
+        for k in keys:
+            targets[k] = []
+            for fname in self.fpr.upn.UniquePictureName_dict[k].get("Files") or []:
+                frow = self.fpr.fi.files_dict.get(fname)
+                if not frow:
+                    continue
+                ext = frow.get("WindowsExtension", "").lower()
+                if ext in _DXO_RAW_EXTS:
+                    raws.setdefault(k, frow.get("WindowsFileName", ""))
+                if ext not in ("xmp", "jpg", "jpeg"):
+                    continue
+                if ext == "xmp" and not color_rating_to_xmp_enabled():
+                    continue                  # kept in the index only (Sidecar Behaviour)
+                fpath = Path(frow.get("WindowsFileName", ""))
+                if fpath.exists():
+                    targets[k].append((frow, fpath))
+        files = [str(f) for t in targets.values() for _r, f in t]
+        shows: dict[str, str] = {}
+        if files:
+            try:
+                run_exiftool_files_parallel([f"-XMP:Label={colour}", "-overwrite_original"],
+                                            files)
+                for cp in run_exiftool_files_parallel(["-j", "-XMP:Label"], files):
+                    for r in json.loads(cp.stdout or "[]"):
+                        shows[os.path.normcase(str(Path(r.get("SourceFile", ""))))] = \
+                            str(r.get("Label") or "")
+            except Exception as e:
+                logger.error(f"Colour {colour!r} on {len(keys)} pictures: exiftool: {e}")
+        done = set()
+        for k in keys:
+            landed = [(r, f) for r, f in targets[k]
+                      if shows.get(os.path.normcase(str(f)), None) == (colour or "")]
+            if len(landed) < len(targets[k]):
+                logger.error(f"{k}: colour {colour!r} did not reach every file — "
+                             f"the index is left as it was.")
+                failed.add(k)
+                continue
+            for frow, _f in landed:
+                frow["XMP:Label"] = colour
+            row = self.fpr.upn.UniquePictureName_dict[k]
+            row["Label"] = colour
+            row["Rate"] = str(_compute_rate(row, self.fpr.fi.files_dict))
+            done.add(k)
+        if color_rating_to_dop_enabled():
+            for k in done:
+                if raws.get(k):
+                    try:
+                        push_metadata_to_dop(raws[k], color=colour)
+                    except Exception as e:
+                        logger.warning(f".dop colour for {k} not written: {e}")
+        # Each day's tables once, not once per picture.
+        seen = set()
+        for k in done:
+            day = None if self._day_objects is None else self._upn_day_map.get(k)
+            if day in seen:
+                continue
+            seen.add(day)
+            self._persist_upn(k, True)
+        return done, failed
 
     # ── follow edits made elsewhere (Day scope only) ─────────────────────────
     # Another window (Species Image Preview, the culling grid) or PhotoLab can

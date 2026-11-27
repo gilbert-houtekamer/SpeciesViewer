@@ -151,6 +151,40 @@ class Level(Enum):
     TOPICLEAF = auto()
 
 
+_MASTER_SC: dict = {}       # path -> (mtime, SpeciesClassification)
+
+
+def _master_collection(own_path: str):
+    """The master's species list, read once per change of the file; None when
+    there is no master, or `own_path` is the master's list itself."""
+    import os
+    try:
+        from utils.config import _config
+        root = _config.get("master", "masterbiotadatabase", fallback="").strip().strip('"')
+    except Exception:
+        return None
+    if not root:
+        return None
+    path = os.path.join(root, "metadata", "active", "speciescollection.csv")
+    if own_path and os.path.normcase(os.path.abspath(own_path)) == \
+            os.path.normcase(os.path.abspath(path)):
+        return None
+    try:
+        mtime = os.stat(path).st_mtime_ns
+    except OSError:
+        return None
+    got = _MASTER_SC.get(path)
+    if got is None or got[0] != mtime:
+        sc = SpeciesClassification(None)
+        try:
+            sc.readSpeciesCollection(path, False)
+        except Exception as e:
+            logger.warning(f"Master species list not readable ({path}): {e}")
+            return None
+        _MASTER_SC[path] = got = (mtime, sc)
+    return got[1]
+
+
 class SpeciesClassification:
     sc_dict = {}
     dutch_dict = {}         # all species we have the Dutch name for, points to scientific name
@@ -218,6 +252,41 @@ class SpeciesClassification:
 
     def scCopy(self):
         return self.sc_dict.copy()
+
+    def fromMaster(self, subject: str) -> str:
+        """The scientific name of `subject` (a scientific, Dutch, English or
+        other known name) from the MASTER's species list, when this list (a
+        trip's copy) lacks it: the species row and any missing level above it
+        are copied in and buffered as learned, so the trip's list keeps them.
+        "" when the master does not know it either, or this IS the master."""
+        master = _master_collection(getattr(self, "_source_path", ""))
+        if master is None or not subject:
+            return ""
+        sci = (subject if subject in master.sc_dict else
+               master.dutch_dict.get(subject) or master.english_dict.get(subject)
+               or master.alias_dict.get(subject) or "")
+        if not sci or sci not in master.sc_dict:
+            return ""
+        chain, name = [], sci
+        while name and name not in self.sc_dict and name in master.sc_dict:
+            chain.append(master.sc_dict[name])
+            name = master.sc_dict[name].get("Up") or ""
+        if name and name not in self.sc_dict:
+            return ""                     # the tree above does not connect: leave it
+        for row in reversed(chain):       # top-down, so each parent exists first
+            new = dict(row, Leaves=[])
+            self.sc_dict[new["ScientificName"]] = new
+            up = new.get("Up") or ""
+            if up and new["ScientificName"] not in self.sc_dict[up]["Leaves"]:
+                self.sc_dict[up]["Leaves"].append(new["ScientificName"])
+            for col, index in (("DutchName", self.dutch_dict), ("EnglishName", self.english_dict)):
+                if new.get(col):
+                    index.setdefault(new[col], new["ScientificName"])
+            self.learned.add(new["ScientificName"])
+        if chain:
+            logger.info(f'"{subject}" taken from your master\'s species list '
+                        f"({sci}{', with ' + str(len(chain) - 1) + ' level(s) above' if len(chain) > 1 else ''}).")
+        return sci
 
     def createSpeciesRecord(self, level, scientificname, dutchname, englishname, upname):
         sc_record = {
@@ -832,6 +901,12 @@ class SpeciesClassification:
             return self.english_dict[subject]
         elif subject in getattr(self, "alias_dict", {}):
             return self.alias_dict[subject]
+        elif (known := self.fromMaster(subject)):
+            # A trip's list is a copy of the master's from when the trip began;
+            # a species the master learned since (AI… "names not in your list",
+            # another trip) is taken from there — before GBIF, which knows no
+            # Dutch names and lags splits.
+            return known
         elif LookUpInGBIF and is_group(subject):
             # "oplurus sp.": filed under the family of a relative we know, so it
             # works offline; GBIF only when no relative is in the list.

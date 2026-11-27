@@ -195,3 +195,22 @@ def test_mark_the_bins_purple_and_undo(tmp_path, monkeypatch):
     assert grid.written == {u: "Green" for u in bins}            # each one's own colour
     assert sorted(v for v in grid.shown.values()) == ["keep"] + ["purple"] * 6
     dlg.close()
+
+
+def test_an_album_looks_only_at_its_own_pictures(tmp_path):
+    """Album Species Viewer: `only` = the album's pictures; how often you saw
+    the species (the kept-per-day default) still counts the whole master."""
+    from PyQt6.QtWidgets import QApplication
+    app = QApplication.instance() or QApplication([])
+    from gui.suggest_dialog import SuggestDialog
+    rows = _master(tmp_path)
+    rows[7]["DateTimeOriginal"] = "2023:05:01 08:00:00"      # another day, outside the album
+    only = {f"NA1228{i:02d}" for i in range(4)}              # case differs on purpose
+    dlg = SuggestDialog(None, _FakeDB(rows), str(tmp_path), "passer simplex", "Desert sparrow",
+                        only=only, only_label="2024-10-12 … 2024-10-12")
+    _wait(app, dlg)
+    assert sorted(p["upn"] for p in dlg._pics) == sorted(u.lower() for u in only)
+    assert dlg._per_day.value() == 9                          # 2 days in the master
+    assert "in your master" in dlg._per_day_note.text()
+    assert "2024-10-12" in dlg.windowTitle()
+    dlg.close()

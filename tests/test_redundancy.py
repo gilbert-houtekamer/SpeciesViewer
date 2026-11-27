@@ -137,3 +137,17 @@ def test_purple_marks_record_and_undo(tmp_path):
     bid = pm.start("E:/naturedb", "x", {"a": ""}, path=f)
     pm.confirm(bid, set(), path=f)                            # nothing took: no marking
     assert pm.last("E:/naturedb", "x", path=f) is None
+
+
+def test_best_per_encounter_sharpest_kept_unless_you_chose():
+    t0 = datetime(2024, 10, 12, 9, 0, 0)
+    first = [_pic(i, t=t0 + timedelta(seconds=i), sharp=s) for i, s in enumerate((3, 9, 5))]
+    later = [_pic(10 + i, t=t0 + timedelta(hours=2, seconds=i), sharp=s)
+             for i, s in enumerate((4, 2))]
+    yours = [_pic(20, t=t0 + timedelta(hours=5), sharp=1, label="Yellow"),
+             _pic(21, t=t0 + timedelta(hours=5, seconds=5), sharp=8)]
+    pics = first + later + yours
+    for p in pics:
+        p["verdict"] = rd.KEEPER if p["label"] == "Yellow" else rd.KEEP
+    pics[1]["verdict"] = rd.PURPLE          # the sharpest could go: not suggested
+    assert rd.best_per_encounter(pics) == {"p2", "p10"}

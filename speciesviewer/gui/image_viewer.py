@@ -1313,6 +1313,9 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
                 return
             except RuntimeError:
                 self._ai_dlg = None
+        if self._active_filter != "all" or self._color_filter:
+            self._ai_whole_day()             # its marks and groups cover every picture
+            self._apply_filters()
         from gui.day_ai_dialog import DayAiDialog
         master = _config_master()
         self._ai_dlg = DayAiDialog(self, master)
@@ -1338,7 +1341,23 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
         the others); None shows the grid as before. A view only."""
         self._ai_only = None if keys is None else set(keys)
         self._ai_only_label = label
+        if keys is not None:
+            self._ai_whole_day()
         self._apply_filters()
+
+    def _ai_whole_day(self) -> None:
+        """AI… talks about the whole day: the grid on All, without a colour
+        filter — else the ⚠ / 📍 filter a summarised day opens on, or a 'Start
+        with' colour, hides part of an AI group (or all of it). Does not
+        re-apply: the caller does."""
+        self._active_filter = "all"
+        self.all_btn.setChecked(True)
+        self.warnings_only = self.no_gps_only = self.no_species_only = False
+        self.uncertain_only = self.species_only = False
+        self.show_all = True
+        self._color_filter = set()
+        if getattr(self, "color_filter_bar", None) is not None:
+            self.color_filter_bar.reflect(None)
 
     def ai_name_for(self, keys) -> dict | None:
         """The AI's name for these pictures: the one most of them carry, with

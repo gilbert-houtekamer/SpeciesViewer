@@ -180,7 +180,7 @@ class DayAiDialog(QDialog):
     def __init__(self, grid, master_root: str):
         super().__init__(grid)
         from engine.day_ai import DaySettings
-        self.setWindowTitle("AI — this day")
+        self.setWindowTitle(grid.ai_title() if hasattr(grid, "ai_title") else "AI — this day")
         self._grid = grid
         self._pics: list[dict] = []
         self._groups: list = []
@@ -255,7 +255,9 @@ class DayAiDialog(QDialog):
         row = QGridLayout()
         row.addWidget(QLabel("Show only:"), 0, 0)
         self._group_btns = {}
-        self._group_on = None
+        self._group_on = None            # a group button shown on its own
+        self._species_on = None          # "sp:<name>": a species row — both = the overlap
+        self._ai_wrote: dict = {}        # key → the colour an Accept here wrote
         for i, (g, tip) in enumerate((
                 ("keep", "The pictures the AI would keep (Green)"),
                 ("best", "The best picture of each species, to make Yellow — one per "
@@ -352,9 +354,12 @@ class DayAiDialog(QDialog):
         for w in (self._thr, self._sharp, self._per_pose, self._small):
             w.valueChanged.connect(self._recompute)
 
-        pics, region = day_pictures(grid)
+        # A viewer with its own pictures (the Trip Species Viewer) hands them over.
+        pics, region = (grid.ai_pictures() if hasattr(grid, "ai_pictures")
+                        else day_pictures(grid))
         self._region = region
-        self._folder = str(pics[0]["src"].parent) if pics else ""
+        self._folder = (grid.ai_marks_place() if hasattr(grid, "ai_marks_place")
+                        else str(pics[0]["src"].parent) if pics else "")
         self._refresh_undo()
         self._stats.setText(f"{len(pics)} pictures" + (f" · {region}" if region else ""))
         self._master_root = master_root
@@ -501,12 +506,10 @@ class DayAiDialog(QDialog):
             + (f"<br><span style='color:gray'>Names chosen from {among}</span>" if among else ""))
         self._groups_keys = day_ai.groups_of(self._pics)
         self._groups_keys.update({f"sp:{n}": e["keys"] for n, e in st["species"].items()})
-        if self._group_on and self._group_on not in self._groups_keys:
-            self._group_on = None       # that species is no longer named
-            self._show_group()
+        if self._species_on and self._species_on not in self._groups_keys:
+            self._species_on = None     # that species is no longer named
         self._label_groups()
-        if self._group_on:
-            self._show_group()
+        self._show_group()
         rows = list(st["species"].items())
         self._table.setSortingEnabled(False)
         self._table.setRowCount(len(rows))
@@ -577,22 +580,38 @@ class DayAiDialog(QDialog):
             b.setText(f"{self._GROUP_NAMES[g]} ({n})")
             b.setEnabled(bool(n) or g == self._group_on)
             b.setChecked(g == self._group_on)
+        if hasattr(self, "_accept_btn"):          # built after the group buttons
+            only = self._shown_only()
+            self._accept_btn.setText("Accept…" if only is None
+                                     else f"Accept these {len(only)}…")
 
     def _on_group(self, g):
-        """Show only that group on the grid; the same button again shows all."""
-        self._group_on = None if self._group_on == g else g
+        """Show only that group (a button) or species (a row) on the grid; both
+        at once show their overlap. The same one again lets it go."""
+        if g.startswith("sp:"):
+            self._species_on = None if self._species_on == g else g
+        else:
+            self._group_on = None if self._group_on == g else g
         self._label_groups()
         self._show_group()
 
+    def clear_shown(self) -> None:
+        """The viewer went its own way (a species picked there): show all again."""
+        self._group_on = self._species_on = None
+        self._shown_last = None          # the viewer shows all already
+        self._table.clearSelection()
+        self._label_groups()
+
     def _show_group(self):
-        g = self._group_on
+        keys = self._shown_only()
+        if keys == getattr(self, "_shown_last", None):
+            return                       # the same as on the grid: no rebuild there
+        self._shown_last = keys
         try:
-            if g is None:
+            if keys is None:
                 self._grid.show_ai_group(None)
             else:
-                label = (g[3:] if g.startswith("sp:")
-                         else self._GROUP_NAMES[g].lower())
-                self._grid.show_ai_group(self._groups_keys.get(g, []), f"AI: {label}")
+                self._grid.show_ai_group(sorted(keys), f"AI: {self._shown_label()}")
         except RuntimeError:
             pass
 
@@ -603,7 +622,7 @@ class DayAiDialog(QDialog):
         if it is None or not it.data(Qt.ItemDataRole.UserRole):
             return
         self._on_group(f"sp:{it.data(Qt.ItemDataRole.UserRole)}")
-        if self._group_on is None:
+        if self._species_on is None:
             self._table.clearSelection()
 
     # ── accept + undo ───────────────────────────────────────────────────────
@@ -621,8 +640,11 @@ class DayAiDialog(QDialog):
         pictures without a species) — written only when you tick it."""
         names, purple, green, new, yellow = {}, {}, {}, {}, {}
         can_name = self._grid.ai_can_write_species()
+        only = self._shown_only()
         for p in self._pics:
             k = p["key"]
+            if only is not None and k not in only:
+                continue                  # a group or species is shown on its own
             n = p.get("name")
             free = can_name and n is not None and not self._grid.ai_species_of(k)
             if free and n.get("how") in ("exact", "renamed") and n.get("name"):
@@ -638,6 +660,22 @@ class DayAiDialog(QDialog):
                 yellow[k] = [before, "Yellow"]
         return names, purple, green, new, yellow
 
+    def _shown_only(self) -> set | None:
+        """The pictures shown on their own — a group, a species, or the group's
+        pictures of that species — which Accept then writes; None = all."""
+        sets = [set(self._groups_keys.get(g, []))
+                for g in (self._group_on, getattr(self, "_species_on", None)) if g]
+        return set.intersection(*sets) if sets else None
+
+    def _shown_label(self) -> str:
+        parts = []
+        if self._group_on:
+            parts.append(self._GROUP_NAMES.get(self._group_on, self._group_on).lower())
+        sp = getattr(self, "_species_on", None)
+        if sp:
+            parts.append(sp[3:])
+        return " · ".join(parts)
+
     def _on_accept(self):
         from PyQt6.QtWidgets import QCheckBox, QMessageBox
         from engine import day_ai_marks
@@ -645,6 +683,11 @@ class DayAiDialog(QDialog):
         dlg = _BusyDialog(self)
         dlg.setWindowTitle("Accept the AI's suggestion")
         lay = QVBoxLayout(dlg)
+        only = self._shown_only()
+        if only is not None:              # one species or group, as shown on the grid
+            lay.addWidget(wrapped(
+                f"<b>Only the {len(only)} pictures shown: {self._shown_label()}.</b> "
+                f"Show all (click it again) to accept for the whole set."))
         n_poses = len({p["pose"] for p in self._pics if p["key"] in names})
         cb_names = QCheckBox(f"Names: {len(names)} pictures ({n_poses} poses) without a "
                              f"species get the AI's name")
@@ -673,7 +716,13 @@ class DayAiDialog(QDialog):
                              "biggest. Not where you have a Yellow or Red picture or a JPG "
                              "of it already. Red stays yours.")
         cb_yellow.setEnabled(bool(yellow))
-        for w in (cb_purple, cb_green, cb_yellow):
+        on_green = {k for d in (purple, yellow) for k, v in d.items() if v[0] == "Green"}
+        cb_green_too = QCheckBox(f"Also change pictures that are Green ({len(on_green)})")
+        cb_green_too.setToolTip("Off: a picture you coloured Green keeps its colour; only "
+                                "pictures without a colour change. On: Green ones may "
+                                "become Purple or Yellow too.")
+        cb_green_too.setEnabled(bool(on_green))
+        for w in (cb_purple, cb_green, cb_yellow, cb_green_too):
             lay.addWidget(w)
         extra = []
         if not self._grid.ai_can_write_species():
@@ -706,10 +755,13 @@ class DayAiDialog(QDialog):
                 colours.update(green)
             if cb_yellow.isChecked():
                 colours.update(yellow)          # the best of a species: Yellow, not Green
+            if not cb_green_too.isChecked():    # your Green stays Green
+                colours = {k: v for k, v in colours.items() if v[0] != "Green"}
             if not n_names and not colours and not (new and cb_new.isChecked()):
                 dlg.reject()
                 return
-            for w in (cb_names, cb_new, cb_purple, cb_green, cb_yellow, write_btn, close_btn):
+            for w in (cb_names, cb_new, cb_purple, cb_green, cb_yellow, cb_green_too,
+                      write_btn, close_btn):
                 w.setEnabled(False)
             dlg.busy = True
             bar.show()
@@ -737,6 +789,7 @@ class DayAiDialog(QDialog):
             {k: v[1] for k, v in colours.items()},
             {k: v[1] for k, v in names.items()}, bar, status)
         day_ai_marks.confirm(eid, c_done, s_done)
+        self._ai_wrote.update({k: colours[k][1] for k in c_done})
         text = f"Written: {len(s_done)} names, {len(c_done)} colours."
         if c_failed or s_failed:
             text += f" {len(c_failed | s_failed)} could not be changed (see the log)."
@@ -751,11 +804,25 @@ class DayAiDialog(QDialog):
             return
         colours, species, changed = day_ai_marks.undo_plan(
             last, self._grid.ai_colour_of, self._grid.ai_species_of)
+        names_stay = ""
+        if species and not self._grid.ai_can_write_species():
+            # Read & Summarize made it a trip day since: names have their own
+            # step there, so AI… leaves the names it wrote then.
+            names_stay = (f"\n\nThe {len(species)} names stay: this day has its own "
+                          f"species step now, and AI… does not change names here.")
+            species = {}
+        if not colours and not species:
+            QMessageBox.information(self, "Undo the last accept",
+                                    "Nothing to put back." + names_stay)
+            day_ai_marks.forget(last["id"])
+            self._refresh_undo()
+            return
         if QMessageBox.question(
                 self, "Undo the last accept",
                 f"Put back {len(species)} species and {len(colours)} colours as they were "
                 f"before {last['when']}?"
-                + (f"\n\n{changed} you changed since are left as they are." if changed else ""),
+                + (f"\n\n{changed} you changed since are left as they are." if changed else "")
+                + names_stay,
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
                 QMessageBox.StandardButton.Yes) != QMessageBox.StandardButton.Yes:
             return
@@ -767,6 +834,8 @@ class DayAiDialog(QDialog):
             self.setEnabled(True)
             self._bar.hide()
         day_ai_marks.forget(last["id"])
+        for k in c_done:
+            self._ai_wrote.pop(k, None)         # its own colour again
         self._after_write(f"Put back: {len(s_done)} species, {len(c_done)} colours.",
                           c_failed | s_failed)
 
@@ -802,8 +871,12 @@ class DayAiDialog(QDialog):
 
     def _after_write(self, text: str, failed, warn: bool = True):
         from PyQt6.QtWidgets import QMessageBox
-        for p in self._pics:                      # the new colours count from now on
-            p["label"] = self._grid.ai_colour_of(p["key"])
+        for p in self._pics:                      # the new colours count from now on —
+            now = self._grid.ai_colour_of(p["key"])  # except the AI's own: it keeps
+            if self._ai_wrote.get(p["key"]) == now:  # showing what it suggested
+                continue
+            self._ai_wrote.pop(p["key"], None)
+            p["label"] = now
         self._recompute()
         self._refresh_undo()
         if failed and warn:

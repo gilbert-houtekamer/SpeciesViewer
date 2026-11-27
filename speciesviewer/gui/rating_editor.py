@@ -1991,6 +1991,14 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
         self._suggestion: dict[str, str] = {}
         self._suggestion_yours: set[str] = set()   # keys you decided yourself (k / b)
         self._suggestion_sci = ""
+        # A TRIP's AI… (gui/day_ai_dialog.py, the culling grid's day AI over the
+        # Day / Trip in view): {key: (verdict, name tag, sure)} on the cards, and
+        # the AI group shown on its own (its pictures across species), or None.
+        self._ai_dlg = None
+        self._ai_marks: dict[str, tuple] = {}
+        self._ai_names: dict[str, dict] = {}
+        self._ai_only: list | None = None
+        self._ai_only_label = ""
         self._master_root: str | None = None
         # Album (read-only) source: the master read live by the album's date
         # range. Resolved once per dialog by _album_master_source() — days is
@@ -2139,19 +2147,22 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
         self._page_btn.clicked.connect(self._open_species_page)
         top.addWidget(self._page_btn)
 
-        # Master only: which pictures of this species could go — statistics, the
+        # Master and Album: which pictures of this species could go — statistics, the
         # settings and the suggestion per day, shown on the cards (an action, so
         # it sits with the other actions, not with the view filters further on).
         # Read-only (gui/suggest_dialog.py).
         self._suggest_btn = QPushButton("AI…")
         self._suggest_btn.setToolTip(
+            "The AI's suggestion for the day or trip in view, all species: which "
+            "pictures are not good enough, the best of each species, and what each "
+            "pose is — shown on the cards; nothing is changed until you accept"
+            if mode == "trip" else
             "Suggest which pictures of this species could go: how many pictures, days "
             "and places, what you kept, and what a sharpness suggestion would keep — "
             "shown on the cards; nothing is changed")
         self._suggest_btn.clicked.connect(self._on_suggest)
         top.addWidget(self._suggest_btn)
-        if not self._master_only:
-            self._suggest_btn.hide()
+        # Master and album: the species' suggestion; a trip: the day AI… (_on_ai_trip).
 
         # Master-backed only: re-read this species from disk, and republish its
         # page. Both act on the master, so they mean nothing for a trip that owns
@@ -3375,6 +3386,8 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
             card.set_selected(key in self._selected_keys)
             card.set_cursor_focus(key == self._last_clicked_key)
             card.set_suggestion(self._suggestion_for(key), key in self._suggestion_yours)
+            m = self._ai_marks.get(key)
+            card.set_name_tag(m[1] if m else "", m[2] if m else True)
             card.show()
             new_bound[key] = card
         self._bound = new_bound
@@ -3440,6 +3453,9 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
         self._bracket_right = None
         self._last_clicked_key = None
         filter_name = self._species_combo.currentData()
+        if self._ai_only is not None:      # an AI… group: its pictures, all species
+            self._show_ai_only()
+            return
         if filter_name is None:
             self._order = []
             self._status.setText(
@@ -3736,6 +3752,14 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
         # switching (its snapshot would otherwise edit/navigate a stale set).
         self._close_large_view()
         self._refresh_window_title()
+        if self._ai_only is not None:      # a species picked: the AI… group ends
+            self._ai_only = None
+            dlg = self._ai_dlg
+            if dlg is not None:
+                try:
+                    dlg.clear_shown()
+                except RuntimeError:
+                    self._ai_dlg = None
         # Refresh the camera list to this species' bodies before rebuilding
         # (blockSignals inside keeps this from re-triggering a rebuild).
         self._populate_camera_combo()
@@ -3762,7 +3786,149 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
 
     # ── the AI… suggestion on the cards (gui/suggest_dialog.py) ─────────────
 
+    # ── AI… on a trip: the culling grid's day AI over the Day / Trip in view ──
+
+    def _on_ai_trip(self):
+        from engine import ai_models
+        if not ai_models.available():
+            QMessageBox.information(
+                self, "AI",
+                "The AI models are not installed on this computer, so there is no "
+                "suggestion to show. They are an optional download: File ▸ Settings ▸ "
+                "AI Models….")
+            return
+        if self._ai_dlg is not None:
+            try:
+                self._ai_dlg.raise_()
+                self._ai_dlg.activateWindow()
+                return
+            except RuntimeError:
+                self._ai_dlg = None
+        if not self.fpr or not self.fpr.upn.UniquePictureName_dict:
+            QMessageBox.information(self, "AI", "There are no pictures loaded yet.")
+            return
+        # JPG only would hide nearly every picture the AI talks about (the ones
+        # without a JPG yet): off, for this look — as the master's AI… does.
+        if self._jpg_btn.isChecked():
+            self._jpg_btn.blockSignals(True)
+            self._jpg_btn.setChecked(False)
+            self._jpg_btn.blockSignals(False)
+            self._jpg_only = False
+            self._rebuild_cards()
+        from gui.day_ai_dialog import DayAiDialog
+        master = _config.get("master", "masterbiotadatabase", fallback="").strip().strip('"')
+        self._ai_dlg = DayAiDialog(self, master)
+        self._ai_dlg.finished.connect(lambda *_: setattr(self, "_ai_dlg", None))
+        self._ai_dlg.show()
+
+    def _ai_scope(self) -> str:
+        """"day 2024-06-25" or "the whole trip" — what AI… looks at."""
+        day = self._current_day() if self._day_radio.isChecked() else None
+        return f"day {day}" if day else "the whole trip"
+
+    def ai_title(self) -> str:
+        return f"AI — {self._ai_scope()}"
+
+    def ai_marks_place(self) -> str:
+        """Where an accept is recorded for its Undo: this trip and scope."""
+        return f"{self._trip_root} · {self._ai_scope()}"
+
+    def ai_pictures(self) -> tuple[list[dict], str]:
+        """(picture dicts, country ISO code) for the trip's pictures in view —
+        one per picture, its RAW (else its JPG); "jpg" = it has a JPG besides."""
+        from collections import Counter
+        from datetime import datetime
+        from engine import redundancy as rd
+        from engine.countries import iso_of
+        from utils.raw_extensions import is_jpeg, is_raw_or_heic
+        col = self._collection
+        pics, found = [], Counter()
+        for key, row in self.fpr.upn.UniquePictureName_dict.items():
+            if col is None or col.is_master(key):
+                continue
+            raw, jpg = col.raw_path(key), col.jpg_path(key)
+            src = raw or jpg
+            if src is None or not (is_raw_or_heic(src) or is_jpeg(src)):
+                continue                  # a video
+            try:
+                size = src.stat().st_size
+            except OSError:
+                continue
+            label = (row.get("Label") or "").strip().capitalize()
+            pics.append({"key": key, "upn": key, "src": src,
+                         "time": rd._time(row.get("DateTimeOriginal")),
+                         "stars": int(float(row.get("Rating") or 0) or 0),
+                         "label": "" if label in ("Grey", "None") else label,
+                         "jpg": raw is not None and jpg is not None, "bytes": size})
+            iso = iso_of(row.get("Country") or "")
+            if iso:
+                found[iso] += 1
+        pics.sort(key=lambda p: (p["time"] or datetime.min, p["key"]))
+        return pics, (found.most_common(1)[0][0] if found else "")
+
+    def ai_colour_of(self, key: str) -> str:
+        c = (self._collection._upn_row(key).get("Label") or "").strip().capitalize()
+        return "" if c in ("Grey", "None") else c
+
+    def ai_species_of(self, key: str) -> str:
+        return (self._collection._upn_row(key).get("WetSoortNaam") or "").strip()
+
+    def ai_can_write_species(self) -> bool:
+        """A trip's pictures carry the names you gave them; AI… only suggests here."""
+        return False
+
+    def ai_write_colours(self, by_key: dict) -> tuple[set, set]:
+        """{key: colour ("" = none)} → (done, failed), checked per picture
+        (one write per colour: RatingEditorCollection.apply_colour_many). A
+        picture of a frozen day is never changed."""
+        col = self._collection
+        done, failed = set(), set()
+        by_colour: dict[str, list] = {}
+        for key, colour in by_key.items():
+            by_colour.setdefault(colour or "", []).append(key)
+        for colour, keys in by_colour.items():      # one write per colour
+            ok, bad = col.apply_colour_many(keys, colour)
+            done |= {k for k in ok if self.ai_colour_of(k) == colour}
+            failed |= bad | (set(ok) - done)
+        self._sync_all_cards()
+        self._relayout(force=True)
+        return done, failed
+
+    def show_ai_marks(self, marks: dict, names: dict | None = None) -> None:
+        self._ai_marks = dict(marks)
+        self._ai_names = dict(names or {})
+        self._relayout(force=True)
+
+    def clear_ai_marks(self) -> None:
+        self._ai_marks, self._ai_names = {}, {}
+        if self._ai_only is not None:
+            self.show_ai_group(None)
+        self._relayout(force=True)
+
+    def show_ai_group(self, keys, label: str = "") -> None:
+        """Show only these pictures, whatever their species (an AI… group), in
+        time order; None shows the species in view again. A view only."""
+        self._ai_only = None if keys is None else list(keys)
+        self._ai_only_label = label
+        self._rebuild_cards()
+
+    def _show_ai_only(self) -> None:
+        from datetime import datetime
+        from engine import redundancy as rd
+        col = self._collection
+        when = {k: rd._time(col._upn_row(k).get("DateTimeOriginal")) or datetime.min
+                for k in self._ai_only}
+        self._order = sorted(when, key=lambda k: (when[k], k))
+        self._rebuild_pool_if_needed()
+        self._relayout(force=True)
+        n = len(self._order)
+        self._status.setText(f"{self._ai_only_label} — {n} picture{'s' if n != 1 else ''}, "
+                             f"all species (click the group again to go back)")
+        QTimer.singleShot(0, lambda: self._scroll.verticalScrollBar().setValue(0))
+
     def _suggestion_for(self, key: str) -> str | None:
+        if key in self._ai_marks:          # a trip's AI… (all species at once)
+            return self._ai_marks[key][0]
         if not self._suggestion or self._suggestion_sci != self._current_sci():
             return None                   # another species is in view now
         return self._suggestion.get(key)
@@ -3879,7 +4045,12 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
         return len(shown), len(wanted) - len(shown)
 
     def _on_suggest(self):
-        """The read-only suggestion dialog for the species in view (master only)."""
+        """The suggestion dialog for the species in view (master and album; an
+        album's Day / Album scope limits it to those pictures). A trip has the
+        culling grid's day AI… instead, over the Day / Trip in view."""
+        if self._mode == "trip":
+            self._on_ai_trip()
+            return
         sci = self._current_sci()
         if not sci or self._master_db is None or not self._master_root:
             QMessageBox.information(self, "Suggest", "Pick a species first.")
@@ -3909,8 +4080,13 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
             self._rebuild_cards()
         from gui.suggest_dialog import SuggestDialog
         name = self._species_combo.currentData() or sci
+        only, label = None, ""
+        if not self._master_only and getattr(self, "_album_restrict", None) is not None:
+            only = self._album_restrict
+            label = (f"day {self._current_day()}" if only is not self._album_upns
+                     else f"{self._album_range[0]} … {self._album_range[1]}")
         self._suggest_dlg = SuggestDialog(self, self._master_db, self._master_root, sci, name,
-                                          grid=self)
+                                          grid=self, only=only, only_label=label)
         self._suggest_dlg.show()
 
     def _show_species_distribution_map(self):

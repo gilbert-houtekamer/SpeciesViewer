@@ -3,7 +3,10 @@
 ONE JOB: for one master species, show what it is (pictures, days, places, your
 keepers, the candidates) and what the suggestion would do with the settings you
 choose — overall and per day — so you can judge the cut-offs. Opened from the
-master Species Viewer's "AI…" button. Plan: docs/plans/picture_score_plan.md.
+master Species Viewer's "AI…" button, and from the Album Species Viewer's with
+`only` = the album's pictures (its Day / Album scope): then only those are
+looked at, while how often you saw the species — which sets the pictures kept
+per day — still counts the whole master. Plan: docs/plans/picture_score_plan.md.
 
 With a `grid` (the Species Viewer that opened it) the suggestion is also drawn
 over its cards — a bin on what could go, a green frame on what is kept — and a
@@ -81,14 +84,16 @@ def _date(t) -> str:
 
 
 class SuggestDialog(QDialog):
-    def __init__(self, parent, master_db, master_root, sci: str, name: str, *, grid=None):
+    def __init__(self, parent, master_db, master_root, sci: str, name: str, *, grid=None,
+                 only: set | None = None, only_label: str = ""):
         super().__init__(parent)
         self._grid, self._sci, self._name = grid, sci, name
+        self._master_days = 0            # days in the whole master, with `only`
         self._filling = False
         # Your own say, per picture, over the suggestion: {UPN: KEEP | PURPLE}.
         # Kept while the dialog is open; a setting change does not undo it.
         self._overrides: dict[str, str] = {}
-        self.setWindowTitle(f"Suggest — {name}")
+        self.setWindowTitle(f"Suggest — {name}" + (f" — {only_label}" if only_label else ""))
         self.resize(900, 720)
         self._pics: list[dict] = []
         self._scored = False
@@ -193,6 +198,12 @@ class SuggestDialog(QDialog):
         self._set_settings(rd.Settings())
 
         rows = master_db.pictures_for_species_and_subspecies(sci)
+        if only is not None:             # an album: its pictures, rarity master-wide
+            self._master_days = len({t.date() for t in (rd._time(r.get("DateTimeOriginal"))
+                                                        for r in rows) if t})
+            keep = {u.lower() for u in only}
+            rows = [r for r in rows
+                    if str(r.get("UniquePictureName") or "").lower() in keep]
         days = set()
         for r in rows:
             t = rd._time(r.get("DateTimeOriginal"))
@@ -225,8 +236,12 @@ class SuggestDialog(QDialog):
                            gap=float(self._gap.value()), change=self._change.value() / 100,
                            soft=self._soft.value() / 100, cap=self._cap.value())
 
+    def _rarity_days(self) -> int:
+        """Days the species was seen: in the whole master (an album shows a part)."""
+        return self._master_days or self._days
+
     def _defaults(self):
-        self._set_settings(rd.default_settings(self._pics))
+        self._set_settings(rd.Settings(per_day=rd.per_day_for(self._rarity_days())))
 
     # ── the thread ──────────────────────────────────────────────────────────
 
@@ -254,9 +269,11 @@ class SuggestDialog(QDialog):
             f"Already Blue or Purple: {st['decided']}. "
             f"Could be suggested: <b>{st['candidates']}</b> "
             f"({rd.gb(st['candidate_bytes'])}).")
-        d = rd.per_day_for(self._days)
+        n = self._rarity_days()
+        d = rd.per_day_for(n)
         self._per_day_note.setText(
-            f"default for {self._days} day{'s' if self._days != 1 else ''}: {d}")
+            f"default for {n} day{'s' if n != 1 else ''}"
+            + (" in your master" if self._master_days else "") + f": {d}")
         self._per_day.setToolTip(
             "Pictures kept per day on top of the ones you kept yourself. The default "
             "is higher for a species you saw on few days: 12 for one day, 9 for 2, "
@@ -325,6 +342,8 @@ class SuggestDialog(QDialog):
             return
         by_upn = {p["upn"]: p["verdict"] for p in self._pics
                   if p.get("verdict") in (rd.PURPLE, rd.KEEP)}
+        best = rd.best_per_encounter(self._pics)        # a yellow frame: a hint only
+        by_upn.update({u: "best" for u in best})
         yours = {p["upn"] for p in self._pics if p.get("yours")}
         try:
             hidden = self._grid.show_suggestions(self._sci, by_upn, yours)
@@ -335,7 +354,9 @@ class SuggestDialog(QDialog):
             f"{hidden} of the pictures that could go are hidden in the viewer by a filter "
             f"— “JPG only” hides every one of them; turn it off to see the bins."
             if hidden else "In the viewer: a bin on each picture that could go, a green "
-                           "frame on the ones kept. Pick a day below to go there.")
+                           "frame on the ones kept, a yellow frame on the sharpest of each "
+                           f"encounter ({len(best)}) where you have no Yellow, Red or JPG "
+                           "yet — press Yellow on it if you agree. Pick a day below to go there.")
 
     def override(self, upns, want: str | None) -> int:
         """From the viewer: keep (KEEP) or bin (PURPLE) these pictures whatever
