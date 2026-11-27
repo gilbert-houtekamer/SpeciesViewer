@@ -109,6 +109,7 @@ class CardAiWorker(QThread):
         total["failed"] = len(failed)
         total["stopped"] = self._stop
         total["seconds"] = time.time() - t0
+        total["started"] = t0
         self.all_done.emit(total)
 
     def _day_finished(self, day: str, seen: list, total: dict, had_error: bool = False):

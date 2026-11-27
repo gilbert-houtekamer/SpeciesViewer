@@ -41,6 +41,30 @@ def _default_year(project_root: str) -> str:
     return m.group(1) if m else str(datetime.now().year)
 
 
+def computer_offset_on(dates, local=None):
+    """This computer's UTC offset ON the given days ("YYYY-MM-DD"), summer and
+    winter time included: the zone most of the days have (a card read across
+    the change goes with most of its days). None without a usable date.
+    `local(datetime) -> timedelta` is for tests."""
+    from collections import Counter
+    from datetime import timezone
+    local = local or (lambda d: d.astimezone().utcoffset())
+    seen = Counter()
+    for s in dates:
+        try:
+            d = datetime.strptime(str(s)[:10], "%Y-%m-%d").replace(hour=12)
+        except ValueError:
+            continue                  # "unknown date" and the like
+        seen[local(d)] += 1
+    return timezone(seen.most_common(1)[0][0]) if seen else None
+
+
+def _clock(start: float, end: float) -> str:
+    """'14:02 → 14:12' — wall-clock start and end of a step."""
+    f = lambda t: datetime.fromtimestamp(t).strftime("%H:%M")
+    return f"{f(start)} → {f(end)}"
+
+
 class _SDCardCopyWorker(QObject):
     """Runs copy_card on a worker thread so a multi-GB card read keeps the UI
     responsive. Progress/finished are queued back to the GUI thread via signals."""
@@ -957,9 +981,11 @@ class ReadSDCardDialog(QDialog):
         midnight lands in. So this reports rather than blocks.
 
         Second opinion, in order: the day's own tracklog header (the phone, which
-        updates its zone by itself), else this computer's current zone. The
-        laptop is the weaker source — it says where you are NOW, not where you
-        were — so its wording is hedged."""
+        updates its zone by itself), else this computer's zone ON THE PICTURES'
+        DATES (computer_offset_on: summer time in August even when the card is
+        read in November — it once set -1 h for that). The laptop is the weaker
+        source — it says where you live, not where you were — so its wording is
+        hedged."""
         import datetime as _dt
         from engine.tracklog_geotag import find_day_tracklog
         self.clock_note.setVisible(False)
@@ -982,7 +1008,7 @@ class ReadSDCardDialog(QDialog):
             if len(seen) == 1:
                 true_tz, from_log = _dt.timezone(seen.pop()), True
         if true_tz is None:
-            true_tz = _dt.datetime.now().astimezone().tzinfo
+            true_tz = computer_offset_on([d for d, _n in days])
 
         if true_tz is None:
             return
@@ -997,7 +1023,7 @@ class ReadSDCardDialog(QDialog):
         if not delta_h:
             return
         who = ("this day's tracklog says the local zone was"
-               if from_log else "this computer is currently on")
+               if from_log else "this computer's zone on those dates is")
         self.clock_note.setText(
             f"<b>⚠ The camera's clock is set to another time zone.</b><br>"
             f"The pictures say the camera was on <b>{self._fmt_offset(cam)}</b>, "
@@ -1721,7 +1747,8 @@ class ReadSDCardDialog(QDialog):
         if start is None:
             return ""
         from engine.exifcache import _fmt_duration
-        elapsed = _fmt_duration(time.time() - start)
+        # The clock times too: set beside the AI's they show how much ran at once.
+        elapsed = f"{_fmt_duration(time.time() - start)} ({_clock(start, time.time())})"
         days = self._days_copied_count()
         # Its own sentence: it is appended after sentences that end in a period.
         return (f" Time: {elapsed} for {days} day(s)." if days
@@ -1955,6 +1982,8 @@ class ReadSDCardDialog(QDialog):
             return
         mins, secs = divmod(int(total.get("seconds", 0)), 60)
         took = f"{mins} min {secs} s" if mins else f"{secs} s"
+        if total.get("started"):
+            took += f" ({_clock(total['started'], total['started'] + total['seconds'])})"
         line = (f"The AI looked at {total['pictures']} pictures of {total['days']} "
                 f"day(s) — {total['animals']} with an animal — in {took}"
                 + (" (stopped)." if total.get("stopped") else

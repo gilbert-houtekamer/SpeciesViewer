@@ -1414,7 +1414,6 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
                 remember_species_from_subject(subject)
         done = {k for k, s in by_key.items() if self.ai_species_of(k) == (s or "")}
         self.refresh_after_species_change(set(by_key))
-        logger.info(f"AI… species: {len(done)} of {len(by_key)} pictures written.")
         return done, set(by_key) - done
 
     def ai_learn_species(self, scis, progress=None) -> dict:

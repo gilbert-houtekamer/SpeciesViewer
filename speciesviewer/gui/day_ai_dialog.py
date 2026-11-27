@@ -793,6 +793,10 @@ class DayAiDialog(QDialog):
                 sets[at + 1] |= bad
                 done += len(part)
                 bar.setValue(done)
+            if keys:                     # one line per accept, not one per 25
+                bad = len(sets[at + 1])
+                logger.info(f"AI… {what}: {len(sets[at])} of {len(keys)} pictures written"
+                            + (f", {bad} could not be changed." if bad else "."))
         QApplication.processEvents()
         return tuple(sets)
 
