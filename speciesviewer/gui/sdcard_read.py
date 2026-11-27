@@ -1928,7 +1928,8 @@ class ReadSDCardDialog(QDialog):
         self._ai.state.connect(self._on_ai_state)
         self._ai.all_done.connect(self._on_ai_done)
         self.days_table.setColumnHidden(AI_COL, False)
-        self.ai_status_label.setText("⏳ The AI looks at each day as soon as it is copied…")
+        self.ai_status_label.setText("⏳ The AI looks at the pictures as soon as they are copied "
+                                     "(a long day in parts of about 250)…")
         self.ai_status_label.setVisible(True)
         self._ai.start()
         self._ai.setPriority(QThread.Priority.LowPriority)   # the copy comes first

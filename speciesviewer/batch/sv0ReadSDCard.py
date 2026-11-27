@@ -57,6 +57,10 @@ from engine.handling import deriveUniquePictureName
 UNKNOWN_DATE_DIR = "unknown-date"
 
 _COPY_WORKERS = 4   # parallel copy threads; card I/O is the bottleneck, 4 keeps pipeline full
+# A long day goes to the AI in parts of this many pictures while the rest of the
+# day still copies: a one-day card no longer waits for the whole day (2026-11-27:
+# 2,180 pictures took 375 s to copy before the AI could start).
+DAY_PART = 250
 # XMP sidecar creation scales its exiftool workers per-machine via
 # engine.exifcache.auto_worker_count (≈physical-core count, capped, floored by
 # file count) instead of a hardcoded 4 — see project_exif_parallelism.
@@ -1445,12 +1449,16 @@ def copy_card(source, dest, prefix="", bucket_by_date=False, tz_offset_hours=0.0
                         was read into and when. See _CardCache.record_read.
     progress(done, total, name) - optional callback, called per file before copy.
     should_cancel()             - optional callable; return True to stop early.
-    on_day_copied(day, paths)   - optional (bucket_by_date only): called on the
-                        copy thread as soon as every picture of a day is on
-                        disk (copied now or already there), with that day's
-                        picture paths — so the AI can look at a day while the
-                        card copies the next. Copies are submitted day by day
-                        for this. Not called for a day cut short by Cancel.
+    on_day_copied(day, paths, last) - optional (bucket_by_date only): called on
+                        the copy thread with picture paths that are on disk, so
+                        the AI can look at them while the card copies on. A long
+                        day comes in parts (last=False) of about DAY_PART
+                        pictures, each a run in card order that is fully copied;
+                        then last=True with the rest of the day (copied now or
+                        already there) once every picture of it is on disk. Each
+                        path is handed over once. Copies are submitted day by day
+                        for this. last=True is not called for a day cut short by
+                        Cancel.
 
     Returns a summary dict: total / copied / skipped / conflict / failed / bytes.
     """
@@ -1698,11 +1706,41 @@ def copy_card(source, dest, prefix="", bucket_by_date=False, tz_offset_hours=0.0
         for t in to_copy:
             pending[day_of(t)] = pending.get(day_of(t), 0) + 1
 
-    def _day_done(day: str) -> None:
+    # Parts of a long day: per day its copies in card order (picture name,
+    # target); a part is handed over once a run of DAY_PART pictures from where
+    # the last part ended is fully done, cut between pictures (never between a
+    # RAW and its camera JPG).
+    order: dict[str, list[tuple[str, str]]] = {}
+    for t in to_copy if pending else []:
+        order.setdefault(day_of(t), []).append((Path(t[1]).stem.lower(), str(t[1])))
+    finished: set[str] = set()       # copies done, well or not
+    copied_ok: set[str] = set()
+    cut: dict[str, int] = {}         # day → how far its parts reach in `order`
+    handed: dict[str, set] = {}      # day → paths already handed over in parts
+
+    def _hand(day: str, paths: list, last: bool) -> None:
         try:
-            on_day_copied(day, list(day_targets.get(day, [])))
+            on_day_copied(day, paths, last)
         except Exception as e:      # the AI's problem must never stop a copy
             log.warning(f"After copying {day}: {e}")
+
+    def _maybe_part(day: str) -> None:
+        seq, i = order.get(day, []), cut.get(day, 0)
+        j = i
+        while j < len(seq) and seq[j][1] in finished:
+            j += 1
+        while i < j < len(seq) and seq[j][0] == seq[j - 1][0]:
+            j -= 1                   # not between two files of one picture
+        if j == len(seq) or len({n for n, _t in seq[i:j]}) < DAY_PART:
+            return                   # too few yet, or the day's end: _day_done
+        paths = [t for _n, t in seq[i:j] if t in copied_ok]
+        cut[day] = j
+        handed.setdefault(day, set()).update(paths)
+        _hand(day, paths, False)
+
+    def _day_done(day: str) -> None:
+        had = handed.get(day, set())
+        _hand(day, [p for p in day_targets.get(day, []) if p not in had], True)
 
     if on_day_copied and bucket_by_date and not (should_cancel and should_cancel()):
         for day in sorted(day_targets):          # already complete: nothing to copy
@@ -1727,6 +1765,7 @@ def copy_card(source, dest, prefix="", bucket_by_date=False, tz_offset_hours=0.0
                     _tally(src, "copied")
                     summary["bytes"] += target.stat().st_size
                     _present(src, target)
+                    copied_ok.add(str(target))
                     if dest_index is not None:
                         dest_index.add(target, sha256=src_hash)
                     if cache:
@@ -1745,8 +1784,13 @@ def copy_card(source, dest, prefix="", bucket_by_date=False, tz_offset_hours=0.0
                 if pending:
                     day = day_of((src,))
                     pending[day] -= 1
-                    if pending[day] == 0 and not (should_cancel and should_cancel()):
+                    finished.add(str(target))
+                    if should_cancel and should_cancel():
+                        pass
+                    elif pending[day] == 0:
                         _day_done(day)
+                    else:
+                        _maybe_part(day)
 
                 if should_cancel and should_cancel():
                     for f in future_map:
