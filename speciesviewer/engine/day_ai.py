@@ -4,8 +4,11 @@ pose is.
 ONE JOB: from the measured pictures of a day (engine.ai_measure: animal box,
 size, sharp on the animal, names; engine.picture_score: the pose hash) decide
 per picture a verdict and per pose a name:
-  verdict  "purple" with a reason — no animal found / out of focus / small /
-           cut off by the edge / too many of the same — or "keep"; None for a picture that is yours
+  verdict  "purple" with a reason — out of focus / small / cut off by the edge,
+           and only when thinning (DaySettings.thin) also too many of the same /
+           plenty of this species — or "keep"; None for a picture without an
+           animal (a landscape, people, a market: never the AI's to judge) and
+           for a picture that is yours
            already (a keeper: stars above the day's usual, Red, Yellow, a JPG —
            or decided: Blue, Purple), exactly the candidate rule of the master
            suggestion (engine.redundancy.is_candidate);
@@ -17,7 +20,11 @@ per picture a verdict and per pose a name:
 Within a pose the frames are ranked: a whole animal before one cut off by the
 frame's edge (GH 2026-11-24: "strafpunten"), then sharp on the animal, then
 size. A cut-off frame goes when its pose has a whole one that is in focus.
-Then, per species (a pose with a sure name), the day keeps no more than the
+A first look at a new day (thin off, the default) stops there: every sharp,
+whole animal stays (GH 2026-11-27: "for a new day, any sharp picture is good" —
+the aim is to prime the day, not to make the final choice). Thinning adds the
+frames-per-pose limit and then, per species (a pose with a sure name), keeps
+no more than the
 master's own rule allows (engine.redundancy.per_day_for): 12 for a species
 your master has never had, down to 4 for one you photographed on 32 days or
 more — your own keepers count — so common birds are thinned much harder.
@@ -49,8 +56,8 @@ class DaySettings:
     sharp_cut: int = 15      # % — below this, sharp on the animal = out of focus
     per_pose: int = 2        # frames kept per pose (your keepers count)
     small_px: int = 0        # px — smaller animals go when the pose has a bigger one (0 = off)
-    use_master: bool = True  # fewer per day of a species your master has often
-    no_animal_goes: bool = False   # Purple where no animal was found (off: left to you)
+    use_master: bool = True  # fewer per day of a species your master has often (thin only)
+    thin: bool = False       # also "too many of the same" + the master rule (off: first look)
     gap: float = rd.Settings().gap
     change: float = rd.Settings().change
 
@@ -69,7 +76,7 @@ def going(p) -> bool:
 
 
 REDUNDANT = (TOO_MANY, PLENTY)                       # good pictures, just more than needed
-FAULTY = (OUT_OF_FOCUS, SMALL, CUT_OFF, NO_ANIMAL)   # the picture itself falls short
+FAULTY = (OUT_OF_FOCUS, SMALL, CUT_OFF)   # the picture itself falls short
 
 
 def groups_of(pics: list[dict]) -> dict[str, list]:
@@ -293,6 +300,64 @@ def still_leaders(pics: list[dict], s: DaySettings | None = None) -> list[dict]:
             if not any(p.get("box") for p in g)]
 
 
+ALIKE = 0.85    # cosine of two poses' animal vectors: the same animal (calibrated below)
+
+
+def vote_sittings(leaders: list[dict], vecs: list) -> int:
+    """One name per sitting: neighbouring pose leaders (time order) at most
+    JOIN_GAP apart whose animals look alike (cosine of BioCLIP's vectors >=
+    ALIKE) form a sitting; every pose of it gets the name with the highest
+    summed certainty (GH 2026-11-27: "pictures in a pose get different names —
+    override with voting"). The winner's own best entry is put first in each
+    leader's p["names"]. Calibrated on 2024-06-25 (1315 poses, his names): links
+    775 neighbours of which 0.9 % two species, catches 89 % of same-species
+    neighbours; the right-rate hardly moves (82.3 → 82.5 %) — it makes a
+    sitting consistent, it does not make the AI cleverer.
+    Returns how many poses changed name."""
+    import numpy as np
+    n = len(leaders)
+    unit = [None if v is None else np.asarray(v, np.float32) / (np.linalg.norm(v) or 1.0)
+            for v in vecs]
+    sittings, cur = [], [0] if n else []
+    for i in range(1, n):
+        a, b = leaders[i - 1], leaders[i]
+        near = (a.get("time") is not None and b.get("time") is not None
+                and abs((b["time"] - a["time"]).total_seconds()) <= JOIN_GAP)
+        alike = (unit[i - 1] is not None and unit[i] is not None
+                 and float(unit[i - 1] @ unit[i]) >= ALIKE)
+        if near and alike:
+            cur.append(i)
+        else:
+            sittings.append(cur)
+            cur = [i]
+    if cur:
+        sittings.append(cur)
+    changed = 0
+    for sit in sittings:
+        if len(sit) < 2:
+            continue
+        tally: dict[str, float] = {}
+        best: dict[str, dict] = {}
+        for i in sit:
+            nm = leaders[i].get("names") or []
+            if not nm:
+                continue
+            k = (nm[0].get("sci") or "").lower()
+            tally[k] = tally.get(k, 0.0) + nm[0]["prob"]
+            if k not in best or nm[0]["prob"] > best[k]["prob"]:
+                best[k] = nm[0]
+        if len(tally) < 2:
+            continue
+        win = max(tally, key=tally.get)
+        for i in sit:
+            nm = leaders[i].get("names") or []
+            if nm and (nm[0].get("sci") or "").lower() != win:
+                leaders[i]["names"] = [dict(best[win])] + [
+                    x for x in nm if (x.get("sci") or "").lower() != win]
+                changed += 1
+    return changed
+
+
 def name_series(pics: list[dict], s: DaySettings | None = None) -> list[list[dict]]:
     """The frames to name, as series: each series = the leaders (pose_leaders)
     of consecutive poses showing the SAME animal — a pose joins the one before
@@ -352,22 +417,21 @@ def decide(pics: list[dict], s: DaySettings,
                 p["verdict"] = None
                 continue
             if not p.get("box"):
-                # No animal found: a flower, a landscape — or an animal the
-                # detector missed (insects on flowers). Left to you unless asked.
-                p["verdict"], p["why"] = (("purple", NO_ANIMAL) if s.no_animal_goes
-                                          else (None, ""))
+                # No animal found: a landscape, people, a market, a flower — or an
+                # animal the detector missed. Never a reason to go (GH 2026-11-27).
+                p["verdict"] = None
             elif (p.get("sharp_pct") is not None) and p["sharp_pct"] < s.sharp_cut:
                 p["verdict"], p["why"] = "purple", OUT_OF_FOCUS
             elif s.small_px and (p.get("px") or 0) < s.small_px <= biggest:
                 p["verdict"], p["why"] = "purple", SMALL
             elif whole and cut_off(p["box"]):
                 p["verdict"], p["why"] = "purple", CUT_OFF
-            elif kept < s.per_pose:
+            elif not s.thin or kept < s.per_pose:
                 p["verdict"] = "keep"
                 kept += 1
             else:
                 p["verdict"], p["why"] = "purple", TOO_MANY
-    if s.use_master and master_days is not None:
+    if s.thin and s.use_master and master_days is not None:
         # Per species PER CALENDAR DAY: a card read of 41 days is opened as one
         # set, and "no more today" over all of it kept one Egyptian goose in
         # two months (2026-11-26).

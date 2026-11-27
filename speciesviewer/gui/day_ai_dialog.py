@@ -121,6 +121,21 @@ def master_days(master_root, pics) -> dict:
     return out
 
 
+class _SortItem(QTableWidgetItem):
+    """A cell that sorts on its value (a number, or a name ignoring case; an
+    empty name always last), not on its text."""
+
+    def __init__(self, text: str, key):
+        super().__init__(text)
+        self._key = (key == "", key.lower()) if isinstance(key, str) else (False, key)
+
+    def __lt__(self, other):
+        try:
+            return self._key < other._key
+        except (AttributeError, TypeError):
+            return super().__lt__(other)
+
+
 class _Measure(QThread):
     progress = pyqtSignal(str, int, int)
     done = pyqtSignal(object)
@@ -201,13 +216,16 @@ class DayAiDialog(QDialog):
             "you never photographed, down to 4 of one you have on 32 days or more")
         self._use_master.toggled.connect(self._recompute)
         form.addRow(self._use_master)
-        self._no_animal = QCheckBox("Purple where no animal was found")
-        self._no_animal.setChecked(d.no_animal_goes)
-        self._no_animal.setToolTip(
-            "Off: pictures without an animal (flowers, landscapes, or an insect the AI "
-            "missed) keep no colour — they are yours to judge.\nOn: they could go.")
-        self._no_animal.toggled.connect(self._recompute)
-        form.addRow(self._no_animal)
+        self._thin = QCheckBox("Thin out: also too many of the same")
+        self._thin.setChecked(d.thin)
+        self._thin.setToolTip(
+            "Off (a first look at a new day): only pictures out of focus, too small or "
+            "cut off could go — every sharp picture stays.\nOn: also keep no more "
+            "frames per pose than set above, and fewer of species your master has "
+            "often.\nPictures without an animal never get a colour from the AI.")
+        self._thin.toggled.connect(self._on_thin)
+        form.addRow(self._thin)
+        self._on_thin(d.thin, recompute=False)
         from utils.config import _config
         self._aggressive = QCheckBox("Group similar pictures aggressively")
         self._aggressive.setChecked(
@@ -243,7 +261,7 @@ class DayAiDialog(QDialog):
                 ("redundant", "Could go because there are enough of the same pose "
                               "or of this species: good pictures, just more than needed"),
                 ("faulty", "Could go because of the picture itself: out of focus, "
-                           "small, cut off by the edge, or no animal found"),
+                           "small, or cut off by the edge"),
                 ("new", "Named by the AI, but the name is not in your species list yet"),
                 ("nothing", "No animal found and no name: nothing the AI recognises as alive"))):
             b = QPushButton("")
@@ -252,24 +270,31 @@ class DayAiDialog(QDialog):
             b.setEnabled(False)
             b.clicked.connect(lambda _c=False, g=g: self._on_group(g))
             self._group_btns[g] = b
-            row.addWidget(b, i // 3, 1 + i % 3)
-        row.setColumnStretch(4, 1)
+            row.addWidget(b, 0, 1 + i)
+        row.setColumnStretch(6, 1)
         lay.addLayout(row)
         self._groups_keys = {g: [] for g in self._group_btns}
         self._label_groups()
 
-        self._table = QTableWidget(0, 6)
-        self._table.setHorizontalHeaderLabels(["Species", "Poses", "Pictures", "Best",
-                                               "Days in master", "Kept"])
+        self._table = QTableWidget(0, len(self._COLUMNS))
+        self._table.setHorizontalHeaderLabels(self._COLUMNS)
         self._table.verticalHeader().setVisible(False)
         self._table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self._table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         hh = self._table.horizontalHeader()
-        hh.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
-        for c in (1, 2, 3, 4, 5):
+        for c in (0, 1):
+            hh.setSectionResizeMode(c, QHeaderView.ResizeMode.Stretch)
+        for c in range(2, len(self._COLUMNS)):
             hh.setSectionResizeMode(c, QHeaderView.ResizeMode.ResizeToContents)
+        # Sort by clicking a column title: names A-Z first, numbers high to low
+        # first; the same title again turns the order round.
+        self._sort = (3, Qt.SortOrder.DescendingOrder)          # most pictures first
+        hh.setSectionsClickable(True)
+        hh.setSortIndicatorShown(True)
+        hh.setSortIndicator(*self._sort)
+        hh.sectionClicked.connect(self._on_header)
         self._table.setToolTip("Click a species to show only its pictures on the grid; "
-                               "click it again to show all")
+                               "click it again to show all. Click a column title to sort.")
         self._table.cellClicked.connect(self._on_row)
         lay.addWidget(self._table, 1)
 
@@ -279,6 +304,12 @@ class DayAiDialog(QDialog):
         self._note = QLabel("")
         self._note.setWordWrap(True)
         lay.addWidget(self._note)
+        # The day's country: what the AI names there (reptiles, insects, …) in one
+        # step — its own row in Settings ▸ AI species lists is made on OK.
+        self._country_btn = QPushButton("")
+        self._country_btn.clicked.connect(self._on_country)
+        self._country_btn.hide()
+        self._fetch = None
         box = QDialogButtonBox()
         self._accept_btn = QPushButton("Accept…")
         self._accept_btn.setToolTip("Write the names and colours you choose to the pictures")
@@ -293,8 +324,20 @@ class DayAiDialog(QDialog):
         box.addButton(self._stop_btn, QDialogButtonBox.ButtonRole.ActionRole)
         close = box.addButton(QDialogButtonBox.StandardButton.Close)
         close.clicked.connect(self.close)
-        lay.addWidget(box)
-        self.resize(720, 620)
+        bottom = QHBoxLayout()
+        bottom.addWidget(self._country_btn)
+        bottom.addStretch(1)
+        bottom.addWidget(box)
+        lay.addLayout(bottom)
+        # Tall and wide: many species in view, the group buttons on one line.
+        # The size you left it at last time (remembered on close).
+        scr = (self.screen() or grid.screen()).availableGeometry()
+        from utils.config import get_setting
+        try:
+            w, h = (int(x) for x in get_setting("ai", "day_dialog_size", "").split("x"))
+        except ValueError:
+            w, h = 1250, scr.height()
+        self.resize(min(w, scr.width()), min(h, int(scr.height() * 0.95)))
 
         for w in (self._thr, self._sharp, self._per_pose, self._small):
             w.valueChanged.connect(self._recompute)
@@ -304,13 +347,66 @@ class DayAiDialog(QDialog):
         self._folder = str(pics[0]["src"].parent) if pics else ""
         self._refresh_undo()
         self._stats.setText(f"{len(pics)} pictures" + (f" · {region}" if region else ""))
-        self._run = _Measure(pics, region, master_root, self,
+        self._master_root = master_root
+        if region:
+            from gui.ai_countries_dialog import country_label
+            self._country_btn.setText(f"What the AI names in {country_label(region)}…")
+            self._country_btn.setToolTip(
+                "Choose the groups the AI names in this country — birds always; "
+                "mammals, reptiles, insects, plants, … as you tick them. The names "
+                "of this day are looked up again at once.")
+            self._country_btn.show()
+        self._start_run(pics)
+
+    def _start_run(self, pics):
+        """Measure (cached after the first time) and name the day's pictures."""
+        self._run = _Measure(pics, self._region, self._master_root, self,
                              aggressive=self._aggressive.isChecked())
         self._run.progress.connect(self._on_progress)
         self._run.done.connect(self._on_done)
         self._run.failed.connect(lambda m: self._bar_text.setText(f"Stopped by an error: {m}"))
         self._t0 = time.time()
+        self._bar.show()
+        self._stop_btn.show()
+        self._accept_btn.setEnabled(False)
+        self._country_btn.setEnabled(False)
         self._run.start()
+
+    def _on_country(self):
+        """Tick what the AI names in the day's country; fetch lists not on this
+        computer yet; then name the day again (the measuring is cached)."""
+        from engine import inat_lists
+        from gui.ai_countries_dialog import GroupsDialog, _Fetch
+        region = self._region
+        chosen = inat_lists.countries_set().get(region, inat_lists.chosen_groups(""))
+        dlg = GroupsDialog(region, chosen, self)
+        if dlg.exec() != QDialog.DialogCode.Accepted:
+            return
+        inat_lists.set_groups(region, dlg.chosen())
+        missing = [g for g in dlg.chosen() if inat_lists.saved(region, g) is None]
+        if not missing:
+            self._start_run(self._pics)
+            return
+        self._country_btn.setEnabled(False)
+        self._accept_btn.setEnabled(False)
+        self._fetch = _Fetch({region: missing}, False)
+        self._fetch.step.connect(lambda t: self._bar_text.setText(f"Fetching lists — {t}"))
+        self._fetch.done.connect(self._on_fetched)
+        self._fetch.start()
+
+    def _on_fetched(self, text: str):
+        self._fetch = None
+        if getattr(self, "_closed", False):
+            return
+        self._bar_text.setText(text)
+        self._start_run(self._pics)
+
+    def _on_thin(self, on: bool, recompute: bool = True):
+        """The per-pose and master limits only count when thinning."""
+        self._per_pose.setEnabled(on)
+        self._use_master.setEnabled(on)
+        if recompute:
+            self._recompute()
 
     def _remember_aggressive(self, on: bool):
         from gui.ai_models_dialog import remember_aggressive
@@ -333,7 +429,7 @@ class DayAiDialog(QDialog):
         return DaySettings(threshold=self._thr.value(), sharp_cut=self._sharp.value(),
                            per_pose=self._per_pose.value(), small_px=self._small.value(),
                            use_master=self._use_master.isChecked(),
-                           no_animal_goes=self._no_animal.isChecked())
+                           thin=self._thin.isChecked())
 
     # ── the run ─────────────────────────────────────────────────────────────
 
@@ -358,6 +454,7 @@ class DayAiDialog(QDialog):
                 + "In detail: " + detail.line() + ".")
             self._detail.show()
         self._accept_btn.setEnabled(True)
+        self._country_btn.setEnabled(True)
         self._recompute()
 
     def _on_stop(self):
@@ -400,26 +497,49 @@ class DayAiDialog(QDialog):
         self._label_groups()
         if self._group_on:
             self._show_group()
-        rows = sorted(st["species"].items(), key=lambda kv: -kv[1]["pictures"])
+        rows = list(st["species"].items())
+        self._table.setSortingEnabled(False)
         self._table.setRowCount(len(rows))
-        self._row_keys = []
-        self._row_names = []
         days = self._run.master_days
+        from engine import ai_names
         for r, (name, e) in enumerate(rows):
-            note = "" if e["how"] == "exact" else " (not in your list)" if not e["how"] else ""
+            yours = ai_names.your_row(e["sci"], self._master_root) if e["how"] else None
+            en = (yours or {}).get("EnglishName") or ("" if yours else name)
+            nl = (yours or {}).get("DutchName") or ""
+            if not e["how"]:
+                en += " (not in your list)"
             d = days.get((e["sci"] or "").lower())
-            cells = [f"{name}{note}", str(e["poses"]), str(e["pictures"]),
-                     f"{e['best'] * 100:.0f} %", "" if d is None else str(d), str(e["kept"])]
-            for c, text in enumerate(cells):
-                it = QTableWidgetItem(text)
-                if c == 0:
+            cells = [(en, en), (nl, nl), (str(e["poses"]), e["poses"]),
+                     (str(e["pictures"]), e["pictures"]),
+                     (f"{e['best'] * 100:.0f} %", e["best"]),
+                     ("" if d is None else str(d), -1 if d is None else d),
+                     (str(e["kept"]), e["kept"])]
+            for c, (text, key) in enumerate(cells):
+                it = _SortItem(text, key)
+                if c < 2:
                     it.setToolTip(e["sci"] or "")
-                if c:
+                else:
                     it.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+                if c == 0:
+                    it.setData(Qt.ItemDataRole.UserRole, name)   # the species' group key
                 self._table.setItem(r, c, it)
-            self._row_keys.append(e["keys"])
-            self._row_names.append(name)
+        self._table.sortItems(*self._sort)
         self._show_on_grid()
+
+    _COLUMNS = ["English name", "Dutch name", "Poses", "Pictures", "Best",
+                "Days in master", "Kept"]
+
+    def _on_header(self, col: int):
+        """Names A-Z first, numbers high to low first; again = the other way."""
+        if self._sort[0] == col:
+            order = (Qt.SortOrder.DescendingOrder
+                     if self._sort[1] == Qt.SortOrder.AscendingOrder
+                     else Qt.SortOrder.AscendingOrder)
+        else:
+            order = Qt.SortOrder.AscendingOrder if col < 2 else Qt.SortOrder.DescendingOrder
+        self._sort = (col, order)
+        self._table.horizontalHeader().setSortIndicator(col, order)
+        self._table.sortItems(col, order)
 
     def _show_on_grid(self):
         marks, names = {}, {}
@@ -469,9 +589,10 @@ class DayAiDialog(QDialog):
     def _on_row(self, row, _col):
         """Show only that species' pictures on the grid; the same row again
         shows all."""
-        if not 0 <= row < len(getattr(self, "_row_names", [])):
+        it = self._table.item(row, 0)
+        if it is None or not it.data(Qt.ItemDataRole.UserRole):
             return
-        self._on_group(f"sp:{self._row_names[row]}")
+        self._on_group(f"sp:{it.data(Qt.ItemDataRole.UserRole)}")
         if self._group_on is None:
             self._table.clearSelection()
 
@@ -675,6 +796,12 @@ class DayAiDialog(QDialog):
     # ── closing ─────────────────────────────────────────────────────────────
 
     def _finish(self):
+        if not getattr(self, "_closed", False):
+            from utils.config import set_setting
+            set_setting("ai", "day_dialog_size", f"{self.width()}x{self.height()}")
+        self._closed = True
+        if self._fetch is not None:
+            self._fetch.stop = True
         if self._run.isRunning():
             self._run.stop()
             self._run.wait(30000)

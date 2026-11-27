@@ -66,8 +66,11 @@ class _LoadTask(QRunnable):
         if img is not None and not img.isNull() and self._target_w:
             if img.width() > self._target_w:
                 img = img.scaledToWidth(self._target_w, Qt.TransformationMode.SmoothTransformation)
-        self._signals.done.emit(self._on_ready, img if img is not None else QImage(),
-                                self._gen, self._on_cache)
+        try:
+            self._signals.done.emit(self._on_ready, img if img is not None else QImage(),
+                                    self._gen, self._on_cache)
+        except RuntimeError:
+            pass        # the window closed while this picture was loading: nobody to tell
 
 
 class AsyncImageLoader(QObject):

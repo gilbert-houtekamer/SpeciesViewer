@@ -136,6 +136,10 @@ def _name_animals(pics, aic, region, master_root, names, aggressive,
         for i, (nm, among) in zip(done, found):
             for q in series[i]:
                 q["names"], q["among"] = nm, among
+        if not aggressive:          # aggressive: a series shares one name already
+            changed = day_ai.vote_sittings([x[0] for x in series], vecs)
+            if changed:
+                logger.info(f"Day AI: {changed} poses took their sitting's name (vote)")
     logger.info(f"Day AI: {len(series)} series {'named' if names else 'looked at'} "
                 f"({sum(len(x) for x in series)} poses with an animal)")
 

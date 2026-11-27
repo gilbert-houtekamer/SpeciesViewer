@@ -21,7 +21,7 @@ def pic(i, sec, *, sharp=80.0, px=600, box=True, name=("Buteo buteo", 0.98),
 
 def test_a_burst_keeps_the_sharpest_two():
     pics = [pic(i, i, sharp=s) for i, s in enumerate([50, 90, 70, 85, 60])]
-    groups = day_ai.decide(pics, DaySettings(per_pose=2))
+    groups = day_ai.decide(pics, DaySettings(thin=True, per_pose=2))
     assert len(groups) == 1
     keep = {p["key"] for p in pics if p["verdict"] == "keep"}
     assert keep == {"k01", "k03"}
@@ -29,13 +29,24 @@ def test_a_burst_keeps_the_sharpest_two():
     assert all(p["name"]["sci"] == "Buteo buteo" for p in pics)
 
 
-def test_out_of_focus_and_no_animal_go_first():
+def test_out_of_focus_goes_and_no_animal_is_never_purple():
     pics = [pic(0, 0, sharp=5), pic(1, 1, box=False), pic(2, 2, sharp=60)]
-    day_ai.decide(pics, DaySettings(per_pose=3, sharp_cut=15, no_animal_goes=True))
+    day_ai.decide(pics, DaySettings(thin=True, per_pose=3, sharp_cut=15))
     by = {p["key"]: (p["verdict"], p["why"]) for p in pics}
     assert by["k00"] == ("purple", day_ai.OUT_OF_FOCUS)
-    assert by["k01"] == ("purple", day_ai.NO_ANIMAL)
+    assert by["k01"] == (None, "")
     assert by["k02"] == ("keep", "")
+
+
+def test_a_first_look_keeps_every_sharp_picture():
+    """Thinning off (the default): a burst of sharp frames all stay, and a
+    species the master has on 200 days is not thinned either; only the
+    out-of-focus frame goes."""
+    pics = [pic(i, i, sharp=s) for i, s in enumerate([50, 90, 70, 85, 60, 5])]
+    day_ai.decide(pics, DaySettings(), master_days={"buteo buteo": 200})
+    by = {p["key"]: (p["verdict"], p["why"]) for p in pics}
+    assert [v for v, _ in by.values()].count("keep") == 5
+    assert by["k05"] == ("purple", day_ai.OUT_OF_FOCUS)
 
 
 def test_no_animal_is_left_to_you_by_default():
@@ -49,7 +60,7 @@ def test_no_animal_is_left_to_you_by_default():
 def test_your_keepers_count_and_are_never_marked():
     pics = [pic(0, 0, sharp=40, stars=3), pic(1, 1, sharp=90), pic(2, 2, sharp=80),
             pic(3, 3, sharp=70, label="Yellow")]
-    day_ai.decide(pics, DaySettings(per_pose=2))
+    day_ai.decide(pics, DaySettings(thin=True, per_pose=2))
     by = {p["key"]: p["verdict"] for p in pics}
     assert by["k00"] is None and by["k03"] is None        # yours
     assert by["k01"] == "purple" and by["k02"] == "purple"   # two kept already
@@ -67,7 +78,7 @@ def test_a_weak_name_is_not_sure_and_poses_split_on_time():
 
 def test_small_only_when_the_pose_has_a_bigger_one():
     pics = [pic(0, 0, px=300, sharp=95), pic(1, 1, px=900, sharp=60)]
-    day_ai.decide(pics, DaySettings(per_pose=2, small_px=500))
+    day_ai.decide(pics, DaySettings(thin=True, per_pose=2, small_px=500))
     by = {p["key"]: (p["verdict"], p["why"]) for p in pics}
     assert by["k00"] == ("purple", day_ai.SMALL) and by["k01"] == ("keep", "")
     alone = [pic(0, 0, px=300)]
@@ -90,7 +101,7 @@ def test_card_name_tag():
 def test_common_species_thinned_by_the_master():
     # 10 poses of a buzzard, each 2 frames kept by the pose rule
     pics = [pic(i, i * 100 + (i % 2), sharp=50 + i) for i in range(20)]
-    day_ai.decide(pics, DaySettings(per_pose=2), master_days={"buteo buteo": 200})
+    day_ai.decide(pics, DaySettings(thin=True, per_pose=2), master_days={"buteo buteo": 200})
     kept = [p for p in pics if p["verdict"] == "keep"]
     assert len(kept) == day_ai.day_limit(200) == 4
     assert all(p["why"] in (day_ai.PLENTY, day_ai.TOO_MANY)
@@ -98,10 +109,10 @@ def test_common_species_thinned_by_the_master():
     assert min(p["sharp_pct"] for p in kept) > max(
         p["sharp_pct"] for p in pics if p["why"] == day_ai.PLENTY)   # the sharpest stay
     # a species the master never had keeps up to 12
-    day_ai.decide(pics, DaySettings(per_pose=2), master_days={})
+    day_ai.decide(pics, DaySettings(thin=True, per_pose=2), master_days={})
     assert sum(p["verdict"] == "keep" for p in pics) == 12
     # switched off: only the pose rule
-    day_ai.decide(pics, DaySettings(per_pose=2, use_master=False),
+    day_ai.decide(pics, DaySettings(thin=True, per_pose=2, use_master=False),
                   master_days={"buteo buteo": 200})
     assert sum(p["verdict"] == "keep" for p in pics) == 20
 
@@ -110,7 +121,7 @@ def test_the_master_rule_counts_per_calendar_day():
     """A card read of many days opened at once: the limit holds per day, not
     over all of it (one Egyptian goose in two months, 2026-11-26)."""
     pics = [pic(i, (i // 10) * 86400 + (i % 10) * 100, sharp=50 + i) for i in range(30)]
-    day_ai.decide(pics, DaySettings(per_pose=2), master_days={"buteo buteo": 200})
+    day_ai.decide(pics, DaySettings(thin=True, per_pose=2), master_days={"buteo buteo": 200})
     per_day = {}
     for p in pics:
         per_day[p["time"].date()] = per_day.get(p["time"].date(), 0) + (p["verdict"] == "keep")
@@ -121,7 +132,7 @@ def test_cut_off_by_the_edge_goes_when_the_pose_has_a_whole_one():
     a, b = pic(0, 0, sharp=95), pic(1, 1, sharp=60)
     a["box"] = (0.7, 0.3, 1.0, 0.6)                      # half outside on the right
     assert day_ai.cut_off(a["box"]) and not day_ai.cut_off(b["box"])
-    day_ai.decide([a, b], DaySettings(per_pose=2))
+    day_ai.decide([a, b], DaySettings(thin=True, per_pose=2))
     assert (a["verdict"], a["why"]) == ("purple", day_ai.CUT_OFF)
     assert b["verdict"] == "keep"
     # only cut-off frames: they are all there is, so the sharpest stay
@@ -133,7 +144,7 @@ def test_cut_off_by_the_edge_goes_when_the_pose_has_a_whole_one():
 
 def test_kept_leaves_out_what_is_marked_to_go():
     pics = [pic(0, 0, label="Purple"), pic(1, 1, label="Green"), pic(2, 2, label="Blue")]
-    groups = day_ai.decide(pics, DaySettings(per_pose=3))
+    groups = day_ai.decide(pics, DaySettings(thin=True, per_pose=3))
     st = day_ai.summary(pics, groups)
     assert st["species"]["Buteo buteo"]["kept"] == 1
     assert st["marked"] == 2
@@ -278,3 +289,27 @@ def test_groups_split_could_go_by_cause_and_find_new_and_nothing():
     g = day_ai.groups_of(pics)
     assert g == {"keep": ["d", "f"], "redundant": ["a", "b"], "faulty": ["c"], "new": ["d"],
                  "nothing": ["e"]}
+
+
+def test_a_sitting_takes_one_name_by_vote():
+    """Three look-alike poses a minute apart: two say A (sure), one says B →
+    all A. A fourth pose that looks different keeps its own name."""
+    t0 = datetime(2024, 6, 25, 8, 0, 0)
+    def lead(i, sci, prob):
+        return {"time": t0 + timedelta(seconds=60 * i),
+                "names": [{"sci": sci, "name": sci, "prob": prob, "how": "exact"}]}
+    leaders = [lead(0, "A a", 0.9), lead(1, "B b", 0.6), lead(2, "A a", 0.8),
+               lead(3, "C c", 0.7)]
+    same, other = [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]
+    changed = day_ai.vote_sittings(leaders, [same, same, same, other])
+    assert changed == 1
+    assert [l["names"][0]["sci"] for l in leaders] == ["A a", "A a", "A a", "C c"]
+    assert leaders[1]["names"][1]["sci"] == "B b"      # its own guess kept below
+
+
+def test_no_vote_across_a_long_gap():
+    t0 = datetime(2024, 6, 25, 8, 0, 0)
+    a = {"time": t0, "names": [{"sci": "A a", "prob": 0.9}]}
+    b = {"time": t0 + timedelta(minutes=10), "names": [{"sci": "B b", "prob": 0.5}]}
+    assert day_ai.vote_sittings([a, b], [[1, 0], [1, 0]]) == 0
+    assert b["names"][0]["sci"] == "B b"

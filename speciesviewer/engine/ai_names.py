@@ -76,6 +76,12 @@ def match(sci: str, master_root, family: str = "") -> tuple[str, dict | None]:
     return "", None
 
 
+def your_row(sci: str, master_root) -> dict | None:
+    """Your species-list row of a scientific name as shown (DutchName,
+    EnglishName, ...); None when it is not in your list."""
+    return _species_list(master_root)[0].get((sci or "").strip().lower())
+
+
 def display(sci: str, common: str, master_root, profile: str | None = None,
             family: str = "") -> dict:
     """{"name", "sci", "how"} to show: your own name when the species is in your
