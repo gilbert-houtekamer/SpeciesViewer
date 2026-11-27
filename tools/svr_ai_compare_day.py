@@ -6,7 +6,11 @@ pictures by file name and report how often the species agree and how the
 colours cross (your colour against the AI's).
 INVARIANT: report only — reads the .xmp sidecars, writes nothing.
 
-    python tools/svr_ai_compare_day.py <AI day folder> <your day folder>
+    python tools/svr_ai_compare_day.py <AI day folder> <your day folder> [--html <page.html>]
+
+--html also writes a page with, per run of neighbouring pictures where the
+names differ, your name and the AI's side by side with the pictures (from
+SpeciesViewer's preview cache, linked, not copied) — to look at by eye.
 
 Names are compared as scientific names through the main master's species list
 (your Dutch / English / scientific names); keywords not in the list are listed
@@ -21,9 +25,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "speciesviewer"))
 from utils.config import _config
 from db.master_mutate import _read_collection
 
-if len(sys.argv) != 3:
+if len(sys.argv) not in (3, 5) or (len(sys.argv) == 5 and sys.argv[3] != "--html"):
     sys.exit(__doc__)
 AI, HIS = Path(sys.argv[1]), Path(sys.argv[2])
+HTML = Path(sys.argv[4]) if len(sys.argv) == 5 else None
 sys.stdout.reconfigure(encoding="utf-8")
 master = Path(_config.get("master", "masterbiotadatabase", fallback="").strip().strip('"'))
 rows = _read_collection(master)
@@ -54,9 +59,15 @@ def name_of(sci):
     return r.get("EnglishName") or r.get("DutchName") or sci
 
 
-ai, his = {}, {}
+def both_names(sci):
+    r = rows.get(sci, {})
+    return r.get("EnglishName") or sci, r.get("DutchName") or "", sci
+
+
+ai, his, ai_stem = {}, {}, {}
 for x in (p for p in AI.iterdir() if p.suffix.lower() == ".xmp"):
     ai[x.stem.split(" - ")[-1].upper()] = read(x)
+    ai_stem[x.stem.split(" - ")[-1].upper()] = x.stem
 for x in {p.resolve() for p in HIS.iterdir() if p.suffix.lower() == ".xmp"}:
     his[x.stem.upper()] = read(x)
 keys = sorted(set(ai) & set(his))
@@ -151,3 +162,70 @@ for s_, d in sorted(per.items(), key=lambda kv: -(len(kv[1]["Y"]) + len(kv[1]["R
     print(f"  {name_of(s_)[:32]:32} {len(d['Y']):6} {len(d['R']):6} {len(d['AI']):5} {same:5} {near:5}")
 print(f"  {'TOTAL':32} {tot['Y']:6} {tot['R']:6} {tot['AI']:5} {tot['same']:5} {tot['near']:5}")
 print(f"  species with your Yellow/Red but no AI Yellow: {len(missed)} {missed[:15]}")
+
+
+# ── the page: your name and the AI's side by side ──
+def write_page(path: Path):
+    import hashlib, html, os
+    cache = (Path(os.environ.get("LOCALAPPDATA", Path.home())) / "SpeciesViewer" / "preview_cache"
+             / hashlib.sha1(os.path.normcase(str(AI)).encode()).hexdigest()[:16])
+
+    def thumb(k):
+        for name in (f"{ai_stem[k]}@268.jpg", f"{ai_stem[k]}.jpg"):
+            f = cache / name
+            if f.exists():
+                return f.as_uri()
+        return ""
+
+    runs = []           # [(your sci, AI sci, [keys])], neighbours with the same pair
+    for k in keys:
+        a, h = set(ai[k][1]), set(his[k][1])
+        if not a or not h or a & h:
+            continue
+        pair = (min(h), min(a))
+        w = his[k][3]
+        if (runs and runs[-1][0] == pair and w and runs[-1][2]
+                and (w - his[runs[-1][1][-1]][3]).total_seconds() <= 120):
+            runs[-1][1].append(k)
+        else:
+            runs.append((pair, [k], w))
+    sub = lambda mine, its: mine.startswith(its + " ")
+    pairs = Counter()
+    for pair, ks, _w in runs:
+        pairs[pair] += len(ks)
+    e = html.escape
+    out = ["<!doctype html><meta charset=utf-8><title>AI names vs yours</title><style>",
+           "body{font:14px system-ui,sans-serif;background:#1e1f1c;color:#ddd;margin:16px}",
+           "table{border-collapse:collapse;width:100%}td,th{border-bottom:1px solid #444;"
+           "padding:6px;vertical-align:top;text-align:left}th{position:sticky;top:0;background:#2a2b27}",
+           ".n{width:22%}.d{color:#999}.s{color:#7a7}.pics img{height:150px;margin:2px;border-radius:4px}",
+           "a{color:#9cf}</style>",
+           f"<h1>{e(AI.name)}: your name ↔ the AI's</h1>",
+           f"<p>{sum(pairs.values())} pictures in {len(runs)} runs (neighbouring pictures "
+           "within 2 minutes with the same two names). Green = your name is a subspecies of the "
+           "AI's species (not really wrong).</p><h2>By pair</h2><table><tr><th>Yours</th>"
+           "<th>The AI's</th><th>Pictures</th></tr>"]
+    for (mine, its), n in pairs.most_common():
+        cls = " class=s" if sub(mine, its) else ""
+        out.append(f"<tr{cls}><td>{e(name_of(mine))}</td><td>{e(name_of(its))}</td><td>{n}</td></tr>")
+    out.append("</table><h2>Run by run</h2><table><tr><th class=n>Yours</th><th>Pictures</th>"
+               "<th class=n>The AI's</th></tr>")
+    for (mine, its), ks, w in runs:
+        cls = " class=s" if sub(mine, its) else ""
+        me, mn, ms = both_names(mine)
+        ae, an, as_ = both_names(its)
+        imgs = "".join(f'<img src="{thumb(k)}" title="{e(ai_stem[k])} · yours {e(his[k][0] or "none")}'
+                       f' · AI {e(ai[k][0] or "none")}">' for k in ks[:6] if thumb(k))
+        more = f" <span class=d>+{len(ks) - 6} more</span>" if len(ks) > 6 else ""
+        when = w.strftime("%H:%M:%S") if w else ""
+        out.append(f"<tr{cls}><td>{e(me)}<br><span class=d>{e(mn)}<br><i>{e(ms)}</i></span></td>"
+                   f"<td class=pics><span class=d>{when} · {len(ks)} pictures · {e(ai_stem[ks[0]])}"
+                   f"</span><br>{imgs}{more}</td>"
+                   f"<td>{e(ae)}<br><span class=d>{e(an)}<br><i>{e(as_)}</i></span></td></tr>")
+    out.append("</table>")
+    path.write_text("\n".join(out), encoding="utf-8")
+    print(f"\npage: {path} ({len(runs)} runs)")
+
+
+if HTML is not None:
+    write_page(HTML)
