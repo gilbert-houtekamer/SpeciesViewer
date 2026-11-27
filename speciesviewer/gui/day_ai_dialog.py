@@ -257,7 +257,12 @@ class DayAiDialog(QDialog):
         self._group_btns = {}
         self._group_on = None
         for i, (g, tip) in enumerate((
-                ("keep", "The pictures the AI would keep (Green): the best of each pose"),
+                ("keep", "The pictures the AI would keep (Green)"),
+                ("best", "The best picture of each species, to make Yellow — one per "
+                         "encounter (the same species more than an hour later is a new "
+                         "one): a whole animal, a name the AI is about as sure of as its "
+                         "surest, among the sharpest the biggest. None where you have a "
+                         "Yellow or Red picture or a JPG of it already"),
                 ("redundant", "Could go because there are enough of the same pose "
                               "or of this species: good pictures, just more than needed"),
                 ("faulty", "Could go because of the picture itself: out of focus, "
@@ -338,6 +343,11 @@ class DayAiDialog(QDialog):
         except ValueError:
             w, h = 1250, scr.height()
         self.resize(min(w, scr.width()), min(h, int(scr.height() * 0.95)))
+        # … and where you left it (Qt puts it back on a screen that still exists).
+        from PyQt6.QtCore import QByteArray
+        place = get_setting("ai", "day_dialog_place", "")
+        if place:
+            self.restoreGeometry(QByteArray.fromBase64(place.encode("ascii")))
 
         for w in (self._thr, self._sharp, self._per_pose, self._small):
             w.valueChanged.connect(self._recompute)
@@ -552,13 +562,13 @@ class DayAiDialog(QDialog):
                 tag, sure = "? not sure", False
             else:
                 tag, sure = "", True
-            marks[p["key"]] = (p.get("verdict"), tag, sure)
+            marks[p["key"]] = ("best" if p.get("best") else p.get("verdict"), tag, sure)
         try:
             self._grid.show_ai_marks(marks, names)
         except RuntimeError:
             pass
 
-    _GROUP_NAMES = {"keep": "Stays", "redundant": "Too many", "faulty": "Not good enough",
+    _GROUP_NAMES = {"keep": "Stays", "best": "Best per species", "redundant": "Too many", "faulty": "Not good enough",
                     "new": "Not in your list", "nothing": "Nothing alive"}
 
     def _label_groups(self):
@@ -609,7 +619,7 @@ class DayAiDialog(QDialog):
         """_plan, plus {key: scientific name} for the names NOT in your list yet
         (the AI's name from the country's list, at or above the threshold, on
         pictures without a species) — written only when you tick it."""
-        names, purple, green, new = {}, {}, {}, {}
+        names, purple, green, new, yellow = {}, {}, {}, {}, {}
         can_name = self._grid.ai_can_write_species()
         for p in self._pics:
             k = p["key"]
@@ -624,12 +634,14 @@ class DayAiDialog(QDialog):
                 purple[k] = [before, "Purple"]
             elif p.get("verdict") == "keep" and before != "Green":
                 green[k] = [before, "Green"]
-        return names, purple, green, new
+            if p.get("best") and before != "Yellow":
+                yellow[k] = [before, "Yellow"]
+        return names, purple, green, new, yellow
 
     def _on_accept(self):
         from PyQt6.QtWidgets import QCheckBox, QMessageBox
         from engine import day_ai_marks
-        names, purple, green, new = self._plan_with_new()
+        names, purple, green, new, yellow = self._plan_with_new()
         dlg = _BusyDialog(self)
         dlg.setWindowTitle("Accept the AI's suggestion")
         lay = QVBoxLayout(dlg)
@@ -654,7 +666,14 @@ class DayAiDialog(QDialog):
         cb_purple.setEnabled(bool(purple))
         cb_green = QCheckBox(f"Green: {len(green)} pictures that stay")
         cb_green.setEnabled(bool(green))
-        for w in (cb_purple, cb_green):
+        cb_yellow = QCheckBox(f"Yellow: the best picture of each species — {len(yellow)} "
+                              f"pictures (instead of Green)")
+        cb_yellow.setToolTip("One per species and encounter (more than an hour apart = a "
+                             "new one): a whole animal, a sure name, among the sharpest the "
+                             "biggest. Not where you have a Yellow or Red picture or a JPG "
+                             "of it already. Red stays yours.")
+        cb_yellow.setEnabled(bool(yellow))
+        for w in (cb_purple, cb_green, cb_yellow):
             lay.addWidget(w)
         extra = []
         if not self._grid.ai_can_write_species():
@@ -685,10 +704,12 @@ class DayAiDialog(QDialog):
             colours = dict(purple if cb_purple.isChecked() else {})
             if cb_green.isChecked():
                 colours.update(green)
+            if cb_yellow.isChecked():
+                colours.update(yellow)          # the best of a species: Yellow, not Green
             if not n_names and not colours and not (new and cb_new.isChecked()):
                 dlg.reject()
                 return
-            for w in (cb_names, cb_new, cb_purple, cb_green, write_btn, close_btn):
+            for w in (cb_names, cb_new, cb_purple, cb_green, cb_yellow, write_btn, close_btn):
                 w.setEnabled(False)
             dlg.busy = True
             bar.show()
@@ -799,6 +820,8 @@ class DayAiDialog(QDialog):
         if not getattr(self, "_closed", False):
             from utils.config import set_setting
             set_setting("ai", "day_dialog_size", f"{self.width()}x{self.height()}")
+            set_setting("ai", "day_dialog_place",
+                        bytes(self.saveGeometry().toBase64()).decode("ascii"))
         self._closed = True
         if self._fetch is not None:
             self._fetch.stop = True

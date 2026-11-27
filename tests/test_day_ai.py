@@ -287,8 +287,8 @@ def test_groups_split_could_go_by_cause_and_find_new_and_nothing():
          "has_animal_pose": False, "plant_pose": True},
     ]
     g = day_ai.groups_of(pics)
-    assert g == {"keep": ["d", "f"], "redundant": ["a", "b"], "faulty": ["c"], "new": ["d"],
-                 "nothing": ["e"]}
+    assert g == {"keep": ["d", "f"], "best": [], "redundant": ["a", "b"], "faulty": ["c"],
+                 "new": ["d"], "nothing": ["e"]}
 
 
 def test_a_sitting_takes_one_name_by_vote():
@@ -313,3 +313,37 @@ def test_no_vote_across_a_long_gap():
     b = {"time": t0 + timedelta(minutes=10), "names": [{"sci": "B b", "prob": 0.5}]}
     assert day_ai.vote_sittings([a, b], [[1, 0], [1, 0]]) == 0
     assert b["names"][0]["sci"] == "B b"
+
+
+def test_best_per_species_is_sharp_then_big():
+    """Among the sharpest (within 10 points) the biggest animal; a much
+    blurrier big one does not win."""
+    pics = [pic(0, 0, sharp=90, px=800), pic(1, 100, sharp=85, px=1500),
+            pic(2, 200, sharp=40, px=3000)]
+    day_ai.decide(pics, DaySettings())
+    assert [p["key"] for p in pics if p["best"]] == ["k01"]
+    assert day_ai.groups_of(pics)["best"] == ["k01"]
+
+
+def test_no_best_when_you_chose_already():
+    pics = [pic(0, 0, sharp=90, px=800), pic(1, 100, sharp=85, px=1500, label="Yellow")]
+    day_ai.decide(pics, DaySettings())
+    assert not any(p["best"] for p in pics)
+
+
+def test_one_best_per_species_per_encounter():
+    """Two species, and the buzzard again 2 hours later and the next day:
+    four encounters, four best pictures; 30 minutes later is the same one."""
+    pics = [pic(0, 0, sharp=90), pic(1, 100, sharp=80, name=("Anas platyrhynchos", 0.9)),
+            pic(2, 1800, sharp=50), pic(3, 7200 + 1800, sharp=70),
+            pic(4, 86400 + 100, sharp=70)]
+    day_ai.decide(pics, DaySettings())
+    assert sorted(p["key"] for p in pics if p["best"]) == ["k00", "k01", "k03", "k04"]
+
+
+def test_a_much_less_sure_name_does_not_win():
+    """The biggest, sharpest frame named at 76 % loses to one named at 99 %."""
+    pics = [pic(0, 0, sharp=90, px=2000, name=("Buteo buteo", 0.76)),
+            pic(1, 100, sharp=85, px=900, name=("Buteo buteo", 0.99))]
+    day_ai.decide(pics, DaySettings())
+    assert [p["key"] for p in pics if p["best"]] == ["k01"]

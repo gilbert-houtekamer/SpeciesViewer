@@ -14,6 +14,7 @@ and ignored.
 """
 import re, sys
 from collections import Counter, defaultdict
+from datetime import datetime
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "speciesviewer"))
@@ -43,7 +44,9 @@ def read(xmp: Path):
     kws = re.findall(r"<rdf:li>([^<]*)</rdf:li>", subj.group(1)) if subj else []
     sp = [to_sci[k.strip().lower()] for k in kws if k.strip().lower() in to_sci]
     other = [k for k in kws if k.strip().lower() not in to_sci]
-    return label, sp, other
+    d = re.search(r'exif:DateTimeOriginal(?:="|>)(\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d)', t)
+    when = datetime.fromisoformat(d.group(1)) if d else None
+    return label, sp, other, when
 
 
 def name_of(sci):
@@ -120,3 +123,31 @@ print(f"  of which your Yellow/Red (your best): {len(kept_lost)}  {sorted(kept_l
 g_ai = [k for k in keys if ai[k][0] == "Green"]
 print(f"  AI Green: {len(g_ai)} — you kept: {sum(his[k][0] in STAY for k in g_ai)}, "
       f"you let go: {sum(his[k][0] in GO for k in g_ai)}")
+
+# ── Yellow / Red: the AI's best picture per species against yours ──
+NEAR = 30    # s — an AI Yellow this close to one of your Yellow/Red = (about) the same pose
+print("\nYELLOW / RED per species (your names; 'near' = within 30 s of one of your Yellow/Red)")
+print(f"  {'species':32} {'your Y':>6} {'your R':>6} {'AI Y':>5} {'same':>5} {'near':>5}")
+per = defaultdict(lambda: {"Y": [], "R": [], "AI": []})
+for k in keys:
+    lab, sp, _o, when = his[k]
+    for s_ in sp:
+        if lab in ("Yellow", "Red"):
+            per[s_][lab[0]].append((k, when))
+        if ai[k][0] == "Yellow":
+            per[s_]["AI"].append((k, when))
+tot = Counter()
+missed = []
+for s_, d in sorted(per.items(), key=lambda kv: -(len(kv[1]["Y"]) + len(kv[1]["R"]))):
+    mine = d["Y"] + d["R"]
+    if not mine and not d["AI"]:
+        continue
+    same = sum(1 for k, _w in d["AI"] if k in {m for m, _ in mine})
+    near = sum(1 for k, w in d["AI"] if k not in {m for m, _ in mine} and w and any(
+        mw and abs((w - mw).total_seconds()) <= NEAR for _m, mw in mine))
+    tot.update(Y=len(d["Y"]), R=len(d["R"]), AI=len(d["AI"]), same=same, near=near)
+    if mine and not d["AI"]:
+        missed.append(name_of(s_))
+    print(f"  {name_of(s_)[:32]:32} {len(d['Y']):6} {len(d['R']):6} {len(d['AI']):5} {same:5} {near:5}")
+print(f"  {'TOTAL':32} {tot['Y']:6} {tot['R']:6} {tot['AI']:5} {tot['same']:5} {tot['near']:5}")
+print(f"  species with your Yellow/Red but no AI Yellow: {len(missed)} {missed[:15]}")

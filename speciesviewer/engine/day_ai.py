@@ -81,13 +81,16 @@ FAULTY = (OUT_OF_FOCUS, SMALL, CUT_OFF)   # the picture itself falls short
 
 def groups_of(pics: list[dict]) -> dict[str, list]:
     """The day's pictures in the groups worth a look of their own (keys, in
-    order): "keep" — the AI would keep (Green); "redundant" — could go because there are enough of the same or of
+    order): "keep" — the AI would keep (Green); "best" — the best picture of each
+    species per encounter (mark_best: suggested Yellow); "redundant" — could go because there are enough of the same or of
     the species; "faulty" — could go because of the picture itself; "new" —
     named, but not a name in your list; "nothing" — no animal found and no
     name (no life the AI recognises). A view only."""
-    out = {"keep": [], "redundant": [], "faulty": [], "new": [], "nothing": []}
+    out = {"keep": [], "best": [], "redundant": [], "faulty": [], "new": [], "nothing": []}
     for p in pics:
         k = p.get("key")
+        if p.get("best"):
+            out["best"].append(k)
         if p.get("verdict") == "keep":
             out["keep"].append(k)
         elif p.get("verdict") == "purple":
@@ -449,7 +452,69 @@ def decide(pics: list[dict], s: DaySettings,
                     kept += 1
                 else:
                     p["verdict"], p["why"] = "purple", PLENTY
+    mark_best(pics)
     return groups
+
+
+SHARP_BAND = 10     # % — frames this close to the sharpest count as sharp alike
+SURE_BAND = 10      # % — names this close to the surest count as sure alike
+ENCOUNTER_GAP = 3600   # s — the same species again after this long = a new encounter
+
+
+def encounters(group: list[dict], gap: float = ENCOUNTER_GAP) -> list[list[dict]]:
+    """A species' pictures of one day split where more than `gap` seconds
+    pass between two of them (GH 2026-11-27: "2 pictures when they are more
+    than 1 hour apart"). Pictures without a time stay with the first."""
+    timed = sorted((p for p in group if p.get("time")), key=lambda p: p["time"])
+    out: list[list[dict]] = []
+    for p in timed:
+        if out and (p["time"] - out[-1][-1]["time"]).total_seconds() <= gap:
+            out[-1].append(p)
+        else:
+            out.append([p])
+    rest = [p for p in group if not p.get("time")]
+    if rest:
+        if not out:
+            out.append([])
+        out[0].extend(rest)
+    return out
+
+
+def mark_best(pics: list[dict]) -> int:
+    """p["best"] = True on the best picture of each species per encounter (the
+    same species more than ENCOUNTER_GAP after its last picture is a new one) —
+    the one to suggest Yellow (GH 2026-11-27: "at least one Yellow per species";
+    he judges sharpness, size, pose, colours, in that order — the AI the first
+    two). Among the frames that stay ("keep") with a sure name: a whole animal
+    before one cut off by the edge; then only names within SURE_BAND of the
+    surest ("76 % is a lot less than 99 %"); then the frames within SHARP_BAND
+    of the sharpest; of those the biggest animal. An encounter that already has
+    a Yellow or Red picture, or a JPG, gets none — you chose already. Red stays
+    yours. Returns how many were marked."""
+    by: dict[str, list[dict]] = {}
+    for p in pics:
+        p["best"] = False
+        n = p.get("name")
+        if n is None or not n.get("sci"):
+            continue
+        by.setdefault(n["sci"].lower(), []).append(p)
+    marked = 0
+    for group in by.values():
+        for enc in encounters(group):
+            if any(p.get("label") in ("Yellow", "Red") or p.get("jpg") for p in enc):
+                continue
+            cands = [p for p in enc if p.get("verdict") == "keep" and p.get("box")]
+            if not cands:
+                continue
+            cands = [p for p in cands if not cut_off(p["box"])] or cands
+            sure = max(p["name"].get("prob") or 0.0 for p in cands)
+            cands = [p for p in cands
+                     if (p["name"].get("prob") or 0.0) * 100 >= sure * 100 - SURE_BAND]
+            top = max((p.get("sharp_pct") or 0.0) for p in cands)
+            cands = [p for p in cands if (p.get("sharp_pct") or 0.0) >= top - SHARP_BAND]
+            max(cands, key=lambda p: (p.get("px") or 0, p.get("sharp_pct") or 0.0))["best"] = True
+            marked += 1
+    return marked
 
 
 def summary(pics: list[dict], groups: list[list[dict]]) -> dict:

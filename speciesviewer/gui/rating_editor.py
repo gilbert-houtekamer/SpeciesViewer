@@ -476,9 +476,10 @@ class _FramedPhoto(QLabel):
     def set_suggestion(self, state: str | None, yours: bool = False) -> None:
         """Draw the AI… dialog's suggestion over the photo: "purple" = a bin on a
         greyed photo (could go), "keep" = a green frame (the suggestion keeps
-        it), None = nothing; `yours` = you decided it (k / b), drawn dashed.
+        it), "best" = a yellow frame (the AI… dialog's best picture of a species),
+        None = nothing; `yours` = you decided it (k / b), drawn dashed.
         Purely a view — no colour is written."""
-        if state not in ("purple", "keep"):
+        if state not in ("purple", "keep", "best"):
             if self._veil is not None:
                 self._veil.hide()
                 self._bin.hide()
@@ -498,7 +499,8 @@ class _FramedPhoto(QLabel):
                 f"background: rgba(30,30,30,.45); border: 3px {line} #9370DB;")
             self._bin.show()
         else:
-            self._veil.setStyleSheet(f"background: transparent; border: 3px {line} #4caf50;")
+            colour = "#f2c200" if state == "best" else "#4caf50"
+            self._veil.setStyleSheet(f"background: transparent; border: 3px {line} {colour};")
             self._bin.hide()
         self._veil.show()
         self._place_veil()
