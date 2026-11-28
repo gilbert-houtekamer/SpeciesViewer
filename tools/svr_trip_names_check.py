@@ -20,6 +20,9 @@ Each name gets one verdict:
               (a family with one species, "secretarybird" → sagittariidae), or
               the species of a trip's subspecies → no alias; the master's own
               index decides, look at it when it matters
+  two meanings  the master's alias table gives this name to TWO species (a
+              split: "black-eared wheatear" → western and eastern), so it is
+              refused on purpose → no alias can fix that; nothing to do
   other       the master knows the name, but as ANOTHER species (a split, a
               rename that moved the name) → never an alias; look at it by hand
   contested   the master's alias table says a split gave this name away; it is
@@ -93,7 +96,23 @@ def _master():
         sys.exit(f"No master species list found ({path}).")
     sc = SpeciesClassification(None)
     sc.readSpeciesCollection(str(path), False)      # reads; also its alias table
+    sc.two_meanings = _two_meanings(path.parent / "speciesnames.csv", sc)
     return path, sc
+
+
+def _two_meanings(path: Path, m) -> set:
+    """Names the alias table points at more than one species — the reader
+    (speciesclassification._readAliases) refuses them, so they resolve to
+    nothing on purpose."""
+    targets = defaultdict(set)
+    for r in _rows(path):
+        if (r.get("Removed") or "").strip():
+            continue
+        name = (r.get("Name") or "").strip().lower()
+        to = (r.get("PointsTo") or "").strip().lower()
+        if name and to in m.sc_dict and name not in m.sc_dict:
+            targets[name].add(to)
+    return {n for n, tos in targets.items() if len(tos) > 1}
 
 
 def _means(m, name: str) -> str:
@@ -143,7 +162,8 @@ def check(m, rows):
             got = _means(m, name)
             if got == now:
                 continue
-            verdict = ("missing" if not got else
+            verdict = ("two meanings" if not got and name in m.two_meanings else
+                       "missing" if not got else
                        "above" if got in _above(m, now) else "other")
             yield verdict, lang, name, sci, got or now
 
@@ -179,7 +199,8 @@ def main(argv=None):
         print(f"  {kind:5} {name:28} {len(used):5} names on pictures"
               + (f", {listed} in its list" if a.all else "") + f" — {n} to look at")
 
-    order = {"missing": 0, "other": 1, "above": 2, "no species": 3, "contested": 4}
+    order = {"missing": 0, "other": 1, "above": 2, "no species": 3,
+             "two meanings": 4, "contested": 5}
     hits = sorted(found.items(), key=lambda kv: (order[kv[0][0]], kv[0][2]))
     for verdict in order:
         group = [(k, w) for k, w in hits if k[0] == verdict]
